@@ -31,6 +31,7 @@ The pins for all of it are in ``tests/golden/hit_outcomes.json``.
 from __future__ import annotations
 
 from dataclasses import replace
+from enum import Enum
 
 from src.combat.combatant_protocol import AttackerPort, Combatant, DamageResult, Finish
 from src.combat.frame_data import HitProperties
@@ -116,6 +117,35 @@ def _apply_post_effects(
         target.stagger(effective_stagger)
 
 
+class HitRefusal(Enum):
+    """Why the defence layer refuses a hit before damage is considered.
+
+    A classification, not an effect: the caller still decides what a refusal
+    means. In particular an invincible target must get its ``on_hit_evaded``
+    side effect from the caller, at the same point in the order as before.
+    """
+
+    INVINCIBLE = "invincible"
+    DOOMED = "doomed"
+    NO_DAMAGE = "no_damage"
+    OTG = "otg"
+
+
+def hit_refusal(
+    target: Combatant, hit: HitProperties, final_damage: float, grounded: bool
+) -> HitRefusal | None:
+    """Classify a defensive refusal in the same order the guards always ran."""
+    if target.is_invincible:
+        return HitRefusal.INVINCIBLE
+    if target.is_doomed and not hit.execute:
+        return HitRefusal.DOOMED
+    if final_damage <= 0:
+        return HitRefusal.NO_DAMAGE
+    if _otg_blocked(grounded, float(target.otg_timer or 0.0), hit):
+        return HitRefusal.OTG
+    return None
+
+
 def _misses(
     target: Combatant, hit: HitProperties, final_damage: float, grounded: bool
 ) -> DamageResult | None:
@@ -124,15 +154,12 @@ def _misses(
     A dodge, a hurt or a launch cannot be hit, and a dodge may make it a dark
     step; a doomed target is reached by a death blow only.
     """
-    if target.is_invincible:
+    refusal = hit_refusal(target, hit, final_damage, grounded)
+    if refusal is None:
+        return None
+    if refusal is HitRefusal.INVINCIBLE:
         return DamageResult(evaded=target.on_hit_evaded())
-    if target.is_doomed and not hit.execute:
-        return DamageResult()
-    if final_damage <= 0:
-        return DamageResult()
-    if _otg_blocked(grounded, float(target.otg_timer or 0.0), hit):
-        return DamageResult()
-    return None
+    return DamageResult()
 
 
 def _doom(attacker: AttackerPort, target: Combatant, was_airborne: bool) -> DamageResult:

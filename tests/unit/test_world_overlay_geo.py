@@ -167,6 +167,23 @@ def test_a_swept_box_that_moved_is_drawn_as_a_ghost(
     )
 
 
+def test_a_moved_hurt_zone_leaves_a_sweep_ghost(
+    world_ui: WorldUI, geo: GeoLayer, camera: Camera
+) -> None:
+    """Contact tests swept hurtboxes; the overlay must show the extra ground."""
+    world_ui.surface.fill((0, 0, 0))
+    entity = overlay_entity(
+        "Ghost", hurtboxes=(pygame.FRect(300, 300, 40, 48),), hurtbox_tags=((),)
+    )
+    entity.swept_hurtboxes = lambda: (pygame.FRect(240, 300, 40, 48),)
+
+    geo.draw_boxes(entity, camera)
+
+    assert any(world_ui.surface.get_at((x, 312))[:3] != (0, 0, 0) for x in range(230, 290)), (
+        "nothing was drawn where the hurt zone came from"
+    )
+
+
 def test_a_swept_box_that_did_not_move_draws_no_ghost(
     world_ui: WorldUI, geo: GeoLayer, camera: Camera
 ) -> None:

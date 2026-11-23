@@ -12,6 +12,16 @@ from src.core.settings import Combat as CombatSettings
 from src.physics.entity_grid import EntityGrid
 
 
+def _invulnerable(entity: Combatant) -> bool:
+    """A dodging fighter neither deals nor receives contact damage.
+
+    Both uses below are silent (no dodge event, no rush, no hit-stop): this is
+    the contact-damage producer's own rule, not the resolver's ``_misses``,
+    where invincibility is a dark step with effects.
+    """
+    return entity.is_invincible
+
+
 class MomentumGate:
     """Legacy momentum rules, applied per source/target pair.
 
@@ -35,7 +45,7 @@ class MomentumGate:
         other_speed = other.velocity.length()
         if max(self.speed, other_speed) < CombatSettings.CONTACT_DAMAGE_THRESHOLD:
             return False
-        if other.is_invincible:
+        if _invulnerable(other):
             return False
         if other.combat.is_hurt:
             return False
@@ -118,7 +128,7 @@ class ContactDamageSystem:
         boxes: list[OffensiveBox] = []
         live: set[int] = set()
         for entity in entity_sprites:
-            if entity.is_dead or entity.is_invincible:
+            if entity.is_dead or _invulnerable(entity):
                 continue
             key = id(entity)
             live.add(key)

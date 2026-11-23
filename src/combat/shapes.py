@@ -362,6 +362,16 @@ def swept_shape_shape_intersects(
     """Do two poses touch at any point between two frames? The endpoints are tested first, because that is the common answer, then the pair is walked in `iterations` steps. Sampling is what it is: a step wide enough to tunnel past a thin target is the bug this exists to catch, which is why the count is a setting and not a constant."""
     if first_start.kind is not first_end.kind or second_start.kind is not second_end.kind:
         raise ValueError("Swept poses must use the same shape kind")
+    # A teleport or a respawn is not a swing. Past the sweep bound, sampling
+    # would smear one pose across the whole level and invent clashes between
+    # fighters that were never near each other -- the same guard the AABB path
+    # has in ``swept_intersects_aabb``.
+    if any(
+        math.hypot(end.position[0] - start.position[0], end.position[1] - start.position[1])
+        > CombatSettings.SWEEP_MAX_DISPLACEMENT_PX
+        for start, end in ((first_start, first_end), (second_start, second_end))
+    ):
+        return shape_shape_intersects(first_end, second_end)
     if shape_shape_intersects(first_start, second_start) or shape_shape_intersects(
         first_end, second_end
     ):

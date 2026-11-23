@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3739 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3775 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -127,10 +127,18 @@ first two thrown high, or low with Down held, and all three charged when held.
 What a press throws depends on what the fighter is doing
 (`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
 
+A **phase** is one movement: its own timing, one hitbox and one effect. A
+**move** is a chain of phases that follow each other automatically on their
+frame data; a phase may name an `auto_into` move whose first phase then follows
+without an input, a second cooldown or a second combo entry. The **combos**
+below are the links *between* moves, opened by `cancel_into` on contact or in
+recovery and chosen by `follow_ups` from the button pressed. A phase either
+strikes or launches a shot, never both.
+
 | Input | Move |
 |---|---|
 | Slash ×4 | `slash_high_1` cut down → `_2` backhand → `_3` thrust that steps in → `_4` heavy vertical cut (finisher). Down switches any link to its low twin: knee cut, low backhand, low thrust, and a rising cut that launches |
-| Slash held | let go early: `charged_slash`, a wide cut that breaks a guard, harder with the time held. Held to the end: `charged_slash_full`, a bigger cut that throws a crescent forward |
+| Slash held | let go early: `charged_slash`, a wide cut that breaks a guard, harder with the time held. Held to the end: `charged_slash_full`, a bigger cut whose last phase continues automatically into `crescent_wave`, which throws the crescent forward |
 | Beat ×3 | `punch_1` jab → `punch_2` cross → `punch_3` uppercut (launches); fills the stun gauge |
 | Down + beat ×2 | `kick_1` sweep at the ankles → `kick_2` roundhouse that sends the foe into the wall |
 | Beat held | `charged_kick`: goes through guards and armour, pushes hard |
@@ -150,7 +158,10 @@ fighter share shape, timing, height and push (`tests/unit/test_move_proportions.
 A charge grows what it throws: at the charge multiplier `m` (1 let go at once, 2 held to the end) the blow hits `m` times harder, pushes and stuns `m` times more, and its shape and reach are `1 + Combat.CHARGE_REACH_GAIN × (m − 1)` times the uncharged one's; a full charge keeps that power and adds its tier's extra (the crescent, the pierce). A charged shot grows the same way. The blade and the body are two kinds of blow: the blade is quicker, longer and pushes little; the body starts later, freezes longer on a hit, pushes hard, stuns and goes through guards (`tests/headless/test_charge_and_buttons.py`).
 A phase can launch a shot as it turns active (`launches`, from
 `src/entities/shots.py`): the bolt, the piercing bolt, the crescent of a full
-cut, the slime's lobbed glob.
+cut, the slime's lobbed glob. A launching phase strikes with the shot alone:
+its box marks the hand it leaves from and never touches. The crescent is its
+own move, reached from the full cut by `auto_into`, so the strike and the throw
+stay two well-defined movements.
 
 **Enemies.** Each fighting type has its own moves: the goblin's two claws (an
 overhead swipe, a low reach), the tooth's bite at the head and snap at the
@@ -833,7 +844,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3739 tests · 94 % instruction coverage · 84 % branch
+> **Current baseline:** 3775 tests · 94 % instruction coverage · 84 % branch
 > coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
 > `mypy src` alone is 181).[^coverage]
 

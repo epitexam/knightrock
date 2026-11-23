@@ -297,43 +297,6 @@ def _check_keyframe_span(keyframes: tuple[HitboxKeyframe, ...], span: int, label
         previous = keyframe.frame
 
 
-def interpolate_keyframes(
-    keyframes: tuple[HitboxKeyframe, ...],
-    static: BoxGeometry,
-    frame: int,
-) -> BoxGeometry:
-    """Linearly interpolate ``(size, offset)`` at a phase ``frame``.
-
-    ``frame`` counts from the start of startup (``0`` = phase start),
-    matching ``AttackStateMachine.frame_counter`` within each sub-state.
-    With no keyframes the static box is returned. Otherwise the
-    surrounding keyframes are interpolated linearly; outside their range
-    the nearest endpoint is held.
-    """
-    if not keyframes:
-        return static
-    if frame <= keyframes[0].frame:
-        first = keyframes[0]
-        return (first.size, first.offset)
-    # Pairwise walk over offset slices: the second slice is one shorter
-    # by construction, so strict=True would always raise (B905 exempt).
-    for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
-        if frame <= after.frame:
-            span = after.frame - before.frame
-            blend = (frame - before.frame) / span
-            size = (
-                before.size[0] + (after.size[0] - before.size[0]) * blend,
-                before.size[1] + (after.size[1] - before.size[1]) * blend,
-            )
-            offset = (
-                before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
-                before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
-            )
-            return (size, offset)
-    last = keyframes[-1]
-    return (last.size, last.offset)
-
-
 def interpolate_shape_keyframes(
     keyframes: tuple[HitboxKeyframe, ...],
     static: BoxGeometry,
@@ -411,7 +374,7 @@ class HitboxSpec:
             previous = keyframe.frame
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class PhaseDefinition:
     """Immutable frame data and hitbox definition for a single hit event.
 
@@ -477,16 +440,9 @@ class PhaseDefinition:
     startup_frames: int
     active_frames: int
     recovery_frames: int
-    hitbox_size: tuple[float, float]
-    hitbox_offset: tuple[float, float]
+    #: The one source of truth for geometry: index 0 is the primary box.
+    boxes: tuple[HitboxSpec, ...]
     hit: HitProperties
-    hitbox_shape: ShapeKind = ShapeKind.AABB
-    hitbox_angle: float = 0.0
-    hitbox_easing: EasingKind = EasingKind.LINEAR
-    hitbox_anchor: AnchorKind = AnchorKind.CENTER
-    hitbox_anchor_offset: tuple[float, float] = (0.0, 0.0)
-    extra_hitboxes: tuple[HitboxSpec, ...] = ()
-    hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
     cancel_into: tuple[MoveId, ...] = ()
     cancel_on_hit: bool = False
@@ -497,6 +453,111 @@ class PhaseDefinition:
     """The shot (``src/entities/shots.py``) this phase throws as it turns
     active. A launching phase strikes with the shot alone: its box marks the
     hand it leaves from, for the eye and the debug view, and never touches."""
+    auto_into: MoveId | None = None
+    """A move started automatically after this phase's last recovery frame.
+
+    Atomic authoring without an input: the follow-through (a thrown crescent,
+    the second half of a throw) can live in its own move while still being a
+    guaranteed continuation of the same gesture. The state machine restarts in
+    place, so no cooldown, battery, lunge or combo entry is paid twice.
+    """
+
+    def __init__(
+        self,
+        startup_frames: int,
+        active_frames: int,
+        recovery_frames: int,
+        hitbox_size: tuple[float, float] | None = None,
+        hitbox_offset: tuple[float, float] | None = None,
+        hit: HitProperties | None = None,
+        hitbox_shape: ShapeKind = ShapeKind.AABB,
+        hitbox_angle: float = 0.0,
+        hitbox_easing: EasingKind = EasingKind.LINEAR,
+        hitbox_anchor: AnchorKind = AnchorKind.CENTER,
+        hitbox_anchor_offset: tuple[float, float] = (0.0, 0.0),
+        extra_hitboxes: tuple[HitboxSpec, ...] = (),
+        hitbox_keyframes: tuple[HitboxKeyframe, ...] = (),
+        reset_targets: bool = True,
+        cancel_into: tuple[MoveId, ...] = (),
+        cancel_on_hit: bool = False,
+        launches: str | None = None,
+        auto_into: MoveId | None = None,
+        *,
+        boxes: tuple[HitboxSpec, ...] | None = None,
+    ) -> None:
+        """Accept the historical flat spelling and store only ``boxes``.
+
+        The flat arguments are an adapter for v1 data, test fixtures and
+        ``dataclasses.replace``; nothing reads them after construction. The v2
+        loader passes ``boxes`` directly, so the old v2-to-flat round trip is
+        gone.
+        """
+        if hit is None:
+            raise TypeError("An attack phase requires a hit")
+        if boxes is None:
+            if hitbox_size is None or hitbox_offset is None:
+                raise TypeError("An attack phase requires a size and an offset")
+            boxes = (
+                HitboxSpec(
+                    size=hitbox_size,
+                    offset=hitbox_offset,
+                    keyframes=hitbox_keyframes,
+                    shape=hitbox_shape,
+                    angle=hitbox_angle,
+                    easing=hitbox_easing,
+                    anchor=hitbox_anchor,
+                    anchor_offset=hitbox_anchor_offset,
+                ),
+                *extra_hitboxes,
+            )
+        object.__setattr__(self, "startup_frames", startup_frames)
+        object.__setattr__(self, "active_frames", active_frames)
+        object.__setattr__(self, "recovery_frames", recovery_frames)
+        object.__setattr__(self, "boxes", boxes)
+        object.__setattr__(self, "hit", hit)
+        object.__setattr__(self, "reset_targets", reset_targets)
+        object.__setattr__(self, "cancel_into", cancel_into)
+        object.__setattr__(self, "cancel_on_hit", cancel_on_hit)
+        object.__setattr__(self, "launches", launches)
+        object.__setattr__(self, "auto_into", auto_into)
+        self.__post_init__()
+
+    # Legacy flat views: read-only adapters, never storage.
+    @property
+    def hitbox_size(self) -> tuple[float, float]:
+        return self.boxes[0].size
+
+    @property
+    def hitbox_offset(self) -> tuple[float, float]:
+        return self.boxes[0].offset
+
+    @property
+    def hitbox_shape(self) -> ShapeKind:
+        return self.boxes[0].shape
+
+    @property
+    def hitbox_angle(self) -> float:
+        return self.boxes[0].angle
+
+    @property
+    def hitbox_easing(self) -> EasingKind:
+        return self.boxes[0].easing
+
+    @property
+    def hitbox_anchor(self) -> AnchorKind:
+        return self.boxes[0].anchor
+
+    @property
+    def hitbox_anchor_offset(self) -> tuple[float, float]:
+        return self.boxes[0].anchor_offset
+
+    @property
+    def hitbox_keyframes(self) -> tuple[HitboxKeyframe, ...]:
+        return self.boxes[0].keyframes
+
+    @property
+    def extra_hitboxes(self) -> tuple[HitboxSpec, ...]:
+        return self.boxes[1:]
 
     def __post_init__(self) -> None:
         if self.startup_frames < 0 or self.recovery_frames < 0:
@@ -511,21 +572,18 @@ class PhaseDefinition:
             raise ValueError("Hitbox anchor offset must be finite")
         ShapePose(self.hitbox_shape, self.hitbox_size, self.hitbox_offset, self.hitbox_angle)
         span = self.startup_frames + self.active_frames
-        _check_keyframe_span(self.hitbox_keyframes, span, "Hitbox keyframe")
-        for index, spec in enumerate(self.extra_hitboxes):
-            _check_keyframe_span(spec.keyframes, span, f"Extra hitbox #{index} keyframe")
+        for index, spec in enumerate(self.boxes):
+            label = "Hitbox keyframe" if index == 0 else f"Extra hitbox #{index - 1} keyframe"
+            _check_keyframe_span(spec.keyframes, span, label)
 
     def hitbox_at(self, frame: int) -> BoxGeometry:
-        """Interpolate the primary ``(size, offset)`` at a phase ``frame``.
+        """Primary ``(size, offset)`` at a phase frame, geometry only.
 
-        ``frame`` counts from the start of startup (``0`` = phase start),
-        matching ``AttackStateMachine.frame_counter`` within each
-        sub-state. Delegates to :func:`interpolate_keyframes` over the
-        primary curve (static legacy box when empty).
+        A read-only shim over the shape path: callers that only need the two
+        tuples still work, while the single interpolator is the one that feeds
+        the live hitboxes.
         """
-        return interpolate_keyframes(
-            self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
-        )
+        return self.hitbox_shape_at(frame)[0]
 
     @cached_property
     def hitbox_spec(self) -> HitboxSpec:
@@ -539,24 +597,18 @@ class PhaseDefinition:
         does. ``extra_hitboxes`` already stored its specs for the same reason;
         the primary was the only one recomputing.
         """
-        return HitboxSpec(
-            size=self.hitbox_size,
-            offset=self.hitbox_offset,
-            keyframes=self.hitbox_keyframes,
-            shape=self.hitbox_shape,
-            angle=self.hitbox_angle,
-            easing=self.hitbox_easing,
-            anchor=self.hitbox_anchor,
-            anchor_offset=self.hitbox_anchor_offset,
-        )
+        return self.boxes[0]
 
     def hitbox_shape_at(self, frame: int) -> tuple[BoxGeometry, float]:
-        """Interpolate the primary geometry and angle at a phase frame."""
+        """Interpolate the primary geometry and angle at a phase frame.
+
+        The primary box goes through the same ``HitboxSpec`` as every extra
+        box; the flat ``hitbox_*`` fields remain only as the data source the
+        spec is built from.
+        """
+        spec = self.hitbox_spec
         return interpolate_shape_keyframes(
-            self.hitbox_keyframes,
-            (self.hitbox_size, self.hitbox_offset),
-            frame,
-            self.hitbox_easing,
+            spec.keyframes, (spec.size, spec.offset), frame, spec.easing
         )
 
     def extra_shape_at(self, index: int, frame: int) -> tuple[BoxGeometry, float]:

@@ -47,6 +47,22 @@ def _raw_json_hit() -> dict[str, object]:
     }
 
 
+def test_a_phase_cannot_strike_and_launch_a_shot() -> None:
+    p = phase(startup=1, active=2, recovery=1, size=(30.0, 20.0), offset=(20.0, 0.0))
+    definition = attack(replace(p, launches="bolt"))
+
+    with pytest.raises(GameplayDataError, match=r"cannot also launch 'bolt'"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_marker_phase_cannot_carry_offensive_flags() -> None:
+    p = phase(startup=1, active=2, recovery=1, size=(30.0, 20.0), offset=(20.0, 0.0))
+    definition = attack(replace(p, hit=replace(p.hit, damage=0.0, execute=True)))
+
+    with pytest.raises(GameplayDataError, match=r"zero-damage marker phase"):
+        validate_attacks({"kick": definition})
+
+
 def test_valid_table_loads_into_the_component() -> None:
     combat = _CombatStub()
 
@@ -112,8 +128,9 @@ def test_a_self_cancel_on_a_move_without_cooldown_is_a_chain() -> None:
 
 def test_non_positive_box_size_is_rejected_with_named_message() -> None:
     definition = _valid_attack()
-    # Bypass the dataclass guard to exercise the loader's own naming.
-    object.__setattr__(definition.phases[0], "hitbox_size", (0.0, 20.0))
+    # Bypass the spec's own guard to exercise the loader's naming: the flat
+    # fields are now read-only views over the stored boxes.
+    object.__setattr__(definition.phases[0].boxes[0], "size", (0.0, 20.0))
 
     with pytest.raises(GameplayDataError, match=r"kick' phase 0 hitbox: size"):
         validate_attacks({"kick": definition})
@@ -121,10 +138,10 @@ def test_non_positive_box_size_is_rejected_with_named_message() -> None:
 
 def test_keyframe_outside_the_phase_span_is_rejected_with_named_message() -> None:
     definition = attack(phase(startup=2, active=2, recovery=1))
-    # Bypass the dataclass guard to exercise the loader's own naming.
+    # Bypass the spec's own guard to exercise the loader's naming.
     object.__setattr__(
-        definition.phases[0],
-        "hitbox_keyframes",
+        definition.phases[0].boxes[0],
+        "keyframes",
         (HitboxKeyframe(frame=99, size=(10.0, 10.0), offset=(0.0, 0.0)),),
     )
 
@@ -206,6 +223,33 @@ def test_a_mutual_cancel_is_allowed() -> None:
     a_mutual = replace(a, phases=(replace(a.phases[0], cancel_into=(move_id("jab"),)),))
 
     validate_attacks({"kick": a_mutual, "jab": b})
+
+
+def test_an_auto_into_names_a_registered_move() -> None:
+    definition = attack(replace(_valid_attack().phases[0], auto_into=move_id("missing")))
+
+    with pytest.raises(GameplayDataError, match=r"unknown cancels: missing"):
+        validate_attacks({"kick": definition})
+
+
+def test_an_auto_into_cannot_loop_on_a_cooldown() -> None:
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], auto_into=move_id("kick")),),
+        cooldown=1.0,
+    )
+
+    with pytest.raises(GameplayDataError, match=r"auto-transitions into itself"):
+        validate_attacks({"kick": definition})
+
+
+def test_an_auto_into_cannot_cross_posture() -> None:
+    ground = _valid_attack()
+    air_phase = replace(ground.phases[0], auto_into=move_id("jab"))
+    air = replace(ground, phases=(air_phase,), stances=(Stance.AIR,))
+
+    with pytest.raises(GameplayDataError, match=r"auto-transitions into 'jab'"):
+        validate_attacks({"punch": air, "jab": ground})
 
 
 def test_the_shipped_tables_satisfy_every_cancel_rule() -> None:

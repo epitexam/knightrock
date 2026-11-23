@@ -52,7 +52,9 @@ from src.data.errors import (
 )
 
 ATTACKS_FILENAME = "attacks.json"
-ATTACKS_VERSION = 1
+# The shipped table is v2; writing v1 by default would silently rewrite every
+# exported move into the older flat dialect on the next round-trip.
+ATTACKS_VERSION = 2
 SUPPORTED_ATTACK_VERSIONS = (1, 2)
 
 _DAMAGE_TYPES: dict[str, DamageType] = {member.value: member for member in DamageType}
@@ -115,6 +117,11 @@ _LEGACY_HITBOX_FIELDS = frozenset(
         "hitbox_anchor_offset",
     }
 )
+
+#: JSON keys a phase may carry. ``boxes`` is the in-memory source of truth and
+#: is deliberately NOT a JSON key: the file spells it ``hitboxes`` (v2) or as
+#: the legacy flat fields (v1), both converted by :func:`_read_phase`.
+_PHASE_JSON_FIELDS = (_field_names(PhaseDefinition) - {"boxes"}) | {"hitboxes"} | _LEGACY_HITBOX_FIELDS
 
 
 def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
@@ -310,14 +317,14 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
     # merely redundant -- and the original guard-fou listed only the geometry
     # keys, silently dropping those four beside a ``hitboxes`` list.
     legacy_fields = frozenset(_LEGACY_HITBOX_FIELDS)
-    reject_unknown(raw, _field_names(PhaseDefinition) | {"hitboxes"} | legacy_fields, where)
+    reject_unknown(raw, _PHASE_JSON_FIELDS, where)
     if hitboxes is not None and legacy_fields.intersection(raw):
         raise GameplayDataError(
             f"{where}: 'hitboxes' cannot be combined with legacy hitbox fields "
             f"({', '.join(sorted(legacy_fields.intersection(raw)))})"
         )
     try:
-        extras: tuple[HitboxSpec, ...]
+        boxes: tuple[HitboxSpec, ...]
         if hitboxes is None:
             primary = HitboxSpec(
                 size=_pair_of_floats(_required(raw, "hitbox_size", where), f"{where}.hitbox_size"),
@@ -331,34 +338,33 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                     _SHAPE_KINDS,
                     raw.get("hitbox_shape"),
                     f"{where}.hitbox_shape",
-                    _PHASE_DEFAULTS["hitbox_shape"],
+                    _HITBOX_DEFAULTS["shape"],
                 ),
                 angle=read_number(
-                    raw.get("hitbox_angle", _PHASE_DEFAULTS["hitbox_angle"]),
+                    raw.get("hitbox_angle", _HITBOX_DEFAULTS["angle"]),
                     f"{where}.hitbox_angle",
                 ),
                 easing=_enum_value(
                     _EASING_KINDS,
                     raw.get("hitbox_easing"),
                     f"{where}.hitbox_easing",
-                    _PHASE_DEFAULTS["hitbox_easing"],
+                    _HITBOX_DEFAULTS["easing"],
                 ),
                 anchor=_enum_value(
                     _ANCHOR_KINDS,
                     raw.get("hitbox_anchor"),
                     f"{where}.hitbox_anchor",
-                    _PHASE_DEFAULTS["hitbox_anchor"],
+                    _HITBOX_DEFAULTS["anchor"],
                 ),
                 anchor_offset=_pair_of_floats(
-                    raw.get("hitbox_anchor_offset", _PHASE_DEFAULTS["hitbox_anchor_offset"]),
+                    raw.get("hitbox_anchor_offset", _HITBOX_DEFAULTS["anchor_offset"]),
                     f"{where}.hitbox_anchor_offset",
                 ),
             )
             extras = _read_extra_hitboxes(raw.get("extra_hitboxes"), f"{where}.extra_hitboxes")
+            boxes = (primary, *extras)
         else:
-            specs = _read_hitboxes(hitboxes, f"{where}.hitboxes")
-            primary, *extra_specs = specs
-            extras = tuple(extra_specs)
+            boxes = _read_hitboxes(hitboxes, f"{where}.hitboxes")
         return PhaseDefinition(
             startup_frames=read_int(
                 _required(raw, "startup_frames", where), f"{where}.startup_frames"
@@ -369,16 +375,8 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
             recovery_frames=read_int(
                 _required(raw, "recovery_frames", where), f"{where}.recovery_frames"
             ),
-            hitbox_size=primary.size,
-            hitbox_offset=primary.offset,
+            boxes=boxes,
             hit=_read_hit(_required(raw, "hit", where), f"{where}.hit"),
-            hitbox_shape=primary.shape,
-            hitbox_angle=primary.angle,
-            hitbox_easing=primary.easing,
-            hitbox_anchor=primary.anchor,
-            hitbox_anchor_offset=primary.anchor_offset,
-            extra_hitboxes=extras,
-            hitbox_keyframes=primary.keyframes,
             reset_targets=read_bool(
                 raw.get("reset_targets", _PHASE_DEFAULTS["reset_targets"]), f"{where}.reset_targets"
             ),
@@ -389,9 +387,19 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                 raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"]), f"{where}.cancel_on_hit"
             ),
             launches=_read_launch(raw.get("launches"), f"{where}.launches"),
+            auto_into=_read_auto_into(raw.get("auto_into"), where),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
+
+
+def _read_auto_into(raw: Any, where: str) -> MoveId | None:
+    """An automatic continuation is a move name, or ``None``."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw:
+        raise GameplayDataError(f"{where}.auto_into: expected a move name")
+    return MoveId(raw)
 
 
 def _read_launch(raw: Any, where: str) -> str | None:
@@ -634,6 +642,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                 "cancel_into": list(phase.cancel_into),
                 **({"cancel_on_hit": True} if phase.cancel_on_hit else {}),
                 **({"launches": phase.launches} if phase.launches else {}),
+                **({"auto_into": phase.auto_into} if phase.auto_into else {}),
             }
             for phase in definition.phases
         ],
@@ -662,8 +671,7 @@ def attack_definition_to_v2_dict(definition: AttackDefinition) -> dict[str, Any]
     """Serialize an attack with the canonical ``hitboxes`` list."""
     raw = attack_definition_to_dict(definition)
     for phase, phase_data in zip(definition.phases, raw["phases"], strict=True):
-        hitboxes = [_hitbox_spec_to_dict(phase.hitbox_spec)]
-        hitboxes.extend(_hitbox_spec_to_dict(spec) for spec in phase.extra_hitboxes)
+        hitboxes = [_hitbox_spec_to_dict(spec) for spec in phase.boxes]
         for key in (
             "hitbox_size",
             "hitbox_offset",

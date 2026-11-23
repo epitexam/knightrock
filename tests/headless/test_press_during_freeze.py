@@ -7,6 +7,7 @@ of being spent on a tick that cannot see it.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from unittest.mock import patch
 
 import pygame
@@ -61,7 +62,10 @@ def test_a_slash_tapped_during_the_freeze_of_a_hit_continues_the_chain() -> None
     provider = LocalInputProvider()
     slash = provider._bindings.gameplay.keyboard[InputAction.ATTACK_1]
     assert isinstance(slash, int)
-    with patch.object(pygame.key, "get_pressed", lambda: {}):
+    # A mapping that answers False for every keycode: under DEBUG=1 the level's
+    # spawner and the provider both index this with arbitrary keycodes, which a
+    # plain {} would refuse and a fixed-length list could not cover.
+    with patch.object(pygame.key, "get_pressed", lambda: defaultdict(bool)):
         level = _level(provider)
         foe(level, "goblin", PLAYER_X + 52.0, guards=False, vision_range=0.0, chase_speed=0.0)
         for _ in range(60):

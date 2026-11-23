@@ -353,36 +353,7 @@ class GeoLayer:
         # a neutral zone, a fill and a thicker outline for a boosted one, a
         # dashed seal for a guarded one. The names and multipliers are on the
         # card's ZONE row, so the world has no glyphs to overlap.
-        zones = self.hurtbox_zones(sprite, collider)
-        mults = self.zone_mults(sprite, len(zones))
-        tags = self.zone_tags(sprite, len(zones))
-        for index, zone in enumerate(zones):
-            color = Colors.debug_hurtbox_zones[index % len(Colors.debug_hurtbox_zones)]
-            screen_zone = camera.apply(zone)
-            mult = mults[index] if index < len(mults) else 1.0
-            zone_tags = tags[index] if index < len(tags) else ()
-            if mult != 1.0:
-                fill = pygame.Surface(
-                    (max(1, int(screen_zone.width)), max(1, int(screen_zone.height))),
-                    pygame.SRCALPHA,
-                )
-                fill.fill((*color, ZONE_FILL_ALPHA))
-                self.surface.blit(fill, (screen_zone.x, screen_zone.y))
-                pygame.draw.rect(
-                    self.surface,
-                    color,
-                    screen_zone,
-                    width=self.metrics.zone_boost_outline,
-                )
-            else:
-                pygame.draw.rect(
-                    self.surface,
-                    color,
-                    screen_zone,
-                    width=self.metrics.zone_outline,
-                )
-            if zone_tags:
-                self.draw_zone_seal(screen_zone, color)
+        self.draw_hurtbox_zones(sprite, collider, camera)
         annotations.extend(
             self.draw_offensive_boxes(
                 sprite,
@@ -410,6 +381,53 @@ class GeoLayer:
                 width=2,
             )
         self.register_annotations(sprite, annotations)
+
+    def draw_hurtbox_zones(
+        self,
+        sprite: pygame.sprite.Sprite,
+        collider: pygame.FRect,
+        camera: Camera,
+    ) -> None:
+        """Outline every zone, using its data index for colour, mult and tag.
+
+        A zone geometrically equal to the collider keeps its index but not a
+        second outline: the collider was already drawn, and dropping the zone
+        would shift every following zone onto the wrong tags.
+        """
+        zones = self.hurtbox_zones(sprite)
+        mults = self.zone_mults(sprite, len(zones))
+        tags = self.zone_tags(sprite, len(zones))
+        for index, zone in enumerate(zones):
+            color = Colors.debug_hurtbox_zones[index % len(Colors.debug_hurtbox_zones)]
+            screen_zone = camera.apply(zone)
+            mult = mults[index] if index < len(mults) else 1.0
+            zone_tags = tags[index] if index < len(tags) else ()
+            if zone != collider:
+                if mult != 1.0:
+                    fill = pygame.Surface(
+                        (max(1, int(screen_zone.width)), max(1, int(screen_zone.height))),
+                        pygame.SRCALPHA,
+                    )
+                    fill.fill((*color, ZONE_FILL_ALPHA))
+                    self.surface.blit(fill, (screen_zone.x, screen_zone.y))
+                    pygame.draw.rect(
+                        self.surface, color, screen_zone, width=self.metrics.zone_boost_outline
+                    )
+                else:
+                    pygame.draw.rect(
+                        self.surface, color, screen_zone, width=self.metrics.zone_outline
+                    )
+            if zone_tags:
+                self.draw_zone_seal(screen_zone, color)
+        # The contact system tests the swept zones, not the discrete outlines
+        # above. Show the extra ground a moving fighter can still be hit on.
+        swept = getattr(sprite, "swept_hurtboxes", None)
+        if callable(swept):
+            ghosts = swept()
+            if len(ghosts) == len(zones):
+                for zone, ghost in zip(zones, ghosts):  # noqa: B905
+                    if ghost != zone:
+                        self.shapes.draw_dashed_rect(camera.apply(ghost), Colors.debug_sweep)
 
     def draw_offensive_boxes(
         self,
@@ -576,18 +594,17 @@ class GeoLayer:
         self.sink.register(sprite, rects)
 
     @staticmethod
-    def hurtbox_zones(
-        sprite: pygame.sprite.Sprite, collider: pygame.FRect
-    ) -> tuple[pygame.FRect, ...]:
-        """Hurt outlines to draw: multi-zone list first, legacy single fallback.
+    def hurtbox_zones(sprite: pygame.sprite.Sprite) -> tuple[pygame.FRect, ...]:
+        """Every hurt zone, in data order: the index is the mult/tag index.
 
-        Zones identical to the collider are skipped (the collider outline
-        already covers them); a zone equal to the collider would otherwise
-        double-draw the same rectangle.
+        A zone geometrically equal to the collider must stay in the tuple even
+        though its outline is redundant: dropping it would shift the following
+        zones onto the wrong multipliers and invulnerability tags. The drawing
+        pass skips the redundant outline, not the zone.
         """
         zones = getattr(sprite, "hurtboxes", None)
         rects = tuple(zones) if zones is not None else (getattr(sprite, "hurtbox", None),)
-        return tuple(zone for zone in rects if zone is not None and zone is not collider)
+        return tuple(zone for zone in rects if zone is not None)
 
     @staticmethod
     def zone_mults(sprite: pygame.sprite.Sprite, count: int) -> tuple[float, ...]:
@@ -611,9 +628,12 @@ class GeoLayer:
     def swept_boxes(combat: object, count: int) -> tuple:
         swept = getattr(combat, "swept_attack_boxes", None)
         if callable(swept):
-            boxes = tuple(swept())
-            if len(boxes) == count:
-                return boxes
+            swept = swept()
+        # The real ``CombatComponent`` exposes a tuple *property*; only older
+        # doubles expose a method. Treating a property as absent meant no real
+        # fighter ever drew its sweep ghosts.
+        if isinstance(swept, (tuple, list)) and len(swept) == count:
+            return tuple(swept)
         return (None,) * count
 
     @staticmethod

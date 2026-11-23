@@ -141,6 +141,7 @@ _RUSH_TINT_CACHE_MAX = 16
 NAMED_LOOKS: dict[str, Look] = {
     "death_blow": DEATH,
     "charged_slash_full": CHARGED_FULL,
+    "crescent_wave": CHARGED_FULL,
     "charged_slash": CHARGED,
     "charged_kick": CHARGED_BODY,
     "stab": HEAVY_BLADE,

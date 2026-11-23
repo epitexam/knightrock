@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from src.combat.attack_state import AttackStateMachine
@@ -30,6 +32,26 @@ def _play(machine: AttackStateMachine) -> list[PhaseState]:
             return seen
         seen.append(machine.sub_state)
     raise AssertionError("the attack never ended")
+
+
+def test_auto_into_continues_in_place_and_keeps_the_charge() -> None:
+    """The follow-through is one gesture: no cooldown, no new combo entry."""
+    follow = move_id("follow")
+    first = replace(make_phase(startup=1, active=1, recovery=1), auto_into=follow)
+    machine = AttackStateMachine(
+        {MOVE: make_attack(first), follow: make_attack(make_phase(startup=0, active=1, recovery=1))}
+    )
+    assert machine.start(MOVE, charge_multiplier=1.7)
+
+    for _ in range(12):
+        machine.update(DT)
+        if machine.attack_name == follow:
+            break
+
+    assert machine.attack_name == follow
+    assert machine.charge_multiplier == 1.7
+    assert machine.phase_index == 0
+    assert machine.save_state().charge_multiplier == 1.7
 
 
 def test_at_speed_one_an_attack_lasts_its_frame_data() -> None:

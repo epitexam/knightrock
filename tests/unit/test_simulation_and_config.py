@@ -54,6 +54,9 @@ def wire_world_systems(level: Level, groups, player) -> None:
     are wired here, with spies where the test asserts "never called".
     """
     level.spatial_hash = SimpleNamespace(update_all=Mock())  # type: ignore[assignment]
+    # A ``__new__`` level has no renderer; DEBUG=1 makes Level.update update the
+    # metrics overlay, so the double needs that dependency too.
+    level.renderer = SimpleNamespace(overlay=Mock())  # type: ignore[assignment]
     level_data = LevelData(
         width=20,
         height=10,

@@ -78,6 +78,11 @@ class Player(Entity):
     prompt: PromptController
     input_handler: PlayerInputHandler
 
+    #: The player's attack poses follow startup/active/recovery frame data.
+    #: Enemies keep wall-clock clips: their art is authored per state name,
+    #: not as a three-pose swing.
+    _phase_driven_attack_art = True
+
     moving_platforms: Iterable[Any]
 
     left_held: bool
@@ -471,6 +476,10 @@ class Player(Entity):
         """
         self.fury.gain(FurySettings.PER_HIT if combo_advanced else 0.0)
         if result.doomed and not self.prompt.active:
+            # The input handler short-circuits while a prompt is up, so a press
+            # buffered just before it would otherwise survive the whole prompt
+            # and fire as a ghost attack when it closes.
+            self.input_handler.clear_buffer()
             self.prompt.open(PromptKind.DEATH_BLOW, target.id, self.rng)
         dash = self.dash
         if dash.charges >= dash.max_charges:
@@ -502,6 +511,7 @@ class Player(Entity):
     def on_clash(self, other: Combatant) -> None:
         """Blades met: the lock's prompt opens, won by mashing the slash."""
         if not self.prompt.active and not other.is_dead:
+            self.input_handler.clear_buffer()
             self.prompt.open(PromptKind.CLASH, other.id, self.rng)
 
     def on_deflected(self, source_center_x: float) -> None:

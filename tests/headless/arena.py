@@ -95,6 +95,7 @@ def foe(level: Level, name: str, x: float, **changes: object) -> Enemy:
         level.player,
         config=config,
         spatial_hash=level.spatial_hash,
+        id_factory=level.id_factory,
     )
     enemy.animator = None
     level.groups.add_fighter(enemy)

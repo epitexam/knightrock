@@ -23,9 +23,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import random
+from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -59,6 +62,10 @@ from src.entities.player import Player  # noqa: E402
 from src.entities.player_kit import Direction  # noqa: E402
 
 DT = 1 / 60
+#: Every fighter's RNG is seeded before the warm-up, so two processes produce
+#: the same report. Without this, ``Entity`` builds an unseeded ``Random`` and
+#: the duels with AI differ run to run (guard height, move choice, prompts).
+SEED = 20260913
 #: How close the scripted player stays to its enemy, edge to edge.
 KEEP_PX = 8.0
 #: The enemies a level places (the dummy is a test target, not a fight).
@@ -117,19 +124,121 @@ def _arena(enemy: str, ai: bool = True, health: float | None = None):
         player,
         config=config,
         spatial_hash=level.spatial_hash,
+        id_factory=level.id_factory,
     )
     foe.animator = None
     level.groups.add_fighter(foe)
+    # Seed before the settling ticks: the constructor has already drawn the
+    # patrol direction, so that one has to be redrawn from the seeded stream.
+    player.rng = random.Random(SEED)
+    foe.rng = random.Random(SEED + 1)
+    if config.reverse is None:
+        foe.patrol_direction = 1 if foe.rng.random() > 0.5 else -1
     for _ in range(60):
         level.update(DT)
     return level, pad, player, foe
 
 
+@dataclass
+class _Span:
+    """One started attack, from its first active frame to its cancel or end."""
+
+    name: str
+    start: int
+    hits: int = 0
+    blocks: int = 0
+    recovery: int = 0
+
+
+class _FeelTrace:
+    """Collect the feel figures the basic duel counters cannot see.
+
+    ``start_attack`` is wrapped because a chained move never leaves ATTACK, so
+    watching that state rise misses it; ``record_contact`` and
+    ``guards_against`` are wrapped because the guard events are drained by the
+    feedback stage before the caller can read them.
+    """
+
+    def __init__(self, player: Player, foe: Enemy) -> None:
+        self.player = player
+        self.foe = foe
+        self.tick = 0
+        self.spans: list[_Span] = []
+        self.current: _Span | None = None
+        self.attempts = 0
+        self.cancels = 0
+        self.contact_at = -1
+        self.guard_at = -1
+        self.hitstop: dict[str, list[float]] = defaultdict(list)
+        self.advantage: dict[str, list[int]] = defaultdict(list)
+        self.combo_peaks: list[int] = []
+        self._peak = 0
+        self._start = player.combat.start_attack
+        self._contact = player.combat.record_contact
+        self._guard = foe.guards_against
+        player.combat.start_attack = self.on_start  # type: ignore[method-assign]
+        player.combat.record_contact = self.on_contact  # type: ignore[method-assign]
+        foe.guards_against = self.on_guard  # type: ignore[method-assign]
+
+    def on_start(self, name: object, *args: object, **kwargs: object) -> object:
+        busy = self.player.combat.state.is_attacking
+        refusal = self._start(name, *args, **kwargs)  # type: ignore[arg-type]
+        if busy:
+            self.attempts += 1
+            if refusal is Refusal.NONE:
+                self.cancels += 1
+        if refusal is Refusal.NONE:
+            self.current = _Span(str(name), self.tick)
+            self.spans.append(self.current)
+        return refusal
+
+    def on_contact(self, target_id: str) -> None:
+        self.contact_at = self.tick
+        self._contact(target_id)
+
+    def on_guard(self, height: object, unblockable: object, source_x: object) -> bool:
+        stopped = self._guard(height, unblockable, source_x)  # type: ignore[arg-type]
+        if stopped:
+            self.guard_at = self.tick
+        return bool(stopped)
+
+    def after_tick(self, level: Level, name_before: str | None, sub_before: object) -> None:
+        state = self.player.combat.state
+        if sub_before is PhaseState.RECOVERY and self.current is not None:
+            self.current.recovery += 1
+        self._peak = max(self._peak, self.player.combat.combo_count)
+        if self.contact_at != self.tick and self.guard_at != self.tick:
+            return
+        kind = "block" if self.guard_at == self.tick else "hit"
+        if self.current is not None:
+            if kind == "hit":
+                self.current.hits += 1
+            else:
+                self.current.blocks += 1
+        key = name_before or "?"
+        self.hitstop[key].append(round(level.gameplay_loop.combat_system.hit_stop_timer, 4))
+        phase = state.current_phase_def
+        if phase is None or (phase.cancel_on_hit and self.player.combat.targets_hit):
+            attacker_left = 0
+        elif state.sub_state is PhaseState.RECOVERY:
+            attacker_left = max(0, phase.recovery_frames - state.frame_counter)
+        elif state.sub_state is PhaseState.ACTIVE:
+            attacker_left = (phase.active_frames - state.frame_counter) + phase.recovery_frames
+        else:
+            attacker_left = 0
+        defender_left = math.ceil(
+            max(self.foe.combat.hurt_timer, self.foe.stagger_timer) / DT
+        )
+        self.advantage[kind].append(defender_left - attacker_left)
+        self.contact_at = self.guard_at = -1
+
+
 def _duel(
     script: Script, seconds: float, enemy: str, ai: bool = True, health: float | None = None
-) -> dict[str, float | None]:
+) -> dict[str, object]:
     level, pad, player, foe = _arena(enemy, ai, health)
     started = _count_starts(player)
+    trace = _FeelTrace(player, foe)
     landed = frozen = stunned_at = 0
     taken = 0.0
     foe_health, player_health = foe.health, player.health
@@ -141,7 +250,12 @@ def _duel(
         if player.prompt.active:
             pad.axis, pad.held = _answer(player, tick)
         frozen += level.gameplay_loop.combat_system.in_hit_stop
+        trace.tick = tick
+        state = player.combat.state
+        name_before = str(state.attack_name) if state.attack_name is not None else None
+        sub_before = state.sub_state
         level.update(DT)
+        trace.after_tick(level, name_before, sub_before)
         landed += foe.health < foe_health
         foe_health = foe.health
         if not stunned_at and foe.is_stunned:
@@ -162,6 +276,24 @@ def _duel(
         "stun_s": round(stunned_at / 60, 2) if stunned_at else None,
         "hp_lost": round(taken, 1),
         "hit_stop_share": round(frozen / ticks, 2),
+        "cancel_success_ratio": (
+            round(trace.cancels / trace.attempts, 3) if trace.attempts else 0.0
+        ),
+        "hitstop_by_move": {
+            name: round(sum(values) / len(values), 4)
+            for name, values in sorted(trace.hitstop.items())
+        },
+        "frame_advantage": {
+            kind: round(sum(values) / len(values)) for kind, values in sorted(trace.advantage.items())
+        },
+        "combo_peak": max(trace._peak, player.combat.combo_count),
+        "recovery_after_whiff": (
+            round(
+                sum(span.recovery for span in trace.spans if not span.hits and not span.blocks)
+                / max(1, sum(1 for span in trace.spans if not span.hits and not span.blocks)),
+                2,
+            )
+        ),
     }
 
 

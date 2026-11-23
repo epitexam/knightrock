@@ -3,6 +3,7 @@ from dataclasses import FrozenInstanceError
 import pygame
 import pytest
 
+from src.combat.frame_data import HitboxSpec
 from src.combat.shapes import (
     EasingKind,
     ShapeKind,
@@ -189,6 +190,17 @@ def test_the_primary_hitbox_spec_is_built_once_per_phase() -> None:
 
     assert definition.hitbox_spec == equal_but_separate.hitbox_spec
     assert definition.hitbox_spec is definition.hitbox_spec
+
+
+def test_boxes_are_the_primary_spec_followed_by_the_extras() -> None:
+    """One derived tuple for runtime, validation and the v2 writer."""
+    definition = phase(
+        startup=1, active=2, recovery=1, extra=(((12.0, 8.0), (-9.0, 2.0)),)
+    )
+    extra = HitboxSpec(size=(12.0, 8.0), offset=(-9.0, 2.0))
+
+    assert definition.boxes == (definition.hitbox_spec, extra)
+    assert definition.boxes is definition.boxes  # cached, like the primary spec
 
 
 def test_a_cached_spec_never_leaks_into_another_phase() -> None:

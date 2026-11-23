@@ -6,7 +6,12 @@ import pygame
 
 from src.combat.attack_state import AttackStateMachine
 from src.combat.combatant_protocol import Combatant
-from src.combat.frame_data import BoxGeometry, HitboxSpec, PhaseDefinition
+from src.combat.frame_data import (
+    BoxGeometry,
+    HitboxSpec,
+    PhaseDefinition,
+    interpolate_shape_keyframes,
+)
 from src.combat.shapes import AnchorKind, ShapeKind, ShapePose, SweptShape, broadphase_aabb
 from src.combat.sweep import swept_box
 from src.core.settings import Combat as CombatSettings
@@ -172,14 +177,17 @@ class HitboxManager:
     def _shape_data(
         self, phase: PhaseDefinition, frame: int
     ) -> list[tuple[HitboxSpec, BoxGeometry, float]]:
-        primary_geometry, primary_angle = phase.hitbox_shape_at(frame)
-        if not phase.hitbox_keyframes:
-            primary_angle = phase.hitbox_angle
-        shape_data: list[tuple[HitboxSpec, BoxGeometry, float]] = [
-            (phase.hitbox_spec, primary_geometry, primary_angle),
-        ]
-        for index, spec in enumerate(phase.extra_hitboxes):
-            geometry, angle = phase.extra_shape_at(index, frame)
+        """Every live box, primary first, through one spec-driven path.
+
+        The primary used to take a sibling interpolator and a special case for
+        its angle; both now come from the same ``HitboxSpec`` that describes
+        the extra boxes, so a box cannot drift between the two treatments.
+        """
+        shape_data: list[tuple[HitboxSpec, BoxGeometry, float]] = []
+        for spec in phase.boxes:
+            geometry, angle = interpolate_shape_keyframes(
+                spec.keyframes, (spec.size, spec.offset), frame, spec.easing
+            )
             if not spec.keyframes:
                 angle = spec.angle
             shape_data.append((spec, geometry, angle))
