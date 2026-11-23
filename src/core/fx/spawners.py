@@ -243,6 +243,17 @@ def spawn_landing_dust(
     return puffs
 
 
+def _grain_tones() -> tuple[float, float]:
+    """The tone band every grain family draws from."""
+    return DustGrain.TONE_MIX
+
+
+def _grain_size_range() -> tuple[int, int, float]:
+    """Smallest grain, coarsest grain, and the span the ladders sample."""
+    small, coarse = DustGrain.SIZE_RANGE
+    return small, coarse, max(0, coarse - small) * DustGrain.SIZE_MIX
+
+
 def spawn_landing_grains(
     fx_group: pygame.sprite.Group,
     entity: FxSubject,
@@ -268,9 +279,8 @@ def spawn_landing_grains(
         return []
     rng = _fx_rng
     side = facing_side(entity)
-    low, high = DustGrain.TONE_MIX
-    small, coarse = DustGrain.SIZE_RANGE
-    size_span = max(0, coarse - small) * DustGrain.SIZE_MIX
+    low, high = _grain_tones()
+    small, _, size_span = _grain_size_range()
     spread = DustGrain.THROW * _landing_strength(impact)
     grains: list[GrainParticle] = []
     for index in range(DustGrain.LANDING_COUNT):
@@ -441,9 +451,8 @@ def spawn_dash_grains(
     side = _dash_side(entity)
     throw = DustGrain.THROW if burst else DustGrain.THROW * 0.4
     anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
-    low, high = DustGrain.TONE_MIX
-    small, coarse = DustGrain.SIZE_RANGE
-    size_span = max(0, coarse - small) * DustGrain.SIZE_MIX
+    low, high = _grain_tones()
+    small, _, size_span = _grain_size_range()
     grains: list[GrainParticle] = []
     for index in range(count):
         across = hitbox.width * DustGrain.SIDE_SPREAD * 0.5 * rng.uniform(-1.0, 1.0)
@@ -583,8 +592,8 @@ def spawn_footstep_grains(
     rng = _fx_rng
     side = _dash_side(entity)
     anchor = _step_anchor(entity, side, foot)
-    low, high = DustGrain.TONE_MIX
-    small, coarse = DustGrain.SIZE_RANGE
+    low, high = _grain_tones()
+    small, coarse, _ = _grain_size_range()
     grains: list[GrainParticle] = []
     for index in range(count):
         across = hitbox.width * DustGrain.SIDE_SPREAD * 0.5 * rng.uniform(-1.0, 1.0)
