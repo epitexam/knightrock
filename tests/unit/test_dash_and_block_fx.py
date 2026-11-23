@@ -15,6 +15,7 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
+from src.combat.null_combat import NullCombatComponent
 from src.core.display.framing import Framing
 from src.core.fx.particles import ShieldArcParticle
 from src.core.fx.spawners import spawn_guard_arc
@@ -78,7 +79,8 @@ def test_a_dashing_fighter_trails_speed_lines_behind_it() -> None:
         hitbox=pygame.FRect(100, 100, 40, 56),
         facing_right=True,
         is_dead=False,
-        combat=None,
+        combat=NullCombatComponent(),
+        rush_timer=0.0,
     )
     trails.update([dasher], 1 / 60)
 
@@ -103,7 +105,7 @@ def test_a_dash_starts_with_a_whoosh_and_a_dark_step_with_a_ring_and_a_tint() ->
         hitbox=pygame.FRect(100, 100, 40, 56),
         facing_right=True,
         is_dead=False,
-        combat=None,
+        combat=NullCombatComponent(),
         rush_timer=0.0,
     )
     trails.update([dasher], 1 / 60)

@@ -324,8 +324,8 @@ class StrikeTrails:
         self._sample_shots(shots, dt)
 
     def _sample(self, fighter: Any) -> None:
-        combat = getattr(fighter, "combat", None)
-        if combat is None or getattr(fighter, "is_dead", False):
+        combat = fighter.combat
+        if combat is None or fighter.is_dead:
             return
         state = combat.state
         if not state.is_active:
@@ -335,14 +335,14 @@ class StrikeTrails:
         phase = combat.current_phase
         if not shapes or phase is None or phase.launches:
             return
-        enemy = getattr(fighter, "faction", "") != "player"
+        enemy = fighter.faction != "player"
         move = str(state.attack_name or "")
         for index, shape in enumerate(shapes):
             key = (id(fighter), int(combat.attacks_started), int(state.phase_index), index)
             trail = self._trails.get(key)
             if trail is None:
                 look = look_for(enemy, move, shape, phase.hit.unblockable)
-                charge = float(getattr(combat, "charge_multiplier", 1.0) or 1.0)
+                charge = float(combat.charge_multiplier)
                 trail = _Trail(look, strength=min(1.0, 0.55 + 0.45 * (charge - 1.0)))
                 if look is not CHARGED:
                     trail.strength = 1.0
@@ -396,9 +396,9 @@ class StrikeTrails:
         del self._impacts[:-12]
 
     def _sample_charge(self, fighter: Any, dt: float) -> bool:
-        combat = getattr(fighter, "combat", None)
-        charging = getattr(combat, "charging", None)
-        if charging is None or not charging.is_charging or getattr(fighter, "is_dead", False):
+        combat = fighter.combat
+        charging = combat.charging
+        if charging is None or not charging.is_charging or fighter.is_dead:
             return False
         side = 1.0 if fighter.facing_right else -1.0
         hand = (fighter.hitbox.centerx + 14.0 * side, fighter.hitbox.centery + 6.0)
@@ -412,12 +412,12 @@ class StrikeTrails:
         return True
 
     def _sample_dash(self, fighter: Any, dt: float) -> None:
-        if getattr(fighter, "faction", "") != "player":
+        if fighter.faction != "player":
             return
-        machine = getattr(fighter, "state_machine", None)
+        machine = fighter.state_machine
         if machine is None or machine.current_state_name != state_names.DASH:
             return
-        velocity = getattr(fighter, "velocity", None)
+        velocity = fighter.velocity
         speed = 0.0 if velocity is None else float(velocity.x)
         if abs(speed) < 1.0:
             return
@@ -435,7 +435,7 @@ class StrikeTrails:
 
     def _sample_rush(self, fighter: Any, rushing: dict[int, float]) -> None:
         """A dark step: a ring the moment it starts, and the world tinted while it lasts."""
-        left = float(getattr(fighter, "rush_timer", 0.0) or 0.0)
+        left = float(fighter.rush_timer)
         if left <= 0.0:
             return
         if id(fighter) not in self._rushing:
@@ -444,9 +444,9 @@ class StrikeTrails:
         rushing[id(fighter)] = left
 
     def _sample_warning(self, fighter: Any) -> None:
-        if getattr(fighter, "faction", "player") == "player" or getattr(fighter, "is_dead", False):
+        if fighter.faction == "player" or fighter.is_dead:
             return
-        combat = getattr(fighter, "combat", None)
+        combat = fighter.combat
         if combat is None:
             return
         state = combat.state
@@ -466,7 +466,7 @@ class StrikeTrails:
     def _sample_shots(self, shots: Iterable[Any], dt: float) -> None:
         alive: set[int] = set()
         for shot in shots:
-            if not getattr(shot, "active", False):
+            if not shot.active:
                 continue
             key = id(shot)
             alive.add(key)

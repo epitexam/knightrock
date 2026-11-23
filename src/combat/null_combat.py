@@ -220,6 +220,7 @@ class _NullAttackState:
     is_active: bool = False
     is_attacking: bool = False
     sub_state: PhaseState = PhaseState.IDLE
+    current_phase_def: PhaseDefinition | None = None
 
     def __init__(self) -> None:
         self.targets_hit: set[str] = set()

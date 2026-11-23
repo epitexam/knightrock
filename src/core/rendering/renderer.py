@@ -430,7 +430,7 @@ class Renderer:
             image_source = sprite.image
             if rect is None or image_source is None or not colliderect(rect):
                 continue
-            target = behind if getattr(sprite, "behind", False) else front
+            target = behind if sprite.behind else front
             target.append((self._scaled_image_once(image_source), self.camera.apply_snapped(rect)))
         return behind, front
 

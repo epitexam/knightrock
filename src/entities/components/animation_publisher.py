@@ -7,7 +7,7 @@ copies its scaled surface to the entity; it owns no game state.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 import pygame
 
@@ -18,11 +18,11 @@ from src.core.animation.animator import Animator
 ATTACK_ANIMATIONS = frozenset({"attack", "air_attack"})
 
 
-def _attack_frame(state: object) -> int | None:
+def _attack_frame(state: Any) -> int | None:
     """Phase-driven pose: windup / impact / follow-through."""
-    if not getattr(state, "is_attacking", False):
+    if not state.is_attacking:
         return None
-    sub_state = getattr(state, "sub_state", None)
+    sub_state = state.sub_state
     if sub_state is PhaseState.STARTUP:
         return 0
     if sub_state is PhaseState.ACTIVE:
@@ -39,6 +39,8 @@ class AnimationOwner(Protocol):
     rect: pygame.FRect
     facing_right: bool
     image: pygame.Surface
+    combat: Any
+    _phase_driven_attack_art: bool
 
     def _animation_name(self) -> str | None: ...
 
@@ -62,12 +64,12 @@ class AnimationPublisher:
         name = owner._animation_name()
         if name is not None:
             owner.animator.play(name)
-        combat = getattr(owner, "combat", None)
-        state = getattr(combat, "state", None)
+        combat = owner.combat
+        state = combat.state
         frame = (
             _attack_frame(state)
             if (
-                getattr(owner, "_phase_driven_attack_art", False)
+                owner._phase_driven_attack_art
                 and owner.animator.current in ATTACK_ANIMATIONS
                 and state is not None
             )

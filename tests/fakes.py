@@ -117,6 +117,12 @@ class FighterSprite(pygame.sprite.Sprite):
         super().__init__(*groups)
         self.render_hints = RenderHints()
         self.state_machine = SimpleNamespace(current_state_name=None)
+        # Everything the FX and strike passes read on every fighter. A real
+        # Entity always carries these, so a stand-in that omitted them only
+        # made the production code tolerate partial objects with getattr.
+        self.combat = NullCombatComponent()
+        self.velocity = pygame.Vector2()
+        self.rush_timer = 0.0
 
 
 class BodyStub(pygame.sprite.Sprite):

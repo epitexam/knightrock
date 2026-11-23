@@ -121,6 +121,15 @@ class Entity(Sprite):
     # here so the systems that walk every entity ask ``is None`` and not ``getattr``.
     dash: DashController | None = None
 
+    # Only the player drives attack poses off frame data. Declared here so the
+    # animation publisher reads a declared field on every fighter instead of
+    # tolerating a missing one with getattr.
+    _phase_driven_attack_art: bool = False
+
+    # The dark step is a player resource, but the FX pass samples every fighter
+    # for it. Declared on the base so the read needs no getattr tolerance.
+    rush_timer: float = 0.0
+
     # The fighters this one shares a level with, filed by
     # ``SpriteGroups.add_fighter``. Empty for a fighter built on its own.
     roster: Iterable[Entity] = ()

@@ -184,7 +184,7 @@ def _has_room(fx_group: pygame.sprite.Group, family: str | None = None, count: i
     cap = FX_FAMILY_BUDGETS.get(family)
     if cap is None:
         return True
-    spent = sum(1 for sprite in fx_group if getattr(sprite, "family", "") == family)
+    spent = sum(1 for sprite in fx_group if sprite.family == family)
     return spent + count <= cap
 
 

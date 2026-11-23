@@ -57,6 +57,11 @@ class _Sprite(FighterSprite):
 class _RebuiltSprite(_Sprite):
     """An FX-like particle that rebuilds its image every tick, like fx.py does."""
 
+    # A real FxParticle declares both; the renderer reads them on every sprite
+    # in fx_sprites, so the stand-in must carry the real shape too.
+    behind = False
+    family = "test_fx"
+
     def rebuild(self) -> None:
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
 
