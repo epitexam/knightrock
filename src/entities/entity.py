@@ -18,6 +18,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
+from src.core.ecs.geometry_table import GeometryTable
 from src.core.ecs.movement_table import MovementTable
 from src.core.ecs.vitals_table import VitalsTable
 from src.core.rendering.render_hints import RenderHints
@@ -128,6 +129,8 @@ class Entity(Sprite):
     movement_table: MovementTable | None = None
     movement_slot: int | None = None
     vitals_table: VitalsTable | None = None
+    geometry_table: GeometryTable | None = None
+    geometry_slot: int | None = None
 
     # Only the player drives attack poses off frame data. Declared here so the
     # animation publisher reads a declared field on every fighter instead of
@@ -517,6 +520,15 @@ class Entity(Sprite):
         self.vitals_table = table
         self.vitals.bind(table)
 
+    def bind_geometry(self, table: GeometryTable) -> None:
+        """Attach this fighter's pushbox to a level's dense table, once."""
+        if self.geometry_table is table:
+            return
+        if self.geometry_table is not None and self.geometry_slot is not None:
+            self.geometry_table.release(self.geometry_slot)
+        self.geometry_table = table
+        self.geometry_slot = table.register(self)
+
     @property
     def velocity(self) -> Vector2:
         """Current velocity, backed by the dense row when bound to a level."""
@@ -583,12 +595,16 @@ class Entity(Sprite):
         everywhere in ``src``, and the multi-hurtbox zones are derived from it
         (see ``sync_rects``).
         """
+        if self.geometry_table is not None and self.geometry_slot is not None:
+            return self.geometry_table.hitbox_of(self.geometry_slot)
         return self._pushbox
 
     @hitbox.setter
     def hitbox(self, value: pygame.FRect) -> None:
-        """Rebind the collider. Test doubles and the combatant protocol only."""
+        """Rebind the collider, including the dense row when bound."""
         self._pushbox = value
+        if self.geometry_table is not None and self.geometry_slot is not None:
+            self.geometry_table.column("hitbox")[self.geometry_slot] = value
 
     @property
     def hurtbox(self) -> pygame.FRect:
@@ -1089,6 +1105,9 @@ class Entity(Sprite):
         if self.movement_table is not None and self.movement_slot is not None:
             self.movement_table.release(self.movement_slot)
             self.movement_slot = None
+        if self.geometry_table is not None and self.geometry_slot is not None:
+            self.geometry_table.release(self.geometry_slot)
+            self.geometry_slot = None
         self.vitals.unbind()
         super().kill()
 

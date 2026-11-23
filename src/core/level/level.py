@@ -97,6 +97,7 @@ class Level:
         self.level_data = level_data
 
         self.groups = SpriteGroups()
+        from src.core.ecs.geometry_table import GeometryTable
         from src.core.ecs.movement_table import MovementTable
         from src.core.ecs.vitals_table import VitalsTable
 
@@ -104,6 +105,8 @@ class Level:
         self.groups.movement_table = self.movement_table
         self.vitals_table = VitalsTable()
         self.groups.vitals_table = self.vitals_table
+        self.geometry_table = GeometryTable()
+        self.groups.geometry_table = self.geometry_table
 
         # The camera no longer knows about the window: it is given the framing,
         # a constant in world units, and reads its scale off the render target
@@ -443,6 +446,7 @@ class Level:
                 entity.add(*entity_snapshot.groups)
             entity.bind_movement(self.movement_table)
             entity.bind_vitals(self.vitals_table)
+            entity.bind_geometry(self.geometry_table)
             entity.load_state(entity_snapshot)
 
         for platform_snapshot in snapshot.platforms:
