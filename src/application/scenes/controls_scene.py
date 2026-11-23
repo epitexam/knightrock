@@ -578,13 +578,18 @@ class ControlsScene(Scene):
         pair[spec.side] = cast(int, value)
         return pair[0], pair[1]
 
+    @staticmethod
+    def _displace_scalar(mapping: dict[Any, Any], action: Any, value: Any) -> None:
+        """Remove a scalar binding from every other action in one device map."""
+        for other_action, other_value in list(mapping.items()):
+            if other_action != action and other_value == value:
+                mapping.pop(other_action)
+
     def _apply_mouse_button(self, spec: RebindSpec, button: int) -> None:
         if spec.action is None:
             return
         current = dict(self.game.settings.bindings.menu.mouse_buttons)
-        for action, other in list(current.items()):
-            if action != spec.action and other == button:
-                current.pop(action)
+        self._displace_scalar(current, spec.action, button)
         current[spec.action] = button
         self._replace_context(mouse_buttons=current)
         self._ignore_routed = True
@@ -631,9 +636,7 @@ class ControlsScene(Scene):
             return
         context = self._context()
         current = dict(context.gamepad_axes)
-        for action, old_axis in list(current.items()):
-            if action != spec.action and old_axis == axis:
-                current.pop(action)
+        self._displace_scalar(current, spec.action, axis)
         paired = self._paired_actions(spec.action)
         for action in paired:
             current[action] = axis
