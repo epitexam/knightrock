@@ -29,17 +29,14 @@ from src.data.errors import (
     reject_unknown,
     triple_of_ints,
 )
+from src.data.errors import (
+    required_field as _required,
+)
 from src.entities.enemies.schema import EnemyConfig, EnemyMove
 from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 
 ENEMIES_FILENAME = "enemies.json"
 ENEMIES_VERSION = 1
-
-
-def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
-    if key not in mapping:
-        raise GameplayDataError(f"{where}: missing required field {key!r}")
-    return mapping[key]
 
 
 def _read_stun_max(raw: Any, where: str) -> float:

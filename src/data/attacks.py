@@ -67,6 +67,9 @@ from src.data.errors import (
     read_number,
     reject_unknown,
 )
+from src.data.errors import (
+    required_field as _required,
+)
 
 ATTACKS_FILENAME = "attacks.json"
 SUPPORTED_ATTACK_VERSIONS = (1, 2)
@@ -138,13 +141,6 @@ _LEGACY_HITBOX_FIELDS = frozenset(
 _PHASE_JSON_FIELDS = (
     (_field_names(PhaseDefinition) - {"boxes"}) | {"hitboxes"} | _LEGACY_HITBOX_FIELDS
 )
-
-
-def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
-    """Fetch a mandatory JSON field with a precise location in the error."""
-    if key not in mapping:
-        raise GameplayDataError(f"{where}: missing required field {key!r}")
-    return mapping[key]
 
 
 def _pair_of_floats(value: Any, where: str) -> tuple[float, float]:

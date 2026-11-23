@@ -65,6 +65,13 @@ def reject_unknown(raw: dict[str, Any], allowed: frozenset[str] | set[str], wher
         )
 
 
+def required_field(mapping: dict[str, Any], key: str, where: str) -> Any:
+    """Fetch a mandatory JSON field with a precise location in the error."""
+    if key not in mapping:
+        raise GameplayDataError(f"{where}: missing required field {key!r}")
+    return mapping[key]
+
+
 # -- shared scalar validators -----------------------------------------------
 # A gameplay JSON file is hand-edited. Python's coercions are too forgiving
 # for that: bool("false") is True, and float("12") accepts a typo that should
