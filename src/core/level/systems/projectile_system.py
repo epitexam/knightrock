@@ -16,7 +16,13 @@ from collections.abc import Callable
 import pygame
 
 from src.combat.combatant_protocol import Combatant
-from src.combat.shapes import ShapeKind, shape_aabb_intersects, swept_intersects_aabb
+from src.combat.shapes import (
+    ShapeKind,
+    SweptShape,
+    shape_aabb_intersects,
+    swept_intersects_aabb,
+)
+from src.combat.sweep import swept_box
 from src.core.ecs.projectile_table import ProjectileTable
 from src.core.ecs.table import Handle
 from src.core.level.systems.contact_system import (
@@ -39,10 +45,11 @@ def _reset_projectile(projectile: Projectile) -> None:
     projectile.reset()
 
 
-def _record_target(projectile: Projectile) -> Callable[[Combatant], None]:
-    """Adapter: the unified pipeline records targets, the pool records ids."""
+def _record_target(targets: set[str], projectile: Projectile) -> Callable[[Combatant], None]:
+    """The pipeline records a hit in the dense row and in the draw proxy."""
 
     def record(target: Combatant) -> None:
+        targets.add(target.id)
         projectile.targets_hit.add(target.id)
 
     return record
@@ -135,15 +142,23 @@ class ProjectileSystem:
             if projectile.is_dead:
                 self._release(projectile)
                 continue
-            if self._hit_wall(projectile):
+            if self._hit_wall(slot):
                 self._release(projectile)
                 continue
-            self._resolve_contacts(projectile, entity_grid)
+            self._resolve_contacts(slot, entity_grid)
 
-    def _hit_wall(self, projectile: Projectile) -> bool:
+    def _swept_geometry(self, slot: int) -> tuple[pygame.FRect, tuple[SweptShape, ...]]:
+        """The current tick's flight geometry, read from the dense row."""
+        table = self.table
+        rect: pygame.FRect = table.column("hitbox")[slot]
+        previous_rect: pygame.FRect | None = table.column("previous_rect")[slot]
+        shape = table.column("contact_shape")[slot]
+        previous_shape = table.column("previous_shape")[slot]
+        return swept_box(previous_rect, rect), (SweptShape(previous_shape, shape),)
+
+    def _hit_wall(self, slot: int) -> bool:
         """True when the swept flying box overlaps static collision geometry."""
-        swept_rect = projectile.swept_contact_rect()
-        shape_sweeps = projectile.swept_contact_shapes()
+        swept_rect, shape_sweeps = self._swept_geometry(slot)
         for sprite in (
             self.spatial_hash.get_nearby(swept_rect)
             if self.spatial_hash is not None
@@ -166,39 +181,38 @@ class ProjectileSystem:
                 return True
         return False
 
-    def _resolve_contacts(
-        self,
-        projectile: Projectile,
-        entity_grid: EntityGrid | None,
-    ) -> None:
-        """Emit the projectile's offensive box into the unified pipeline.
+    def _resolve_contacts(self, slot: int, entity_grid: EntityGrid | None) -> None:
+        """Emit the dense row's offensive box into the unified pipeline.
 
-        Legacy semantics preserved: ``HitResolver`` decides whether the
-        contact lands, the projectile remembers the target, and a
-        single-hit projectile is released (stopping after the first
-        contact) while a piercing one keeps flying.
+        The pooled sprite is still passed as ``attacker`` because the combat
+        protocol reads it; every value the pipeline decides on comes from the
+        table. Targets are recorded in the dense set and mirrored onto the
+        proxy for the draw path.
         """
-        config = projectile.config
+        table = self.table
+        config = table.column("config")[slot]
+        hitbox: pygame.FRect = table.column("hitbox")[slot]
+        swept_rect, shape_sweeps = self._swept_geometry(slot)
+        proxy: Projectile = table.proxy_of(slot)
+        targets: set[str] = table.column("targets_hit")[slot]
         box = OffensiveBox(
-            box=projectile.hitbox,
-            swept=(projectile.swept_contact_rect(),),
+            box=hitbox,
+            swept=(swept_rect,),
             hit=config.hit,
-            swept_shapes=(
-                projectile.swept_contact_shapes() if config.shape is not ShapeKind.AABB else ()
-            ),
-            faction=projectile.faction,
-            owner_id=projectile.id,
-            can_contact=projectile.can_contact,
+            swept_shapes=shape_sweeps if config.shape is not ShapeKind.AABB else (),
+            faction=table.column("faction")[slot],
+            owner_id=table.column("owner_id")[slot],
+            can_contact=lambda target_id: target_id not in targets,
             kind="projectile",
-            attacker=projectile,
+            attacker=proxy,
             stop_after_first=not config.pierce,
-            record_contact=_record_target(projectile),
+            record_contact=_record_target(targets, proxy),
         )
         outcome = self.contact_system.resolve((box,), self.groups.entity_sprites, entity_grid)
         self.guard_events.extend(outcome.guard_events)
         self.impact_events.extend(outcome.impact_events)
         if outcome.metrics.contacts and not config.pierce:
-            self._release(projectile)
+            self._release(proxy)
 
     def _release(self, projectile: Projectile) -> None:
         proxy_id = id(projectile)

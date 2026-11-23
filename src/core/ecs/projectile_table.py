@@ -52,7 +52,7 @@ class ProjectileTable(DenseTable):
         )
         self.column("life")[slot] = projectile.life
         self.column("active")[slot] = projectile.active
-        self.column("targets_hit")[slot] = frozenset(projectile.targets_hit)
+        self.column("targets_hit")[slot] = set(projectile.targets_hit)
         self.column("proxy")[slot] = projectile
 
     def assert_mirror(self, slot: int) -> None:
@@ -68,7 +68,7 @@ class ProjectileTable(DenseTable):
         assert self.column("previous_rect")[slot] == projectile._previous_contact_rect
         assert self.column("life")[slot] == projectile.life
         assert self.column("active")[slot] == projectile.active
-        assert self.column("targets_hit")[slot] == frozenset(projectile.targets_hit)
+        assert self.column("targets_hit")[slot] == set(projectile.targets_hit)
 
     def handle_of(self, slot: int) -> Handle:
         return self.handle_at(slot)
