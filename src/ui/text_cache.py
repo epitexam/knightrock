@@ -22,6 +22,32 @@ def _plain_render(
     return font.render(text, False, color)
 
 
+def fit_prefix(
+    font: pygame.font.Font,
+    text: str,
+    max_width: int,
+    marker: str = "…",
+    empty_if_no_prefix: bool = False,
+) -> str:
+    """The longest prefix of ``text`` that fits with ``marker`` appended.
+
+    The marker is part of the measurement, so the result never overhangs. Both
+    menu views used to run this binary search themselves; ``empty_if_no_prefix``
+    keeps the grid's honest empty cell when not even the marker fits, while the
+    menu keeps its marker-only fallback.
+    """
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if font.size(text[:middle] + marker)[0] <= max_width:
+            low = middle
+        else:
+            high = middle - 1
+    if low == 0 and empty_if_no_prefix:
+        return ""
+    return f"{text[:low].rstrip()}{marker}"
+
+
 class TextCache:
     """Memoise ``font.render`` output keyed by font identity and text style.
 

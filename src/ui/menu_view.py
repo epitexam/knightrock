@@ -19,7 +19,7 @@ from src.ui.styles import (
     TEXT_TITLE,
     TEXT_WARN,
 )
-from src.ui.text_cache import TextCache
+from src.ui.text_cache import TextCache, fit_prefix
 
 #: The menu's text sizes, in design pixels of a 648-tall picture.
 DESIGN_TITLE = 32
@@ -715,18 +715,7 @@ class MenuView:
         surface = self._render_cached(font, text, color)
         if surface.get_width() <= max_width:
             return surface
-        # Binary search for the longest prefix that fits with the marker
-        # on the end: linear trimming re-measures a whole paragraph's
-        # worth of characters when one will do.
-        low, high = 0, len(text)
-        marker = "…"
-        while low < high:
-            middle = (low + high + 1) // 2
-            if font.size(text[:middle] + marker)[0] <= max_width:
-                low = middle
-            else:
-                high = middle - 1
-        return self._render_cached(font, text[:low].rstrip() + marker, color)
+        return self._render_cached(font, fit_prefix(font, text, max_width), color)
 
     def _fonts_for(self, scale: float) -> tuple[pygame.font.Font, ...]:
         """Title, item and footer fonts for a scale, built once per scale.

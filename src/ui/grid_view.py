@@ -34,7 +34,7 @@ from src.ui.styles import (
     TEXT_TITLE,
     TEXT_WARN,
 )
-from src.ui.text_cache import TextCache
+from src.ui.text_cache import TextCache, fit_prefix
 
 #: The lowest text scale a table too wide for its window may shrink to: the
 #: item text at the pixel font's own grid, 8px, which it is drawn to be read at.
@@ -654,19 +654,9 @@ class GridView:
         # No antialiasing: a pixel font blurred at its edges is not one.
         if not text or font.size(text)[0] <= max_width:
             return font.render(text, False, color)
-        marker = "…"
-        low, high = 0, len(text)
-        while low < high:
-            middle = (low + high + 1) // 2
-            if font.size(text[:middle] + marker)[0] <= max_width:
-                low = middle
-            else:
-                high = middle - 1
-        if low == 0:
-            # Not even the marker fits. An empty cell is honest; a marker that
-            # overhangs is the defect this search exists to remove.
-            return font.render("", False, color)
-        return font.render(f"{text[:low].rstrip()}{marker}", False, color)
+        # Not even the marker fits? An empty cell is honest; a marker that
+        # overhangs is the defect the shared search exists to remove.
+        return font.render(fit_prefix(font, text, max_width, empty_if_no_prefix=True), False, color)
 
 
 def _centred_x(panel: pygame.Rect, width: int) -> int:
