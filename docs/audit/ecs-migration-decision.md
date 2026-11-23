@@ -34,6 +34,7 @@ Tout se déroule sur la branche unique `refactor/cleanup`, sans tags, chaque com
 - **Étape 0** (baseline + ADR) : faite.
 - **Étape 1** (identité `(id, generation)` + table dense) : faite — `src/core/ecs/table.py`.
 - **Étape 2** (tranche projectiles) : faite en trois commits — table latérale et mirror, promotion des lectures de contact/geometry, handles de génération transportés par `ProjectileSnapshot` et restaurés au rewind. Les projectiles sont désormais pilotés par la table ; le `Projectile` poolé reste le proxy de rendu.
-- **Étapes 3 à 6** (mouvement, autres composants, systèmes, retrait de `Sprite`) : **non encore faites**. Elles exigent une refonte des vues `Vector2`/`on_surface` préservant 91 + 26 sites de mutation en place, puis un re-baseline explicite du test à 440 champs et des digests.
+- **Étape 3** (mouvement) : faite — `src/core/ecs/movement_table.py` porte `vx`, `vy` et les trois drapeaux de contact en colonnes primitives, exposés par des vues stables qui préservent `entity.velocity.x = ...` et `entity.on_surface["floor"] = ...`. Les 91 + 26 sites de mutation en place n'ont pas changé ; le composant reste mirror pour les snapshots et l'invariant à 440 champs.
+- **Étapes 4 à 6** (autres composants, systèmes, retrait de `Sprite`) : **non encore faites**. Elles exigent la promotion de `Vitals`, de la géométrie et de `CombatComponent`, puis le re-baseline explicite du test à 440 champs et des digests.
 
 Le chantier 06 résiduel (`getattr` de l'overlay debug sur des groupes hétérogènes, prose d'invariant) reste également à traiter après la migration d'entités, conformément à l'ordre retenu.
