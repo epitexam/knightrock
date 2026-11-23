@@ -25,6 +25,62 @@ PANEL_KEYS = "keys"
 PANEL_LEGEND = "legend"
 
 
+def _help_bench(layer_rows: list[str], compact: bool) -> list[str]:
+    """The static key rows, after the live layer states have been filled in."""
+    if compact:
+        return [
+            "1-0 attacks · V/B shots · G/P/T spawn",
+            *layer_rows,
+            "F6 freeze · F7 step · F8 replay · F9 export",
+        ]
+    return [
+        "1-8 showcase · 9-0 air kit (in the air)",
+        "V/B shots · C dummy · G/P/T spawn",
+        *layer_rows,
+        "F6 freeze · F7 step · F8 replay · F9 export",
+        "× close · drag",
+    ]
+
+
+def _legend_rows(compact: bool) -> list[tuple[str, tuple[int, int, int] | None]]:
+    """One table for both the legend text and its colours.
+
+    The two used to be built separately, with the colour indices maintained by
+    hand: a row inserted in one list silently recoloured the wrong line in the
+    other. Deriving both from the same ordered rows makes that drift impossible.
+    """
+    from src.core.colors import Colors
+    from src.ui.world_overlay_metrics import PHASE_OUTLINE_COLORS
+
+    if compact:
+        return [
+            ("green  hurtbox", Colors.debug_hurtbox),
+            ("orange attack active", PHASE_OUTLINE_COLORS["active"]),
+            ("gold   startup", PHASE_OUTLINE_COLORS["startup"]),
+            ("cyan   broadphase", Colors.debug_broadphase),
+            ("violet swept", Colors.debug_sweep),
+            ("white  anchor", Colors.debug_anchor),
+            ("purple juggle", Colors.debug_juggle),
+        ]
+
+    zone_colors = Colors.debug_hurtbox_zones
+    return [
+        ("blue/red  pushbox", None),
+        ("green     hurtbox", None),
+        ("thin      plain zone", zone_colors[0]),
+        ("fill      xmult zone", zone_colors[1]),
+        ("dashed    guarded zone", zone_colors[2]),
+        ("orange    attack active", PHASE_OUTLINE_COLORS["active"]),
+        ("gold      attack startup", PHASE_OUTLINE_COLORS["startup"]),
+        ("grey      attack recovery", PHASE_OUTLINE_COLORS["recovery"]),
+        ("cyan dot  broadphase", Colors.debug_broadphase),
+        ("violet    swept shape", Colors.debug_sweep),
+        ("white +   anchor", Colors.debug_anchor),
+        ("P2/UBL    hit priority", None),
+        ("purple    juggle gravity", Colors.debug_juggle),
+    ]
+
+
 class UIManager:
     """Facade pattern for the user interface."""
 
@@ -293,19 +349,7 @@ class UIManager:
             f" · F3 {layer('velocities', 'speed')}",
             f"F4 {layer('statics', 'statics')} · F5 {layer('panels', 'panels')}",
         ]
-        bench = [
-            "1-8 showcase · 9-0 air kit (in the air)",
-            "V/B shots · C dummy · G/P/T spawn",
-            *layer_rows,
-            "F6 freeze · F7 step · F8 replay · F9 export",
-            "× close · drag",
-        ]
-        if compact:
-            bench = [
-                "1-0 attacks · V/B shots · G/P/T spawn",
-                *layer_rows,
-                "F6 freeze · F7 step · F8 replay · F9 export",
-            ]
+        bench = _help_bench(layer_rows, compact)
 
         lines: list[str] = []
         line_colors: dict[int, tuple[int, int, int]] = {}
@@ -330,58 +374,9 @@ class UIManager:
         """Persistent color legend for the world-space combat overlay."""
         if self.renderer.interaction.is_closed(PANEL_LEGEND):
             return 0
-        from src.core.colors import Colors
-        from src.ui.world_overlay_metrics import PHASE_OUTLINE_COLORS
-
-        zone_colors = Colors.debug_hurtbox_zones
-        lines = [
-            "blue/red  pushbox",
-            "green     hurtbox",
-            "thin      plain zone",
-            "fill      xmult zone",
-            "dashed    guarded zone",
-            "orange    attack active",
-            "gold      attack startup",
-            "grey      attack recovery",
-            "cyan dot  broadphase",
-            "violet    swept shape",
-            "white +   anchor",
-            "P2/UBL    hit priority",
-            "purple    juggle gravity",
-        ]
-        if compact:
-            lines = [
-                "green  hurtbox",
-                "orange attack active",
-                "gold   startup",
-                "cyan   broadphase",
-                "violet swept",
-                "white  anchor",
-                "purple juggle",
-            ]
-        if compact:
-            line_colors = {
-                0: Colors.debug_hurtbox,
-                1: PHASE_OUTLINE_COLORS["active"],
-                2: PHASE_OUTLINE_COLORS["startup"],
-                3: Colors.debug_broadphase,
-                4: Colors.debug_sweep,
-                5: Colors.debug_anchor,
-                6: Colors.debug_juggle,
-            }
-        else:
-            line_colors = {
-                2: zone_colors[0],
-                3: zone_colors[1],
-                4: zone_colors[2],
-                5: PHASE_OUTLINE_COLORS["active"],
-                6: PHASE_OUTLINE_COLORS["startup"],
-                7: PHASE_OUTLINE_COLORS["recovery"],
-                8: Colors.debug_broadphase,
-                9: Colors.debug_sweep,
-                10: Colors.debug_anchor,
-                12: Colors.debug_juggle,
-            }
+        rows = _legend_rows(compact)
+        lines = [text for text, _ in rows]
+        line_colors = {index: color for index, (_, color) in enumerate(rows) if color is not None}
         return self.renderer.draw_panel(
             x,
             y,
