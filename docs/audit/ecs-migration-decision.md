@@ -35,7 +35,7 @@ Tout se déroule sur la branche unique `refactor/cleanup`, sans tags, chaque com
 - **Étape 1** (identité `(id, generation)` + table dense) : faite — `src/core/ecs/table.py`.
 - **Étape 2** (tranche projectiles) : faite en trois commits — table latérale et mirror, promotion des lectures de contact/geometry, handles de génération transportés par `ProjectileSnapshot` et restaurés au rewind. Les projectiles sont désormais pilotés par la table ; le `Projectile` poolé reste le proxy de rendu.
 - **Étape 3** (mouvement) : faite — `src/core/ecs/movement_table.py` porte `vx`, `vy` et les trois drapeaux de contact en colonnes primitives, exposés par des vues stables qui préservent `entity.velocity.x = ...` et `entity.on_surface["floor"] = ...`. Les 91 + 26 sites de mutation en place n'ont pas changé ; le composant reste mirror pour les snapshots et l'invariant à 440 champs.
-- **Étape 4 (partielle)** : `Vitals` est adossé à une table dense (`src/core/ecs/vitals_table.py`) avec mirror sur les attributs du composant ; les 440 champs et les 3 digests sont restés inchangés, aucun re-baseline n'a été nécessaire. La géométrie (`FRect`) et `CombatComponent` restent à promouvoir.
-- **Étapes 5 et 6** (systèmes, retrait de `Sprite`) : **non encore faites**.
+- **Étape 4** (faite) : `Vitals`, la géométrie (pushbox) et `CombatComponent` sont désormais adossés à des tables denses (`vitals_table.py`, `geometry_table.py`, `combat_table.py`). Les composants gardent leurs règles et un mirror de leurs valeurs ; les 440 champs, les 3 digests et les 675 issues restent inchangés, aucun re-baseline n'a été nécessaire.
+- **Étapes 5 et 6** (réécriture des systèmes pour lire les tables, retrait de `Sprite` sur `Entity` et des miroirs) : **non encore faites**.
 
 Le chantier 06 résiduel (`getattr` de l'overlay debug sur des groupes hétérogènes, prose d'invariant) reste également à traiter après la migration d'entités, conformément à l'ordre retenu.
