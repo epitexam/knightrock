@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from itertools import count
 
+from src.core.ecs.table import Handle
+
 
 class IdFactory:
     """Allocates entity and projectile ids with separate sequences."""
@@ -23,6 +25,14 @@ class IdFactory:
 
     def projectile_id(self) -> str:
         return f"p{next(self._projectiles)}"
+
+    def entity_handle(self) -> Handle:
+        """A fresh entity identity, with the generation the table will track."""
+        return self.entity_id(), 0
+
+    def projectile_handle(self) -> Handle:
+        """A fresh projectile identity, with the generation the table will track."""
+        return self.projectile_id(), 0
 
 
 _shared: IdFactory | None = None
