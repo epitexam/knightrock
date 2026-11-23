@@ -11,7 +11,7 @@ stagger and finisher rules with melee.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import pygame
 
@@ -107,7 +107,11 @@ class ProjectileSystem:
         self._handle_of_proxy[proxy_id] = handle
         return projectile
 
-    def rebuild_table_from_groups(self) -> None:
+    def handle_for(self, projectile: Projectile) -> Handle:
+        """The generation-checked identity of a live projectile's dense row."""
+        return self.table.handle_of(self._slot_of_proxy[id(projectile)])
+
+    def rebuild_table_from_groups(self, handles: Mapping[int, Handle] | None = None) -> None:
         """Re-seed dense rows after a rollback restored the sprite groups."""
         self.table = ProjectileTable()
         self._slot_of_proxy.clear()
@@ -115,7 +119,7 @@ class ProjectileSystem:
         for shot in self.groups.projectile_sprites:
             if not isinstance(shot, Projectile):
                 continue
-            handle = (shot.id, 0)
+            handle = (shot.id, 0) if handles is None else handles[id(shot)]
             slot = self.table.acquire(handle)
             self.table.write(slot, shot)
             self._slot_of_proxy[id(shot)] = slot

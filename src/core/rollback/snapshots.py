@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from src.combat.shapes import ShapePose
+from src.core.ecs.table import Handle
 from src.core.input.input_state import InputState
 from src.entities.entity import EntitySnapshot
 from src.entities.projectile import Projectile, ProjectileConfig
@@ -60,6 +61,8 @@ class ProjectileSnapshot:
     config: ProjectileConfig
     contact_shape: ShapePose
     targets_hit: frozenset[str]
+    #: Generation-checked identity of the dense row this shot came from.
+    handle: Handle
 
 
 @dataclass

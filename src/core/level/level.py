@@ -383,6 +383,7 @@ class Level:
                 config=shot.config,
                 contact_shape=replace(shot.contact_shape),
                 targets_hit=frozenset(shot.targets_hit),
+                handle=self.projectile_system.handle_for(shot),
             )
             for shot in self.groups.projectile_sprites
             if isinstance(shot, Projectile)
@@ -450,6 +451,10 @@ class Level:
         # that was in flight at capture but has since landed is put back and
         # restored to its captured state.
         captured = {id(snapshot.projectile) for snapshot in snapshot.projectiles}
+        captured_handles = {
+            id(shot_snapshot.projectile): shot_snapshot.handle
+            for shot_snapshot in snapshot.projectiles
+        }
         pool = self.projectile_system.pool
         for shot in list(self.groups.projectile_sprites):
             if not isinstance(shot, Projectile) or id(shot) in captured:
@@ -472,7 +477,7 @@ class Level:
             shot.contact_shape = replace(shot_snapshot.contact_shape)
             shot.targets_hit = set(shot_snapshot.targets_hit)
             shot.sync_rects()
-        self.projectile_system.rebuild_table_from_groups()
+        self.projectile_system.rebuild_table_from_groups(captured_handles)
 
     def draw(
         self,

@@ -65,3 +65,23 @@ def test_a_recycled_pool_object_gets_a_new_generation() -> None:
     assert new_handle[0] == old_handle[0]
     assert new_handle[1] == old_handle[1] + 1
     assert system.table.slot_of(old_handle) is None
+
+
+def test_a_rewind_restores_the_generation_checked_handle() -> None:
+    level, _pad, _player = arena()
+    settle(level)
+    system = level.projectile_system
+    shot = system.spawn(CONFIG, (100.0, 200.0), (140.0, 0.0), "player")
+    level.update(DT)
+    snapshot = level.save_state()
+    captured_handle = snapshot.projectiles[0].handle
+
+    shot.life = 0.0
+    level.update(DT)
+    assert len(system.table) == 0
+
+    level.load_state(snapshot)
+    assert len(system.table) == 1
+    assert system.handle_for(shot) == captured_handle
+    slot = system._slot_of_proxy[id(shot)]
+    system.table.assert_mirror(slot)
