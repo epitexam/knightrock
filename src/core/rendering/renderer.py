@@ -47,9 +47,6 @@ from src.core.rendering.sprite_transforms import (
     _evict_half as _evict_half,
 )
 from src.core.rendering.sprite_transforms import (
-    _evict_half_shear_cache as _evict_half_shear_cache,
-)
-from src.core.rendering.sprite_transforms import (
     _quantize_skew as _quantize_skew,
 )
 from src.core.rendering.sprite_transforms import (

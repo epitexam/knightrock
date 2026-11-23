@@ -202,7 +202,7 @@ def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
         out.blit(row, (base + int(round(skew * depth)), y))
 
     if len(_SHEAR_CACHE) >= _SHEAR_CACHE_MAX:
-        _evict_half_shear_cache()
+        _evict_half(_SHEAR_CACHE)
     _SHEAR_CACHE[key] = (image, out)
     return out
 
@@ -238,24 +238,6 @@ def _evict_half(cache: dict) -> None:
     for stale in list(cache)[: len(cache) // 2]:
         del cache[stale]
 
-
-def _evict_half_shear_cache() -> None:
-    """Drop the oldest half of the shear cache rather than all of it.
-
-    Wiping the lot is what a cache full of entries you are still using does to
-    itself: the next frame rebuilds them, and the frame after finds the cache
-    full again. Measured with eight animation frames in play -- each rebuild
-    sweeping the whole table -- that was a 100% rebuild rate at 95 microseconds
-    a frame, sustained, in exchange for saving about a megabyte.
-
-    Dropping half and letting it refill means an oversized working set costs
-    some rebuilds rather than all of them. Insertion order is the eviction
-    order here, which is not a real LRU: with a handful of fighters and a
-    skew that walks down then back up, what is oldest is nearly always what is
-    needed least, and the alternative -- ordering on last use -- means a write
-    on every hit, which is the thing being optimised.
-    """
-    _evict_half(_SHEAR_CACHE)
 
 
 def clear_shear_cache() -> None:

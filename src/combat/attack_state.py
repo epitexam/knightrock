@@ -223,9 +223,9 @@ class AttackStateMachine:
         self._locked_facing = None
         self._charge_multiplier = charge_multiplier
 
-        if self._attacks[attack_name].phases[0].reset_targets:
-            self.targets_hit.clear()
-
+        # The unconditional clear above already covers the first phase's
+        # ``reset_targets``: this method only runs from IDLE, where ``end()``
+        # (or ``reset()`` through it) cleared the hit memory.
         return True
 
     def end(self) -> None:
