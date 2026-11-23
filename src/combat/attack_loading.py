@@ -245,33 +245,55 @@ def _validate_cancels(
     _validate_follow_ups(name, definition, attacks)
     for index, phase in enumerate(definition.phases):
         if phase.auto_into is not None:
-            target = phase.auto_into
-            if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
-                raise GameplayDataError(
-                    f"Attack {name!r} phase {index}: auto-transitions into itself "
-                    f"({target!r}), which its {definition.cooldown:g}s cooldown makes unreachable"
-                )
-            missing = set(attacks[target].stances) - set(definition.stances)
-            if missing:
-                raise GameplayDataError(
-                    f"Attack {name!r} phase {index}: auto-transitions into {target!r}, "
-                    f"which is not reachable from "
-                    f" {'/'.join(sorted(s.value for s in definition.stances))} "
-                    f"(it needs {'/'.join(sorted(s.value for s in missing))})"
-                )
+            _check_transition_target(
+                name,
+                definition,
+                attacks,
+                phase.auto_into,
+                index,
+                "auto-transitions into",
+                "which is not reachable from ",
+            )
         for target in phase.cancel_into:
-            if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
-                raise GameplayDataError(
-                    f"Attack {name!r} phase {index}: cancels into itself ({target!r}), "
-                    f"which its {definition.cooldown:g}s cooldown makes unreachable"
-                )
-            missing = set(attacks[target].stances) - set(definition.stances)
-            if missing:
-                raise GameplayDataError(
-                    f"Attack {name!r} phase {index}: cancels into {target!r}, which is not "
-                    f"reachable from {'/'.join(sorted(s.value for s in definition.stances))} "
-                    f"(it needs {'/'.join(sorted(s.value for s in missing))})"
-                )
+            _check_transition_target(
+                name,
+                definition,
+                attacks,
+                target,
+                index,
+                "cancels into",
+                "which is not reachable from",
+            )
+
+
+def _check_transition_target(
+    name: MoveId,
+    definition: AttackDefinition,
+    attacks: Mapping[MoveId, AttackDefinition],
+    target: MoveId,
+    index: int,
+    verb: str,
+    reach_prefix: str,
+) -> None:
+    """The two shared guards for an ``auto_into`` or ``cancel_into`` target.
+
+    The verbs and the two reach prefixes differ only because the two error
+    messages were written at different times; they are passed in verbatim so a
+    refactor cannot silently rewrite a message the tests pin.
+    """
+    if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
+        raise GameplayDataError(
+            f"Attack {name!r} phase {index}: {verb} itself ({target!r}), "
+            f"which its {definition.cooldown:g}s cooldown makes unreachable"
+        )
+    missing = set(attacks[target].stances) - set(definition.stances)
+    if missing:
+        raise GameplayDataError(
+            f"Attack {name!r} phase {index}: {verb} {target!r}, "
+            f"{reach_prefix}"
+            f" {'/'.join(sorted(s.value for s in definition.stances))} "
+            f"(it needs {'/'.join(sorted(s.value for s in missing))})"
+        )
 
 
 def _validate_follow_ups(
