@@ -497,63 +497,49 @@ class CardLayer:
         return f"HIT {reaction.kind.value} (old)"
 
     @staticmethod
-    def status_flag_strings(sprite: pygame.sprite.Sprite) -> list[str]:
-        """Plain-text status flags backing ``_entity_lines`` (ledge tests, docs)."""
-        flags: list[str] = []
+    def _status_flags(sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]]:
+        """The seven status flags and their colours, in the published order.
+
+        Both card rows used to re-derive these predicates; the text row and the
+        colour row could disagree about what a flag said or which colour it wore.
+        One pass now produces the pairs and the two public methods are adapters.
+        """
+        flags: list[tuple[str, Color]] = []
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
-            flags.append(f"STAG {stagger:.2f}s")
+            flags.append((f"STAG {stagger:.2f}s", Colors.orange))
         state_machine = getattr(sprite, "state_machine", None)
         if state_machine is not None:
             current = getattr(state_machine, "current_state_name", None)
             if current == "dizzy":
-                flags.append(f"DIZZY {stagger:.2f}s")
-        reaction_flag = CardLayer.reaction_flag(sprite)
-        if reaction_flag is not None:
-            flags.append(reaction_flag)
+                flags.append((f"DIZZY {stagger:.2f}s", Colors.gold))
+        reaction = CardLayer.reaction_flag(sprite)
+        if reaction is not None:
+            colour = Colors.red if reaction_age(sprite) > 0 else Colors.dark_red
+            flags.append((reaction, colour))
         otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
         if otg > 0:
-            flags.append(f"OTG {otg:.2f}s")
+            flags.append((f"OTG {otg:.2f}s", Colors.debug_otg))
         gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
         if gravity_scale != 1.0:
-            flags.append(f"GRAV x{gravity_scale:.1f}")
+            flags.append((f"GRAV x{gravity_scale:.1f}", Colors.debug_juggle))
         surface = getattr(sprite, "on_surface", None)
         if isinstance(surface, dict) and not surface.get("floor"):
-            flags.append("AIR")
+            flags.append(("AIR", Colors.light_grey))
         ledge_probe = getattr(sprite, "is_at_ledge", None)
         if callable(ledge_probe) and ledge_probe():
-            flags.append("LEDGE")
+            flags.append(("LEDGE", Colors.yellow))
         return flags
+
+    @staticmethod
+    def status_flag_strings(sprite: pygame.sprite.Sprite) -> list[str]:
+        """Plain-text status flags backing ``_entity_lines`` (ledge tests, docs)."""
+        return [name for name, _ in CardLayer._status_flags(sprite)]
 
     @staticmethod
     def status_flag_tokens(sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]]:
         """Colored status flags for the untagged flags card row (same order as strings)."""
-        names = CardLayer.status_flag_strings(sprite)
-        colors: dict[str, Color] = {}
-        reaction = CardLayer.reaction_flag(sprite)
-        if reaction is not None:
-            colors[reaction] = Colors.red if reaction_age(sprite) > 0 else Colors.dark_red
-        stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
-        if stagger > 0:
-            colors[f"STAG {stagger:.2f}s"] = Colors.orange
-        state_machine = getattr(sprite, "state_machine", None)
-        if state_machine is not None:
-            current = getattr(state_machine, "current_state_name", None)
-            if current == "dizzy":
-                colors[f"DIZZY {stagger:.2f}s"] = Colors.gold
-        otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
-        if otg > 0:
-            colors[f"OTG {otg:.2f}s"] = Colors.debug_otg
-        gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
-        if gravity_scale != 1.0:
-            colors[f"GRAV x{gravity_scale:.1f}"] = Colors.debug_juggle
-        surface = getattr(sprite, "on_surface", None)
-        if isinstance(surface, dict) and not surface.get("floor"):
-            colors["AIR"] = Colors.light_grey
-        ledge_probe = getattr(sprite, "is_at_ledge", None)
-        if callable(ledge_probe) and ledge_probe():
-            colors["LEDGE"] = Colors.yellow
-        return [(name, colors.get(name, Colors.off_white)) for name in names]
+        return CardLayer._status_flags(sprite)
 
     def zone_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
         """Zone roster row: ``name xmult`` per zone in its zone color.
