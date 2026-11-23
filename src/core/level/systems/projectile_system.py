@@ -17,6 +17,8 @@ import pygame
 
 from src.combat.combatant_protocol import Combatant
 from src.combat.shapes import ShapeKind, shape_aabb_intersects, swept_intersects_aabb
+from src.core.ecs.projectile_table import ProjectileTable
+from src.core.ecs.table import Handle
 from src.core.level.systems.contact_system import (
     ContactSystem,
     GuardEvent,
@@ -70,6 +72,12 @@ class ProjectileSystem:
         )
         self.guard_events: list[GuardEvent] = []
         self.impact_events: list[ImpactEvent] = []
+        # The dense row is the seed of the ECS storage for projectiles. The
+        # pooled sprite stays the draw proxy until the presentation adapter
+        # lands; every tick writes both and the test build asserts they agree.
+        self.table = ProjectileTable()
+        self._slot_of_proxy: dict[int, int] = {}
+        self._handle_of_proxy: dict[int, Handle] = {}
 
     def spawn(
         self,
@@ -83,7 +91,28 @@ class ProjectileSystem:
         projectile.launch(config, pos, velocity, faction)
         self.groups.projectile_sprites.add(projectile)
         self.groups.all_sprites.add(projectile)
+
+        proxy_id = id(projectile)
+        handle = self._handle_of_proxy.get(proxy_id, (projectile.id, 0))
+        slot = self.table.acquire(handle)
+        self.table.write(slot, projectile)
+        self._slot_of_proxy[proxy_id] = slot
+        self._handle_of_proxy[proxy_id] = handle
         return projectile
+
+    def rebuild_table_from_groups(self) -> None:
+        """Re-seed dense rows after a rollback restored the sprite groups."""
+        self.table = ProjectileTable()
+        self._slot_of_proxy.clear()
+        self._handle_of_proxy.clear()
+        for shot in self.groups.projectile_sprites:
+            if not isinstance(shot, Projectile):
+                continue
+            handle = (shot.id, 0)
+            slot = self.table.acquire(handle)
+            self.table.write(slot, shot)
+            self._slot_of_proxy[id(shot)] = slot
+            self._handle_of_proxy[id(shot)] = handle
 
     def process(
         self,
@@ -100,6 +129,9 @@ class ProjectileSystem:
                 continue
             projectile.capture_contact_origin()
             projectile.update(delta_time)
+            slot = self._slot_of_proxy[id(projectile)]
+            self.table.write(slot, projectile)
+            self.table.assert_mirror(slot)
             if projectile.is_dead:
                 self._release(projectile)
                 continue
@@ -169,5 +201,9 @@ class ProjectileSystem:
             self._release(projectile)
 
     def _release(self, projectile: Projectile) -> None:
+        proxy_id = id(projectile)
+        slot = self._slot_of_proxy.pop(proxy_id)
+        released = self.table.release(slot)
+        self._handle_of_proxy[proxy_id] = (released[0], released[1] + 1)
         projectile.kill()
         self.pool.release(projectile)

@@ -472,6 +472,7 @@ class Level:
             shot.contact_shape = replace(shot_snapshot.contact_shape)
             shot.targets_hit = set(shot_snapshot.targets_hit)
             shot.sync_rects()
+        self.projectile_system.rebuild_table_from_groups()
 
     def draw(
         self,
