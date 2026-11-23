@@ -27,7 +27,7 @@ import pygame
 
 from src.core.colors import Color, Colors
 from src.core.rendering.render_hints import RenderHints
-from src.ui.world_overlay_metrics import ANNOTATION_MAX_DODGES
+from src.ui.world_overlay.metrics import ANNOTATION_MAX_DODGES
 
 __all__ = [
     "AnnotationSink",

@@ -22,7 +22,7 @@ from src.core.rendering.camera import Camera
 from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
 from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay_metrics import (
+from src.ui.world_overlay.metrics import (
     VELOCITY_HEAD_MAX,
     VELOCITY_HEAD_MIN,
     VELOCITY_HEAD_RATIO,
@@ -37,7 +37,7 @@ from src.ui.world_overlay_metrics import (
     VELOCITY_TAIL_RADIUS,
     VELOCITY_TAIL_WIDTH,
 )
-from src.ui.world_overlay_shared import reaction_age
+from src.ui.world_overlay.shared import reaction_age
 
 __all__ = [
     "VelocityLayer",

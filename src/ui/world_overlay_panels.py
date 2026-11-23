@@ -18,8 +18,8 @@ from src.core.rendering.camera import Camera
 from src.core.settings import Debug
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_WARN
-from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_metrics import (
+from src.ui.world_overlay.geo import GeoLayer
+from src.ui.world_overlay.metrics import (
     CLASH_MARKER_LIFETIME,
     CLASH_TICK_S,
     COMBAT_PANEL_TITLE,

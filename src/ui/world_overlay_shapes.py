@@ -21,7 +21,7 @@ from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay_metrics import SWEEP_GHOST_WIDTH
+from src.ui.world_overlay.metrics import SWEEP_GHOST_WIDTH
 
 __all__ = ["ShapeLayer", "dashed_edges"]
 

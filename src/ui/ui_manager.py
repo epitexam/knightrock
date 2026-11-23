@@ -10,7 +10,7 @@ from src.ui.hud import HUD
 from src.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
 from src.ui.player_ui import PlayerUI
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
-from src.ui.world_overlay_metrics import COMBAT_PANEL_TITLE
+from src.ui.world_overlay.metrics import COMBAT_PANEL_TITLE
 from src.ui.world_ui import WorldUI
 
 #: Stable ids of the interactive debug panels. They name the ``×``/drag state
@@ -50,7 +50,7 @@ def _legend_rows(compact: bool) -> list[tuple[str, tuple[int, int, int] | None]]
     other. Deriving both from the same ordered rows makes that drift impossible.
     """
     from src.core.colors import Colors
-    from src.ui.world_overlay_metrics import PHASE_OUTLINE_COLORS
+    from src.ui.world_overlay.metrics import PHASE_OUTLINE_COLORS
 
     if compact:
         return [

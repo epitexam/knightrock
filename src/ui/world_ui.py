@@ -34,17 +34,17 @@ import pygame
 
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay_bars import (
+from src.ui.world_overlay.bars import (
     draw_health_bars as _draw_health_bars,
 )
-from src.ui.world_overlay_bars import (
+from src.ui.world_overlay.bars import (
     health_bar_rect as _health_bar_rect,
 )
-from src.ui.world_overlay_cards import CardLayer, LabelRequest
-from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_metrics import OVERLAY_LAYERS, MetricsCache, WorldOverlayMetrics
-from src.ui.world_overlay_panels import PanelLayer
-from src.ui.world_overlay_shared import (
+from src.ui.world_overlay.cards import CardLayer, LabelRequest
+from src.ui.world_overlay.geo import GeoLayer
+from src.ui.world_overlay.metrics import OVERLAY_LAYERS, MetricsCache, WorldOverlayMetrics
+from src.ui.world_overlay.panels import PanelLayer
+from src.ui.world_overlay.shared import (
     AnnotationSink,
     debug_reference,
 )

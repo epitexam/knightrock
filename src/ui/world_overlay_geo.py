@@ -29,8 +29,8 @@ from src.core.rendering.camera import Camera
 from src.core.sprites import Sprite as WorldSprite
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER
-from src.ui.world_overlay_bars import health_bar_rect
-from src.ui.world_overlay_metrics import (
+from src.ui.world_overlay.bars import health_bar_rect
+from src.ui.world_overlay.metrics import (
     ANNOTATION_CHIP_FILL,
     BOX_DOT_CORE_RADIUS,
     BOX_DOT_INSET,
@@ -46,9 +46,9 @@ from src.ui.world_overlay_metrics import (
     WorldOverlayMetrics,
     scaled_world_px,
 )
-from src.ui.world_overlay_shapes import ShapeLayer
-from src.ui.world_overlay_shared import AnnotationSink, dodge_annotation, hitbox_color
-from src.ui.world_overlay_velocity import VelocityLayer
+from src.ui.world_overlay.shapes import ShapeLayer
+from src.ui.world_overlay.shared import AnnotationSink, dodge_annotation, hitbox_color
+from src.ui.world_overlay.velocity import VelocityLayer
 
 if TYPE_CHECKING:
     from src.combat.frame_data import PhaseDefinition

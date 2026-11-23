@@ -29,7 +29,7 @@ import pygame
 from src.core.colors import Color
 from src.core.rendering.camera import Camera
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_OK, TEXT_WARN
-from src.ui.world_overlay_metrics import (
+from src.ui.world_overlay.metrics import (
     HEALTH_BAR_ANCHOR_GAP,
     HEALTH_BAR_HEIGHT,
     STUN_BAR_HEIGHT,

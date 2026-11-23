@@ -28,8 +28,8 @@ from src.entities.components.reaction import ReactionStatus
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.pixel import font_unit, pixel_frame
 from src.ui.styles import PANEL_BORDER
-from src.ui.world_overlay_bars import health_bar_rect, health_colour
-from src.ui.world_overlay_metrics import (
+from src.ui.world_overlay.bars import health_bar_rect, health_colour
+from src.ui.world_overlay.metrics import (
     HEALTH_BAR_HEIGHT,
     HEALTH_BAR_LABEL_GAP,
     LABEL_MAX_NUDGES,
@@ -38,7 +38,7 @@ from src.ui.world_overlay_metrics import (
     MetricsCache,
     WorldOverlayMetrics,
 )
-from src.ui.world_overlay_shared import (
+from src.ui.world_overlay.shared import (
     AnnotationSink,
     display_name,
     faction,
