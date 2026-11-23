@@ -5,29 +5,14 @@ What a setting is allowed to be
 A choice the player can make and the game can honour, or nothing. That rule is
 what this file is down to.
 
-The *mode* keys used to be here -- a fixed ``width``/``height``, a ``size_mode``
-to say whether it was the player's or the machine's, and a ``render_scale`` on
-top to say how sharply to draw a fixed target. All three were claims about the
-player's screen, and the game could check none of them: it could not tell
-whether a remembered size still fit, and in borderless the window is the
-desktop's size whatever the file says, so the menu displayed a number the game
-was not using. A player who set a resolution watched the menu disagree with the
-screen and the number change on the next launch.
-
-The window is now the only source of truth (:mod:`src.core.display.letterbox`),
-and the picture is derived from it. What survives is of two shapes, and the
-difference is worth naming: the settings that were never about the screen --
-whole-pixel art, vsync, a frame limit, an interface scale, the bindings -- and
-**one** size key, ``window_size``, which is a *preference* and not a claim. It
-is asked for as it stands where the panel can take it, clamped where it cannot,
-and never written back -- so the file never again carries a number the window
-disagrees with (:func:`src.core.display.monitors.fit_size`).
-
-A display mode and a chosen screen lived here too, and both are gone. The game is
-a window now, with one set of flags; the player chooses its size and the window
-manager owns where it sits. Each was a claim about the screen the game could not
-keep -- it cannot move a window the compositor has decided to pin, and a mode
-that asks the driver for a change is the thing that blanks a hybrid-GPU laptop.
+The window is the only source of truth (:mod:`src.core.display.letterbox`);
+the picture is derived from it. What survives is of two shapes: settings that
+were never about the screen -- whole-pixel art, vsync, a frame limit, an
+interface scale, the bindings -- and **one** size key, ``window_size``, which is
+a *preference* and not a claim. It is asked for as it stands where the panel can
+take it, clamped where it cannot, and never written back, so the file never
+carries a number the window disagrees with
+(:func:`src.core.display.monitors.fit_size`).
 
 Schema v3 dropped the window keys, and v4 still reads the keys that remain. A
 removed key is ignored rather than rejected, because the bindings are the
@@ -82,9 +67,6 @@ PANEL_SCALES: tuple[float, ...] = (0.4, 0.5, 0.6, 0.8, 1.0, 1.2)
 #: blend takes over, which is why the higher values do not divide anything.
 #: None means uncapped.
 #:
-#: 180 is in the list because a 180Hz panel exists and did not: the first real
-#: session this ran on was one, and the ladder topped out at 144, so the one
-#: rate the player was actually looking at was the one they could not select.
 #: The video menu also shows the screen's own reported rate, so the ladder and
 #: the hardware do not have to agree -- but when they can, they should.
 FRAME_LIMITS: tuple[int | None, ...] = (None, 20, 30, 60, 120, 144, 180, 240)
@@ -93,9 +75,7 @@ DEFAULT_FRAME_LIMIT: int | None = 60
 #: The floor, and the reason for it: this is where the fixed-step accumulator
 #: starts losing time. ``Simulation.MAX_FRAME_TIME`` truncates a frame at 100ms,
 #: so anything under 10fps runs the game in slow motion rather than dropping
-#: ticks, and 20 leaves a factor of two. It used to be a second constant,
-#: ``MIN_SAFE_FRAME_LIMIT``, that nothing referenced -- the same number under a
-#: name that explained itself, next to the one that was actually enforced.
+#: ticks, and 20 leaves a factor of two.
 MIN_FRAME_LIMIT = 20
 MAX_FRAME_LIMIT = 500
 
@@ -132,14 +112,10 @@ def _frame_limit(video: dict[str, Any]) -> int | None:
 class UserSettings:
     """Everything the player is allowed to have an opinion about.
 
-    Notice what is not here: the fixed ``width``/``height`` the window used to
-    be opened *as*, a "size mode", a render scale or a smoothing flag. Every one
-    of them was a claim about the player's screen that the game could not check,
-    and the two that mattered most were also wrong in practice -- the window is
-    either the desktop's size (borderless) or whatever the player dragged it to,
-    while the file and the menu carried a third number that nobody wrote back.
-    The picture is derived from the window instead, so there is nothing to store
-    and nothing to get wrong.
+    What is not here is any claim about the screen: a fixed window size, a size
+    mode, a render scale, a smoothing flag. The window is the desktop's size or
+    whatever the player dragged it to; the picture is derived from it, so there
+    is nothing to store and nothing to get wrong.
 
     What is left is a list of choices, and each one is really a choice:
 
