@@ -22,16 +22,17 @@ import pytest
 
 from src.core.colors import Colors
 from src.ui import world_ui
-from src.ui.world_overlay_bars import (
+from src.ui.world_overlay import bars as bars_module
+from src.ui.world_overlay.bars import (
     draw_health_bars,
     has_health_bar,
     health_bar_rect,
     health_colour,
 )
-from src.ui.world_overlay_metrics import HEALTH_BAR_HEIGHT
+from src.ui.world_overlay.metrics import HEALTH_BAR_HEIGHT
 
-BARS_MODULE = Path(world_ui.__file__).with_name("world_overlay_bars.py")
-UI_DIR = BARS_MODULE.parent
+BARS_MODULE = Path(bars_module.__file__)
+UI_DIR = BARS_MODULE.parent.parent
 
 
 @pytest.fixture(scope="module", autouse=True)

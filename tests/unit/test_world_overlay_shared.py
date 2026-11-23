@@ -1,4 +1,4 @@
-"""``world_overlay_shared``: the sprite facts and the placement rule.
+"""``world_overlay.shared``: the sprite facts and the placement rule.
 
 The golden pins the geometry against a real draw path. These are the two things
 a scene cannot reach.
@@ -18,7 +18,7 @@ import pygame
 import pytest
 
 from src.core.colors import Colors
-from src.ui.world_overlay_shared import (
+from src.ui.world_overlay.shared import (
     clamp_annotation,
     debug_reference,
     display_name,

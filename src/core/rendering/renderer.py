@@ -651,7 +651,7 @@ class Renderer:
 
         The rects used to be handed to the presenter so the next frame's erase
         would reach them. The whole chain still returns them because
-        ``world_overlay_bars`` computes them anyway, and dropping the return
+        ``world_overlay.bars`` computes them anyway, and dropping the return
         would mean changing a port signature to save nothing. Be aware that
         ``Level.draw`` discards the result: the only readers today are the
         tests that assert which rects were painted.

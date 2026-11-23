@@ -1,4 +1,4 @@
-"""``world_overlay_velocity``: the vector, its minimum speed, and the two predicates that colour it.
+"""``world_overlay.velocity``: the vector, its minimum speed, and the two predicates that colour it.
 
 Extracted from ``tests/unit/test_world_overlay_geo.py`` when the module it
 tests was split out, so the tests moved with the code rather than reaching
@@ -15,7 +15,7 @@ from src.core.colors import Colors
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay_velocity import VelocityLayer
+from src.ui.world_overlay.velocity import VelocityLayer
 from src.ui.world_ui import WorldUI
 from tests.unit.helpers import lit_pixels, overlay_entity
 

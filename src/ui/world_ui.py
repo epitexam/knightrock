@@ -1,14 +1,14 @@
 """The world overlay's facade: one frame of world-space drawing, in order.
 
 Two passes over the same sprite list. The producer draws the geometry and
-registers the screen space it took (`world_overlay_geo`); the consumer then
-places one label card per sprite around it (`world_overlay_cards`). That order
+registers the screen space it took (`world_overlay.geo`); the consumer then
+places one label card per sprite around it (`world_overlay.cards`). That order
 is the contract -- a card that knew about a tier before the box pass drew it
 would dodge nothing -- so it is expressed here and nowhere else.
 
 What stays on the facade is what has to: the layer toggles, the frame loop, the
-dimensions (`world_overlay_metrics`), the health bars (`world_overlay_bars`),
-and the screen panels (`world_overlay_panels`).
+dimensions (`world_overlay.metrics`), the health bars (`world_overlay.bars`),
+and the screen panels (`world_overlay.panels`).
 
 The bars went first, and on their own argument rather than their size.
 `Level.draw` calls them *before* it checks `DEBUG`, so they are painted on every
@@ -23,10 +23,10 @@ interleaved with the drawing, which is the worst of both: a constant that only
 matters to the label placer is invisible while you are reading the box drawer.
 
 This module re-exports no dimension. It used to: a 61-name `import (...)` from
-`world_overlay_metrics` marked `# noqa: F401`, of which exactly two names had a
+`world_overlay.metrics` marked `# noqa: F401`, of which exactly two names had a
 caller in `src` and the rest were read only by the test that asserted the
 re-export existed. Every layer imports the dimensions it uses from
-`world_overlay_metrics` directly, and so does `ui_manager`."""
+`world_overlay.metrics` directly, and so does `ui_manager`."""
 
 from collections.abc import Iterable, Mapping
 
@@ -74,7 +74,7 @@ class WorldUI:
         self.layers: dict[str, bool] = {name: name != "statics" for name in OVERLAY_LAYERS}
         #: Attack annotation rects drawn this frame, keyed by sprite id. The
         #: box pass writes them, the card pass reads them, and the sink is what
-        #: makes that one-way; see ``world_overlay_shared.AnnotationSink``.
+        #: makes that one-way; see ``world_overlay.shared.AnnotationSink``.
         self._sink = AnnotationSink()
         self._metrics_cache = MetricsCache(self.renderer)
         #: Producer half of the frame: the sprite geometry and the tiers drawn
@@ -180,7 +180,7 @@ class WorldUI:
 
     # -- health bars ----------------------------------------------------------
     #
-    # Delegated to `src/ui/world_overlay_bars.py`, which holds the real
+    # Delegated to `src/ui/world_overlay/bars.py`, which holds the real
     # implementation. `draw_health_bars` stays on the facade because the
     # renderer reaches the draw pass through the overlay port under that name,
     # and the bars are the one part of this file that is **not** debug-only:

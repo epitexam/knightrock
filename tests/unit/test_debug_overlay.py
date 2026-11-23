@@ -15,9 +15,9 @@ from src.core.rendering.render_hints import RenderHints
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
-from src.ui.world_overlay_cards import CardLayer
-from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_metrics import (
+from src.ui.world_overlay.cards import CardLayer
+from src.ui.world_overlay.geo import GeoLayer
+from src.ui.world_overlay.metrics import (
     HEALTH_BAR_HEIGHT,
     HEALTH_BAR_LABEL_GAP,
     LABEL_ANCHOR_GAP,
@@ -30,8 +30,8 @@ from src.ui.world_overlay_metrics import (
     VELOCITY_MIN_LENGTH,
     VELOCITY_OUTLINE,
 )
-from src.ui.world_overlay_shared import display_name, hitbox_color
-from src.ui.world_overlay_velocity import arrow_outline
+from src.ui.world_overlay.shared import display_name, hitbox_color
+from src.ui.world_overlay.velocity import arrow_outline
 from src.ui.world_ui import WorldUI
 from tests.fakes import game_shape
 from tests.unit.helpers import card_rows, make_overlay
@@ -670,7 +670,7 @@ def test_dead_entity_draws_no_health_bar(world_ui: WorldUI, camera: Camera) -> N
 def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera) -> None:
     """UI-7: the player's HP lives on the screen HUD, not above its sprite.
 
-    The gate sits in ``has_health_bar`` (``src/ui/world_overlay_bars.py``), so
+    The gate sits in ``has_health_bar`` (``src/ui/world_overlay/bars.py``), so
     the bar is neither drawn nor reserved by the debug label cards — and an
     enemy keeps its bar.
     """

@@ -29,7 +29,7 @@ from src.core.input.input_state import InputState
 from src.data.attacks import read_attacks_file
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
-from src.ui.world_overlay_cards import CardLayer
+from src.ui.world_overlay.cards import CardLayer
 
 if TYPE_CHECKING:
     from src.ui.ui_manager import UIManager
@@ -395,9 +395,9 @@ def make_card_layer() -> CardLayer:
     that only wants to read a card's text still has to stand one up.
     """
     from src.ui.panel_renderer import PanelRenderer
-    from src.ui.world_overlay_cards import CardLayer
-    from src.ui.world_overlay_metrics import OVERLAY_LAYERS, MetricsCache
-    from src.ui.world_overlay_shared import AnnotationSink
+    from src.ui.world_overlay.cards import CardLayer
+    from src.ui.world_overlay.metrics import OVERLAY_LAYERS, MetricsCache
+    from src.ui.world_overlay.shared import AnnotationSink
 
     surface = pygame.display.get_surface() or pygame.Surface((64, 64))
     renderer = PanelRenderer(surface)

@@ -25,7 +25,7 @@ from pygame.math import Vector2
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.ui_manager import UIManager
-from src.ui.world_overlay_shared import debug_reference
+from src.ui.world_overlay.shared import debug_reference
 from src.ui.world_ui import WorldUI
 
 # 1024x768 at zoom 1.0. The golden asserts world-space geometry, so the render
@@ -85,7 +85,7 @@ GOLDEN_PLACED = [
 # method cannot be dropped or double-claimed by a typo in here.
 #
 # ``_health_color`` was in this list and is not any more: it did nothing but
-# call ``world_overlay_bars.health_colour``, and a card that needs an HP tint
+# call ``world_overlay.bars.health_colour``, and a card that needs an HP tint
 # now calls that directly instead of paying a hop through the facade.
 MANIFEST = {
     "facade": (
@@ -120,17 +120,17 @@ MANIFEST = {
 }
 
 # The module each extracted group is headed for, and the class holding it.
-# ``world_overlay_bars`` and ``world_overlay_shared`` are plain function
+# ``world_overlay.bars`` and ``world_overlay.shared`` are plain function
 # modules; the layers that draw are classes. A group whose module does not
 # exist yet is still sitting on the facade, which is the one state allowed to
 # be transient.
 MODULES = {
-    "shared": ("src.ui.world_overlay_shared", None),
-    "shapes": ("src.ui.world_overlay_shapes", "ShapeLayer"),
-    "velocity": ("src.ui.world_overlay_velocity", "VelocityLayer"),
-    "geo": ("src.ui.world_overlay_geo", "GeoLayer"),
-    "cards": ("src.ui.world_overlay_cards", "CardLayer"),
-    "panels": ("src.ui.world_overlay_panels", "PanelLayer"),
+    "shared": ("src.ui.world_overlay.shared", None),
+    "shapes": ("src.ui.world_overlay.shapes", "ShapeLayer"),
+    "velocity": ("src.ui.world_overlay.velocity", "VelocityLayer"),
+    "geo": ("src.ui.world_overlay.geo", "GeoLayer"),
+    "cards": ("src.ui.world_overlay.cards", "CardLayer"),
+    "panels": ("src.ui.world_overlay.panels", "PanelLayer"),
 }
 
 

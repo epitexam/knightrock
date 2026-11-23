@@ -758,8 +758,8 @@ src/
 ├── physics/       Collisions, gravity, movement, spatial hash, entity grid
 ├── states/        State machines (player, enemies, shared reactions, turn)
 └── ui/            Player HUD, panels, world-space debug overlay
-                   (dimensions in `world_overlay_metrics.py`, bars in
-                   `world_overlay_bars.py`, menus in `metrics.py`)
+                   (dimensions in `world_overlay/metrics.py`, bars in
+                   `world_overlay/bars.py`, menus in `metrics.py`)
 
 data/gameplay/     Tracked JSON gameplay values
 assets/            TMX levels and sprites — required at runtime
@@ -809,7 +809,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 - **Centralized tuning.** Gameplay constants live in `src/core/settings.py` — no
   magic numbers in the systems. A constant **shared by two modules has exactly
   one home**, and it belongs to the module that acts on it: HP-bar geometry is
-  defined once in `src/ui/world_overlay_metrics.py`, which every layer that draws
+  defined once in `src/ui/world_overlay/metrics.py`, which every layer that draws
   a bar reads, and it reaches the renderer through the `WorldOverlay` port rather
   than by `core` importing `ui`. Two copies agree only until someone edits one.
   UI-only constants (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and

@@ -1,4 +1,4 @@
-"""``world_overlay_cards``: the card's content, and the rows nothing else carries.
+"""``world_overlay.cards``: the card's content, and the rows nothing else carries.
 
 The golden pins *where* a card lands; this pins *what is written on it*, for the
 rows the golden's plain-entity scene never produces: an attack's phase and hit
@@ -112,13 +112,13 @@ def test_an_idle_sprite_gets_no_attack_row(world_ui) -> None:
 
 
 def _flags(sprite: SimpleNamespace) -> list[str]:
-    from src.ui.world_overlay_cards import CardLayer
+    from src.ui.world_overlay.cards import CardLayer
 
     return [text for text, _ in CardLayer.status_flag_tokens(sprite)]
 
 
 def _flag_colours(sprite: SimpleNamespace) -> dict[str, object]:
-    from src.ui.world_overlay_cards import CardLayer
+    from src.ui.world_overlay.cards import CardLayer
 
     return dict(CardLayer.status_flag_tokens(sprite))
 

@@ -1,4 +1,4 @@
-"""``world_overlay_panels``: the COMBAT readout and the clash ring.
+"""``world_overlay.panels``: the COMBAT readout and the clash ring.
 
 The other layers are covered by files that build a scene and read the surface.
 This one has no scene: it reports on a frame rather than drawing the world, and

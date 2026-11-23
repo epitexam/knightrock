@@ -1,4 +1,4 @@
-"""``world_overlay_shapes``: the three advanced poses, and the dashed outline.
+"""``world_overlay.shapes``: the three advanced poses, and the dashed outline.
 
 Extracted from ``tests/unit/test_world_overlay_geo.py`` when the module it
 tests was split out, so the tests moved with the code rather than reaching
@@ -15,7 +15,7 @@ from src.core.colors import Colors
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay_shapes import ShapeLayer, dashed_edges
+from src.ui.world_overlay.shapes import ShapeLayer, dashed_edges
 from src.ui.world_ui import WorldUI
 
 SIZE = (1024, 768)

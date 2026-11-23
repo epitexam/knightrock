@@ -1,4 +1,4 @@
-"""``world_overlay_geo``: the drawing paths the golden scene never reaches.
+"""``world_overlay.geo``: the drawing paths the golden scene never reaches.
 
 The golden pins the geometry of one crowded frame, which is most of what this
 module decides and none of what it draws. These are the paths it left uncovered,
@@ -22,8 +22,8 @@ from src.core.colors import Colors
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_metrics import SWEEP_DISPLAY_MIN_PX
+from src.ui.world_overlay.geo import GeoLayer
+from src.ui.world_overlay.metrics import SWEEP_DISPLAY_MIN_PX
 from src.ui.world_ui import WorldUI
 from tests.unit.helpers import lit_pixels, overlay_entity
 
@@ -360,7 +360,7 @@ def _bare_layer() -> GeoLayer:
     """A layer with no scene behind it, for the pure readers."""
     surface = pygame.Surface(SIZE)
     renderer = PanelRenderer(surface)
-    from src.ui.world_overlay_metrics import MetricsCache
+    from src.ui.world_overlay.metrics import MetricsCache
 
     return GeoLayer(renderer, MetricsCache(renderer), _NoopSink())
 

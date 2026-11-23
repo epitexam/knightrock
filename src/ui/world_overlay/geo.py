@@ -5,7 +5,7 @@ the hurtbox zone seals, the swept attack boxes, the attack header chip with its
 phase timeline and the anchor dots, and it registers the screen space each of
 those took.
 
-A class where `world_overlay_bars` and `world_overlay_shared` are functions:
+A class where `world_overlay.bars` and `world_overlay.shared` are functions:
 this one draws, and drawing needs the surface, the metrics and the sink
 thirty-odd methods deep. The surface and the metrics are read live rather than
 cached, since the table is rebuilt when the density moves and a cached copy here

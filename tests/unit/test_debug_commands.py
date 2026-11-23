@@ -21,8 +21,8 @@ from src.core.sprite_groups import SpriteGroups
 from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
 from src.physics.spatial_hash import SpatialHash
-from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_panels import PanelLayer
+from src.ui.world_overlay.geo import GeoLayer
+from src.ui.world_overlay.panels import PanelLayer
 from tests.unit.helpers import SHOWCASE, make_entity
 
 
@@ -411,7 +411,7 @@ def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
 
 
 def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
-    from src.ui.world_overlay_metrics import CLASH_MARKER_LIFETIME, CLASH_TICK_S
+    from src.ui.world_overlay.metrics import CLASH_MARKER_LIFETIME, CLASH_TICK_S
 
     surface = world_ui.surface
     surface.fill((0, 0, 0))
