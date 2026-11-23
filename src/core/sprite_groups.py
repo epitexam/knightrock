@@ -5,6 +5,7 @@ import pygame
 
 if TYPE_CHECKING:
     from src.core.ecs.movement_table import MovementTable
+    from src.core.ecs.vitals_table import VitalsTable
     from src.entities.entity import Entity
 
 
@@ -51,6 +52,7 @@ class SpriteGroups:
     #: Set by the level before the world is built; fighters filed through
     #: ``add_fighter`` then get their kinematic row in one place.
     movement_table: MovementTable | None = None
+    vitals_table: VitalsTable | None = None
 
     static_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     """The frozen tile layers that draw *under* the world (``Terrain``,
@@ -70,6 +72,8 @@ class SpriteGroups:
         fighter.roster = self.entity_sprites
         if self.movement_table is not None:
             fighter.bind_movement(self.movement_table)
+        if self.vitals_table is not None:
+            fighter.bind_vitals(self.vitals_table)
 
     @property
     def every_sprite(self) -> tuple[pygame.sprite.Sprite, ...]:

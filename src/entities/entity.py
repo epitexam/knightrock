@@ -19,6 +19,7 @@ from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.ecs.movement_table import MovementTable
+from src.core.ecs.vitals_table import VitalsTable
 from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
@@ -126,6 +127,7 @@ class Entity(Sprite):
     # that live in a level. A standalone entity in a test keeps the component.
     movement_table: MovementTable | None = None
     movement_slot: int | None = None
+    vitals_table: VitalsTable | None = None
 
     # Only the player drives attack poses off frame data. Declared here so the
     # animation publisher reads a declared field on every fighter instead of
@@ -507,6 +509,13 @@ class Entity(Sprite):
             self.movement_table.release(self.movement_slot)
         self.movement_table = table
         self.movement_slot = table.register(self)
+
+    def bind_vitals(self, table: VitalsTable) -> None:
+        """Attach this fighter's vitals to a level's dense table, once."""
+        if self.vitals_table is table:
+            return
+        self.vitals_table = table
+        self.vitals.bind(table)
 
     @property
     def velocity(self) -> Vector2:
@@ -1080,6 +1089,7 @@ class Entity(Sprite):
         if self.movement_table is not None and self.movement_slot is not None:
             self.movement_table.release(self.movement_slot)
             self.movement_slot = None
+        self.vitals.unbind()
         super().kill()
 
     def receive_damage(
