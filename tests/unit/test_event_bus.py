@@ -1,15 +1,25 @@
 """EventBus tests (audit F8.1, Phase 2 #5)."""
 
+from dataclasses import dataclass
+
 import pytest
 
 from src.core.events import (
     MAX_RECORDED_FAILURES,
+    AppExitRequested,
     Event,
     EventBus,
     LevelCompleted,
     LevelStarted,
     PlayerDied,
+    UiEffect,
+    UiFeedback,
 )
+
+
+@dataclass(frozen=True)
+class RogueEvent(Event):
+    """A fact nobody declared in the closed union."""
 
 
 def test_emit_dispatches_to_subscribers_of_that_type_only() -> None:
@@ -226,3 +236,71 @@ def test_a_broken_save_subscriber_cannot_cost_the_progression() -> None:
 
     assert persisted == [2]
     assert len(bus.failures) == 1
+
+
+def test_subscribe_rejects_an_unregistered_event_type() -> None:
+    bus = EventBus()
+    with pytest.raises(TypeError, match="unregistered event type"):
+        bus.subscribe(RogueEvent, lambda _: None)
+
+
+def test_emit_rejects_an_unregistered_event() -> None:
+    bus = EventBus()
+    with pytest.raises(TypeError, match="unregistered event type"):
+        bus.emit(RogueEvent())
+
+
+def test_unsubscribing_an_unregistered_type_is_a_noop() -> None:
+    bus = EventBus()
+    bus.unsubscribe(RogueEvent, lambda _: None)
+
+
+def test_every_declared_fact_can_be_emitted() -> None:
+    bus = EventBus()
+    seen: list[Event] = []
+    for event_type in (
+        LevelStarted,
+        PlayerDied,
+        LevelCompleted,
+        AppExitRequested,
+        UiFeedback,
+    ):
+        bus.subscribe(event_type, seen.append)
+    facts = [
+        LevelStarted(level_id=1),
+        PlayerDied(entity_id="e0", deaths=0),
+        LevelCompleted(level_id=1),
+        AppExitRequested(),
+        UiFeedback(effect=UiEffect.CONFIRMED),
+    ]
+    for fact in facts:
+        bus.emit(fact)
+    assert seen == facts
+
+
+def test_rewind_rearms_a_notification_latch() -> None:
+    """Facts are at least once: a rewind across a death re-publishes it.
+
+    The latches are part of the level snapshot, so restoring an earlier tick
+    makes the next replay emit the same fact again. Subscribers must tolerate
+    that; the bus itself deliberately keeps no deduplication state.
+    """
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    from src.core.level.systems.notification_system import NotificationSystem
+
+    bus = EventBus()
+    seen: list[int] = []
+    bus.subscribe(PlayerDied, lambda event: seen.append(event.deaths))
+    notifications = NotificationSystem(bus, 0, cast(Any, None))
+    dead = SimpleNamespace(id="e0", is_dead=True)
+
+    notifications.process(dead, deaths=1, exit_reached=False)
+    notifications.process(dead, deaths=1, exit_reached=False)
+    assert seen == [1]
+
+    # The rollback snapshot restores the latch to its pre-emission value.
+    notifications.player_dead_emitted = False
+    notifications.process(dead, deaths=1, exit_reached=False)
+    assert seen == [1, 1]

@@ -125,8 +125,8 @@ def test_the_simulation_does_not_import_the_application() -> None:
     """The simulation talks to the application through src.core.events only.
 
     The level publishes facts on the bus and holds no reference to the
-    application, which also keeps a rewind from re-emitting something the
-    player already saw.
+    application. Notification latches are restored by rollback, so a rewind can
+    re-emit a fact; subscribers must tolerate a repeated identical payload.
     """
     offenders = [line for line in _violations("core") if "-> application" in line]
     assert offenders == [], "core must not import application: publish on src.core.events"

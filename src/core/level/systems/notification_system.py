@@ -4,7 +4,9 @@ Runs after respawn/progression so the bus observes the tick's final state.
 Emissions are notifications only — subscribers must never mutate the
 simulation.  The one-shot latches (``player_dead_emitted`` /
 ``completed_emitted``) live here, next to the rule that reads them, and are
-captured by the rollback snapshots so a rewind re-arms them.
+captured by the rollback snapshots so a rewind re-arms them and replaying that
+tick publishes the fact again. Subscribers must be idempotent for a repeated
+identical payload.
 """
 
 from src.core.events import EventBus, LevelCompleted, PlayerDied

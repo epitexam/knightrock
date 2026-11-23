@@ -14,8 +14,14 @@ own layer allows:
 * **simulation notifications** — ``LevelStarted``, ``PlayerDied``,
   ``LevelCompleted``. Emitted from inside the fixed tick by
   ``NotificationSystem`` and ``Level``, which hold no reference to the
-  application: the bus is the *only* channel available to them, which is also
-  what keeps a rewind from re-emitting a fact the player already saw.
+  application: the bus is the *only* channel available to them. One-shot
+  latches stop a fact firing twice in one run, but those latches are restored
+  by rollback, so a rewind that crosses the notification tick re-emits the
+  fact. Subscribers must tolerate a repeated identical payload.
+
+The vocabulary is closed: every fact must be a member of :data:`GameEvent`.
+Adding one is a deliberate edit to that union, checked statically by mypy and
+at runtime by the bus.
 * **interface feedback** — ``UiFeedback``, emitted by ``InputDispatcher`` from
   the report a scene returns. Here the producer *can* name its consumer, and it
   still does not, so that a second one (haptics, an on-screen tutorial) is
@@ -37,7 +43,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import NamedTuple, cast
+from typing import NamedTuple, cast, get_args
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +122,9 @@ class UiFeedback(Event):
 GameEvent = LevelStarted | PlayerDied | LevelCompleted | AppExitRequested | UiFeedback
 """Union of every concrete event payload."""
 
+#: The closed set of facts this bus carries, derived from the one union above.
+_EVENT_TYPES = frozenset(get_args(GameEvent))
+
 Handler = Callable[[GameEvent], None]
 
 
@@ -170,6 +179,8 @@ class EventBus:
         also runs its effect twice, which for a sound is a doubled click and
         for the save handler a second write of the progression file.
         """
+        if event_type not in _EVENT_TYPES:
+            raise TypeError(f"unregistered event type {event_type!r}")
         handlers = self._subscribers.setdefault(event_type, [])
         # A handler is stored under exactly ``type(event)``. Erasing it to the
         # union here is local and checked by that invariant, unlike a bare
@@ -196,6 +207,8 @@ class EventBus:
         unsubscribe -- mutating the list while walking it is the one thing
         that would make the isolation incomplete.
         """
+        if type(event) not in _EVENT_TYPES:
+            raise TypeError(f"unregistered event type {type(event).__name__}")
         for handler in tuple(self._subscribers.get(type(event), ())):
             try:
                 handler(event)
