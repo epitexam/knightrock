@@ -263,7 +263,10 @@ class ReactionComponent:
             KNOCKBACK_STATE,
             force=True,
             knockback_direction=direction,
-            knockback_force=kb_power_x,
+            # The launch state takes a magnitude: the side is already carried by
+            # knockback_direction. Passing a signed fixed power made a negative
+            # launch fail the state's ``force > 0`` guard and apply no x impulse.
+            knockback_force=abs(kb_power_x),
             knockback_up_force=kb_power_y,
         )
         # ``on_hit`` just armed ``is_hurt`` and ``hurt_timer``; only

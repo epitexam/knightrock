@@ -224,7 +224,7 @@ def lobe_shape(
 
     ``at`` is an argument rather than a closure over the caller's own centre so
     that one lobe list can be drawn at several places on the same surface,
-    which is how :func:`lobe_shaded` gets a shadow under a shape and a rim
+    which is how :func:`shape_shaded` gets a shadow under a shape and a rim
     along the top of it out of a single layout.
     """
 

@@ -230,3 +230,36 @@ def test_a_fixed_heavy_launch_goes_where_its_power_points() -> None:
 
     assert goblin.state_machine.current_state_name == "knockback"
     assert goblin.velocity.x > 0.0
+
+
+def test_a_negative_fixed_heavy_launch_reaches_the_state() -> None:
+    """``fixed`` with a negative x: the state gets a magnitude, not a signed force.
+
+    ``ReactionComponent`` passes the signed power to the launch state, which
+    applies it only when positive. The full damage path masks this because the
+    preceding simple push already set the velocity; calling the reaction
+    component directly must work too.
+    """
+    from pygame.sprite import Group
+
+    from src.combat.knockback import KnockbackConfig
+    from src.data.provider import shipped_gameplay_data
+    from src.entities.enemies.factory import create_enemy
+
+    goblin = create_enemy(
+        "goblin",
+        (100.0, 100.0),
+        Group(),
+        Group(),
+        None,
+        config=shipped_gameplay_data().enemies["goblin"],
+    )
+    goblin.on_surface["floor"] = True
+    source_on_the_right = goblin.hitbox.centerx + 50.0
+
+    goblin._handle_heavy_knockback(
+        KnockbackConfig(power=(-500.0, -100.0), mode="fixed"), source_on_the_right
+    )
+
+    assert goblin.state_machine.current_state_name == "knockback"
+    assert goblin.velocity.x < 0.0
