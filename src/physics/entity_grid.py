@@ -86,6 +86,8 @@ class EntityGrid:
         self._hash = SpatialHash(cell_size=cell_size)
         self._members: list[Any] = []
         self.indexed = False
+        self._pair_entities: Sequence[Any] | None = None
+        self._pair_position: dict[int, int] = {}
 
     def rebuild(self, entities: Iterable[Any]) -> int:
         """Re-bucket every entity in one pass; return the member count.
@@ -170,7 +172,10 @@ def overlapping_pairs(entities: Sequence[Any], grid: EntityGrid) -> Iterator[tup
     Yields:
         ``(ent_a, ent_b)`` pairs whose hitboxes truly overlap.
     """
-    position = {id(entity): index for index, entity in enumerate(entities)}
+    if grid._pair_entities is not entities:
+        grid._pair_entities = entities
+        grid._pair_position = {id(entity): index for index, entity in enumerate(entities)}
+    position = grid._pair_position
     # A grid that decided it was not worth indexing is walked exhaustively,
     # not queried. The two produce the same pairs in the same order, but the
     # query path also pays for a candidate sort per entity, which at a small

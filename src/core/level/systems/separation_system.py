@@ -50,9 +50,6 @@ class SeparationSystem:
             if not (ent_a.pushable or ent_b.pushable):
                 continue
 
-            if not ent_a.hitbox.colliderect(ent_b.hitbox):
-                continue
-
             overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
                 ent_a.hitbox.left, ent_b.hitbox.left
             )
