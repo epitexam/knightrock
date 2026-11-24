@@ -55,3 +55,10 @@ class PresentationSprite(pygame.sprite.Sprite):
     @property
     def faction(self) -> str:
         return self.entity.faction
+
+    def __getattr__(self, name: str) -> object:
+        """Delegate the combatant protocol to the underlying simulation row."""
+        entity = self.__dict__.get("entity")
+        if entity is None:  # pragma: no cover - guards a partially built proxy
+            raise AttributeError(name)
+        return getattr(entity, name)

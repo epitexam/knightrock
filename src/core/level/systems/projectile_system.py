@@ -212,7 +212,13 @@ class ProjectileSystem:
             stop_after_first=not config.pierce,
             record_contact=_record_target(targets, proxy),
         )
-        outcome = self.contact_system.resolve((box,), self.groups.entity_sprites, entity_grid)
+        movement = self.groups.movement_table
+        target_list = (
+            tuple(movement.iter_entities())
+            if movement is not None
+            else self.groups.entity_sprites
+        )
+        outcome = self.contact_system.resolve((box,), target_list, entity_grid)
         self.guard_events.extend(outcome.guard_events)
         self.impact_events.extend(outcome.impact_events)
         if outcome.metrics.contacts and not config.pierce:
