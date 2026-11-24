@@ -126,6 +126,7 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
         fx_sprites=TrackingGroup(),
         combat_sprites=TrackingGroup(),
         exit_sprites=TrackingGroup(),
+        movement_table=None,
     )
 
     level = Level.__new__(Level)
@@ -217,6 +218,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         fx_sprites=TrackingGroup(),
         combat_sprites=TrackingGroup(),
         exit_sprites=TrackingGroup(),
+        movement_table=None,
     )
     level = Level.__new__(Level)
     level.input_manager = Mock()

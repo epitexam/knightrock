@@ -112,6 +112,7 @@ class TestPhysicsSystem:
                 )
             ],
             fx_sprites=RecordingGroup(),
+            movement_table=None,
         )
 
     def test_carries_a_rider_before_integrating_the_entities(self) -> None:
