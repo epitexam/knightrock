@@ -32,7 +32,6 @@ def test_writes_reach_the_row_and_the_component_mirror() -> None:
     assert table.column("stagger_timer")[slot] == pytest.approx(0.25)
     assert table.column("super_armor")[slot] is True
     assert table.column("health")[slot] == 42.0
-    table.assert_mirror(slot)
 
 
 def test_a_standalone_vitals_still_works_without_a_table() -> None:

@@ -567,9 +567,10 @@ class Entity:
 
     @combat.setter
     def combat(self, value: CombatComponent | NullCombatComponent) -> None:
-        self._combat = value
         if self.combat_table is not None and self.combat_slot is not None:
             self.combat_table.column("combat")[self.combat_slot] = value
+        else:
+            self._combat = value
 
     @property
     def velocity(self) -> Vector2:
@@ -644,9 +645,10 @@ class Entity:
     @hitbox.setter
     def hitbox(self, value: pygame.FRect) -> None:
         """Rebind the collider, including the dense row when bound."""
-        self._pushbox = value
         if self.geometry_table is not None and self.geometry_slot is not None:
             self.geometry_table.column("hitbox")[self.geometry_slot] = value
+        else:
+            self._pushbox = value
 
     @property
     def hurtbox(self) -> pygame.FRect:
@@ -1145,12 +1147,20 @@ class Entity:
         if spatial_hash is not None:
             spatial_hash.remove(self)
         if self.movement_table is not None and self.movement_slot is not None:
-            self.movement_table.release(self.movement_slot)
+            slot = self.movement_slot
+            self._movement.velocity.update(
+                self.movement_table.column("vx")[slot], self.movement_table.column("vy")[slot]
+            )
+            for flag in ("floor", "left", "right"):
+                self._movement.on_surface[flag] = self.movement_table.column(flag)[slot]
+            self.movement_table.release(slot)
             self.movement_slot = None
         if self.geometry_table is not None and self.geometry_slot is not None:
+            self._pushbox = self.geometry_table.hitbox_of(self.geometry_slot)
             self.geometry_table.release(self.geometry_slot)
             self.geometry_slot = None
         if self.combat_table is not None and self.combat_slot is not None:
+            self._combat = self.combat_table.combat_of(self.combat_slot)
             self.combat_table.release(self.combat_slot)
             self.combat_slot = None
         if self.presentation is not None:

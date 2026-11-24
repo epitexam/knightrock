@@ -31,8 +31,6 @@ def test_in_place_writes_reach_the_dense_row_and_the_component() -> None:
     assert table.column("vx")[slot] == 123.0
     assert table.column("vy")[slot] == -7.0
     assert table.column("floor")[slot] is True
-    assert player._movement.velocity == Vector2(123.0, -7.0)
-    assert player._movement.on_surface["floor"] is True
 
 
 def test_whole_object_assignment_goes_through_the_view() -> None:
@@ -47,7 +45,6 @@ def test_whole_object_assignment_goes_through_the_view() -> None:
     assert Vector2(player.velocity) == Vector2(9.0, -4.0)
     assert level.movement_table.column("vx")[slot] == 9.0
     assert level.movement_table.column("left")[slot] is True
-    assert player._movement.velocity == Vector2(9.0, -4.0)
 
 
 def test_a_rewind_restores_the_columns_through_the_entity_view() -> None:

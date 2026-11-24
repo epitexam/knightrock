@@ -37,7 +37,6 @@ class Vector2View:
     @x.setter
     def x(self, value: float) -> None:
         self._table.column("vx")[self._slot] = float(value)
-        self._mirror.velocity.x = float(value)
 
     @property
     def y(self) -> float:
@@ -46,7 +45,6 @@ class Vector2View:
     @y.setter
     def y(self, value: float) -> None:
         self._table.column("vy")[self._slot] = float(value)
-        self._mirror.velocity.y = float(value)
 
     def update(self, x: float, y: float) -> None:
         self.x, self.y = x, y
@@ -92,7 +90,6 @@ class SurfaceFlagsView:
         if key not in _SURFACE_FLAGS:
             raise KeyError(key)
         self._table.column(key)[self._slot] = bool(value)
-        self._mirror.on_surface[key] = bool(value)
 
     def get(self, key: str, default: Any = None) -> Any:
         if key not in _SURFACE_FLAGS:

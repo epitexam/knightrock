@@ -87,6 +87,12 @@ class Vitals:
     def unbind(self) -> None:
         """Detach before the owner is killed and its row is reclaimed."""
         if self._table is not None and self._slot is not None:
+            for name in ("health", "max_health", "is_dead", "invincibility_timer",
+                         "invincibility_duration", "stagger_timer", "super_armor",
+                         "super_armor_count"):
+                self.__dict__[f"_{name}" if name in ("health", "max_health") else name] = (
+                    self._table.column(name)[self._slot]
+                )
             self._table.release(self._slot)
         self._table = None
         self._slot = None
@@ -100,12 +106,9 @@ class Vitals:
     def _set(self, name: str, value: Any) -> None:
         if self._table is not None and self._slot is not None:
             self._table.column(name)[self._slot] = value
-        # Write the mirror straight into the instance dict: these names are
-        # now properties, and ``setattr`` would recurse back into this method.
-        if name in ("health", "max_health"):
-            self.__dict__[f"_{name}"] = value
-        else:
-            self.__dict__[name] = value
+            return
+        key = f"_{name}" if name in ("health", "max_health") else name
+        self.__dict__[key] = value
 
     @property
     def health(self) -> float:
