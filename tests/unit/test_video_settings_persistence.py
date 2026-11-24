@@ -334,6 +334,33 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
     assert _relaunch(store, tmp_path).bindings == rebound
 
 
+def test_a_refused_apply_rolls_back_the_picture_as_well_as_the_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed window change must not leave the target fitted for the new choices."""
+    game, _store = _runtime(tmp_path)
+    assert game.presentation is not None
+    before_fit = game.presentation.fit
+    before_scale = game.presentation.render_scale
+    before_target = tuple(game.presentation.picture.target)
+
+    def refuse() -> None:
+        raise pygame.error("the platform refused the window")
+
+    monkeypatch.setattr(game, "_rebuild_display", refuse)
+    wanted = game.settings.with_video(
+        window_size=(1240, 700), fit=FitPolicy.ZOOM, render_scale=0.5
+    )
+    with pytest.raises(pygame.error):
+        game.apply_settings(wanted)
+
+    assert game.settings.fit == before_fit
+    assert game.settings.render_scale == before_scale
+    assert game.presentation.fit == before_fit
+    assert game.presentation.render_scale == before_scale
+    assert tuple(game.presentation.picture.target) == before_target
+
+
 def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) -> None:
     """The structural version of the same claim, restated against what survives it.
 

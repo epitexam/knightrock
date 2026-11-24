@@ -323,10 +323,16 @@ class Game:
             self.settings.render_scale,
         )
 
-    def _retarget(self) -> None:
-        """Refit the picture after the window changed size; follow it if the target is new."""
-        if self.screen.refit():
+    def _retarget(self) -> bool:
+        """Refit the picture after the window changed size; follow it if the target is new.
+
+        Returns whether the cascade already ran, so a caller changing several
+        settings at once can avoid following the target a second time.
+        """
+        changed = self.screen.refit()
+        if changed:
             self._follow_the_target()
+        return changed
 
     def _rebuild_display(self) -> None:
         """Recreate the window for the settings, then follow the new target."""
@@ -395,22 +401,27 @@ class Game:
             # it first also means a rebuild or a retarget fits the new target.
             if previous.render_scale != settings.render_scale:
                 scale_target_changed = self.presentation.set_render_scale(settings.render_scale)
+            followed = False
             if self._window_signature(previous) != self._window_signature(settings):
                 self._rebuild_display()
+                followed = True
             elif previous.fullscreen != settings.fullscreen:
                 self._set_fullscreen(settings.fullscreen)
+                followed = True
             elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
-                self._retarget()
-            if scale_target_changed:
-                # A rebuild and a fullscreen toggle already follow the target;
-                # doing it twice only clears caches that are empty the second
-                # time, which is cheaper than missing the cascade here.
+                followed = self._retarget()
+            if scale_target_changed and not followed:
                 self._follow_the_target()
             self.scene_manager.set_ui_scale(self.ui_scale)
         except Exception:
             self.settings = previous
             self.presentation.fit = previous_fit
             self.presentation.set_render_scale(previous_scale)
+            # The fit and the scale have to be rolled back in the picture as
+            # well as in the settings: restoring the fields alone leaves the
+            # target fitted for the settings we just refused.
+            if self.screen.is_open and self.screen.refit():
+                self._follow_the_target()
             self.input_bindings = previous.bindings
             self.input_router.set_bindings(previous.bindings)
             self.input_provider.set_bindings(previous.bindings)
