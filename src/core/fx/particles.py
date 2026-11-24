@@ -820,6 +820,9 @@ def _shade(color: Color, amount: float) -> Color:
     )
 
 
+_GRAIN_SURFACES: dict[tuple[int, float], pygame.Surface] = {}
+
+
 def _grain_surface(size: int, tint: float) -> pygame.Surface:
     """One speck, on a surface cut exactly to it.
 
@@ -831,8 +834,13 @@ def _grain_surface(size: int, tint: float) -> pygame.Surface:
     for.
     """
     side = max(1, int(size))
+    key = (side, round(tint, 3))
+    cached = _GRAIN_SURFACES.get(key)
+    if cached is not None:
+        return cached
     surface = pygame.Surface((side, side), pygame.SRCALPHA)
     speck(surface, _shade(FXColors.dust_grain, tint), (side // 2, side // 2), side)
+    _GRAIN_SURFACES[key] = surface
     return surface
 
 
@@ -1366,4 +1374,5 @@ def clear_frame_cache() -> None:
     _DASH_MOTES.clear()
     _shard_cache.clear()
     _shield_arc_cache.clear()
+    _GRAIN_SURFACES.clear()
     _vortex_cache = []

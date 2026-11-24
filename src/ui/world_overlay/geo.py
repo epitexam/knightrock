@@ -56,6 +56,23 @@ if TYPE_CHECKING:
 __all__ = ["GeoLayer"]
 
 
+#: Zone fills are pure functions of their size and colour; caching them keeps
+#: the DEBUG overlay from allocating a fresh surface per zone per frame.
+_ZONE_FILLS: dict[tuple[int, int, Color, int], pygame.Surface] = {}
+
+
+def _zone_fill(width: int, height: int, color: Color) -> pygame.Surface:
+    """A translucent SRCALPHA fill, keyed on everything that shapes it."""
+    key = (width, height, color, ZONE_FILL_ALPHA)
+    cached = _ZONE_FILLS.get(key)
+    if cached is not None:
+        return cached
+    surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    surface.fill((*color, ZONE_FILL_ALPHA))
+    _ZONE_FILLS[key] = surface
+    return surface
+
+
 class GeoLayer:
     """Draws one sprite's geometry and claims the screen space it used.
 
@@ -404,11 +421,11 @@ class GeoLayer:
             zone_tags = tags[index] if index < len(tags) else ()
             if zone != collider:
                 if mult != 1.0:
-                    fill = pygame.Surface(
-                        (max(1, int(screen_zone.width)), max(1, int(screen_zone.height))),
-                        pygame.SRCALPHA,
+                    fill = _zone_fill(
+                        max(1, int(screen_zone.width)),
+                        max(1, int(screen_zone.height)),
+                        color,
                     )
-                    fill.fill((*color, ZONE_FILL_ALPHA))
                     self.surface.blit(fill, (screen_zone.x, screen_zone.y))
                     pygame.draw.rect(
                         self.surface, color, screen_zone, width=self.metrics.zone_boost_outline

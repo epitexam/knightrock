@@ -595,6 +595,8 @@ class GridView:
         width = self._size_cache.get(key)
         if width is None:
             width = font.size(text)[0]
+            if len(self._size_cache) >= 2048:
+                self._size_cache.clear()
             self._size_cache[key] = width
         return width
 

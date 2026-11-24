@@ -300,6 +300,15 @@ class FeedbackSystem:
                 self._tick_footsteps(entity, delta_time, tier)
         entity.render_hints.landed_impact = 0.0
 
+    @staticmethod
+    def _keep_timers(timers: dict[int, Any], live: set[int]) -> None:
+        """Drop dead ids in place; an empty dict costs nothing."""
+        if not timers:
+            return
+        for entity_id in tuple(timers):
+            if entity_id not in live:
+                del timers[entity_id]
+
     def _cleanup_timers(
         self,
         sweating_ids: set[int],
@@ -309,39 +318,15 @@ class FeedbackSystem:
     ) -> None:
         # Drop timers of entities no longer sweating, dashing or dizzy (or
         # gone) so stale ids cannot leak into a later entity reusing the same
-        # memory address.
-        self._sweat_timers = {
-            entity_id: timer
-            for entity_id, timer in self._sweat_timers.items()
-            if entity_id in sweating_ids
-        }
-        # The dash timer is also how the burst is remembered as spent, so
-        # clearing it on the way out of a dash is what arms the next one.
-        self._dash_timers = {
-            entity_id: timer
-            for entity_id, timer in self._dash_timers.items()
-            if entity_id in dashing_ids
-        }
-        # Clean up dizzy timers for entities that are no longer dizzy.
-        self._dizzy_timers = {
-            entity_id: timer
-            for entity_id, timer in self._dizzy_timers.items()
-            if entity_id in dizzy_ids
-        }
-        self._dizzy_star_timers = {
-            entity_id: timer
-            for entity_id, timer in self._dizzy_star_timers.items()
-            if entity_id in dizzy_ids
-        }
-        # The clock is dropped with the others, so an entity that stops walking
-        # starts its next walk from a full stride rather than from whatever
-        # fraction of one it had when it stopped -- a mark laid three pixels
-        # into a step reads as a stutter when the fighter sets off again.
-        self._step_clocks = {
-            entity_id: clock
-            for entity_id, clock in self._step_clocks.items()
-            if entity_id in stepping_ids
-        }
+        # memory address. The dash timer also remembers that the burst was
+        # spent: clearing it on the way out of a dash arms the next one.
+        self._keep_timers(self._sweat_timers, sweating_ids)
+        self._keep_timers(self._dash_timers, dashing_ids)
+        self._keep_timers(self._dizzy_timers, dizzy_ids)
+        self._keep_timers(self._dizzy_star_timers, dizzy_ids)
+        # A stopped fighter starts its next walk from a full stride: a mark
+        # laid three pixels into a step reads as a stutter.
+        self._keep_timers(self._step_clocks, stepping_ids)
 
     def _tick_dash_dust(self, entity: Entity, delta_time: float) -> None:
         """Emit the dash trail: a burst on the first tick, puffs after that.

@@ -29,22 +29,26 @@ class Vector2View:
         self._table = table
         self._slot = slot
         self._mirror = mirror
+        # DenseTable never replaces a column list: it mutates it in place.
+        # Keeping the lists avoids one dict lookup on every read and write.
+        self._vx = table.column("vx")
+        self._vy = table.column("vy")
 
     @property
     def x(self) -> float:
-        return float(self._table.column("vx")[self._slot])
+        return float(self._vx[self._slot])
 
     @x.setter
     def x(self, value: float) -> None:
-        self._table.column("vx")[self._slot] = float(value)
+        self._vx[self._slot] = float(value)
 
     @property
     def y(self) -> float:
-        return float(self._table.column("vy")[self._slot])
+        return float(self._vy[self._slot])
 
     @y.setter
     def y(self, value: float) -> None:
-        self._table.column("vy")[self._slot] = float(value)
+        self._vy[self._slot] = float(value)
 
     def update(self, x: float, y: float) -> None:
         self.x, self.y = x, y
@@ -80,16 +84,17 @@ class SurfaceFlagsView:
         self._table = table
         self._slot = slot
         self._mirror = mirror
+        self._columns = {flag: table.column(flag) for flag in _SURFACE_FLAGS}
 
     def __getitem__(self, key: str) -> bool:
-        if key not in _SURFACE_FLAGS:
+        if key not in self._columns:
             raise KeyError(key)
-        return bool(self._table.column(key)[self._slot])
+        return bool(self._columns[key][self._slot])
 
     def __setitem__(self, key: str, value: bool) -> None:
-        if key not in _SURFACE_FLAGS:
+        if key not in self._columns:
             raise KeyError(key)
-        self._table.column(key)[self._slot] = bool(value)
+        self._columns[key][self._slot] = bool(value)
 
     def get(self, key: str, default: Any = None) -> Any:
         if key not in _SURFACE_FLAGS:
