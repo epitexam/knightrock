@@ -292,6 +292,18 @@ class StrikeTrails:
 
     # -- sampling ---------------------------------------------------------------
 
+    @staticmethod
+    def _retain_keys(mapping: dict[int, Any], live: set[int]) -> None:
+        for key in tuple(mapping):
+            if key not in live:
+                del mapping[key]
+
+    @staticmethod
+    def _retain_values(mapping: dict[Any, Any], keep: Callable[[Any], bool]) -> None:
+        for key in tuple(mapping):
+            if not keep(mapping[key]):
+                del mapping[key]
+
     def update(self, fighters: Iterable[Any], dt: float, shots: Iterable[Any] = ()) -> None:
         """Age every sample, then sample the fighters and the shots in flight."""
         self._clock += dt
@@ -303,10 +315,10 @@ class StrikeTrails:
             for sample in trail.samples:
                 sample.age += dt
             trail.samples = [s for s in trail.samples if s.age < trail.look.ttl]
-        self._warnings = []
+        self._warnings.clear()
         for dash in self._dashes.values():
             dash.age += dt
-        self._dashes = {k: d for k, d in self._dashes.items() if d.age < DASH_LINGER}
+        self._retain_values(self._dashes, lambda dash: dash.age < DASH_LINGER)
         rushing: dict[int, float] = {}
         charging: set[int] = set()
         for fighter in fighters:
@@ -316,11 +328,9 @@ class StrikeTrails:
             if self._sample_charge(fighter, dt):
                 charging.add(id(fighter))
             self._sample_warning(fighter)
-        self._charges = {key: charge for key, charge in self._charges.items() if key in charging}
+        self._retain_keys(self._charges, charging)
         self._rushing = rushing
-        self._trails = {
-            key: trail for key, trail in self._trails.items() if trail.samples or trail.live
-        }
+        self._retain_values(self._trails, lambda trail: bool(trail.samples) or trail.live is not None)
         self._sample_shots(shots, dt)
 
     def _sample(self, fighter: Any) -> None:

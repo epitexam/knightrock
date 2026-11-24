@@ -475,7 +475,7 @@ class PanelRenderer:
         *,
         density: float = 1.0,
         panel_scale: float = 1.0,
-        text_cache_capacity: int = 256,
+        text_cache_capacity: int = 1024,
     ) -> None:
         self.surface = surface
         if text_cache_capacity < 0:

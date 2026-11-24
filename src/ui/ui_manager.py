@@ -440,8 +440,8 @@ class UIManager:
         panels_ms = float(timing.get("panels_ms", 0.0))
         panel_p95 = float(timing.get("panels_p95_ms", 0.0))
         lines = [
-            f"FPS        {fps:5.1f}",
-            f"Frame      {frame_time:5.1f} ms",
+            f"FPS        {fps:5.0f}",
+            f"Frame      {frame_time:5.0f} ms",
             f"Overlays   {world_ms:5.2f} ms",
             f"Panels     {panels_ms:5.2f} ms",
             f"Panel p95  {panel_p95:5.2f} ms",
