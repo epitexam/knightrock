@@ -240,7 +240,11 @@ class FeedbackSystem:
         dashing_ids: set[int] = set()
         dizzy_ids: set[int] = set()
         stepping_ids: set[int] = set()
-        for entity in self.groups.entity_sprites:
+        table = self.groups.movement_table
+        fighters = (
+            table.iter_entities() if table is not None else iter(self.groups.entity_sprites)
+        )
+        for entity in fighters:
             self._process_entity_fx(
                 entity, delta_time, sweating_ids, dashing_ids, dizzy_ids, stepping_ids
             )

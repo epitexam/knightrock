@@ -1249,6 +1249,7 @@ def test_penalty_dashers_sweat_on_a_cadence() -> None:
         entity_sprites=pygame.sprite.Group(entity),
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
+        movement_table=None,
     )
     system = FeedbackSystem(groups)
 
@@ -1269,6 +1270,7 @@ def test_dash_pools_stop_sweating_when_penalty_ends() -> None:
         entity_sprites=pygame.sprite.Group(entity),
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
+        movement_table=None,
     )
     system = FeedbackSystem(groups)
 
@@ -1283,6 +1285,7 @@ def test_sweat_stops_when_the_dasher_leaves_the_level() -> None:
         entity_sprites=pygame.sprite.Group(entity),
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
+        movement_table=None,
     )
     system = FeedbackSystem(groups)
     system.after_movement(1 / 60)
@@ -1300,6 +1303,7 @@ def test_dash_only_entities_never_sweat() -> None:
         entity_sprites=pygame.sprite.Group(entity),
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
+        movement_table=None,
     )
     system = FeedbackSystem(groups)
 
