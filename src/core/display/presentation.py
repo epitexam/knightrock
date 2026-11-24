@@ -78,9 +78,15 @@ class Presentation:
         wanted = max(0.1, min(1.0, float(scale)))
         if wanted == self.render_scale:
             return False
+        # Keep the minimum-window rule: a scale change is not a reason to fit
+        # a window in which the interface cannot be laid out.
+        if self._fitted is not None and self._is_too_small():
+            return False
         self.render_scale = wanted
-        self._fitted = None
-        return self.recompute()
+        # Force a new target even when rounding gives the same virtual size:
+        # the frame buffer itself changes with the scale, and the caller must
+        # re-point the scene stack at it.
+        return self.recompute(force=True)
 
     @property
     def surface(self) -> pygame.Surface:
@@ -92,7 +98,7 @@ class Presentation:
         """Target pixels per world unit, read off the target."""
         return self.viewport.density
 
-    def recompute(self) -> bool:
+    def recompute(self, *, force: bool = False) -> bool:
         """Fit the window again; return whether the target surface is new.
 
         A window under :data:`~src.core.display.monitors.MIN_WINDOW` is refused
@@ -123,7 +129,7 @@ class Presentation:
         else:
             self._frame = None
         # Placed on every call: the picture can move without changing size.
-        if self.picture.target.size == self._fitted:
+        if self.picture.target.size == self._fitted and not force:
             return False
         self._fitted = self.picture.target.size
         self.viewport = Viewport(self.framing, self._fitted, convert=self.convert)

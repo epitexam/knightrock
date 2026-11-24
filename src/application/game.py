@@ -386,17 +386,25 @@ class Game:
         previous_fit = self.presentation.fit
         previous_scale = self.presentation.render_scale
         self.presentation.fit = self.effective_fit()
+        scale_target_changed = False
         try:
+            # The scale is not part of the if/elif chain below: a single call can
+            # change it together with the fit (the Video screen's reset does),
+            # and an `elif` would silently leave the picture scaled while the
+            # settings -- and the label on the row -- said otherwise. Applying
+            # it first also means a rebuild or a retarget fits the new target.
+            if previous.render_scale != settings.render_scale:
+                scale_target_changed = self.presentation.set_render_scale(settings.render_scale)
             if self._window_signature(previous) != self._window_signature(settings):
                 self._rebuild_display()
             elif previous.fullscreen != settings.fullscreen:
                 self._set_fullscreen(settings.fullscreen)
             elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
                 self._retarget()
-            elif (
-                previous.render_scale != settings.render_scale
-                and self.presentation.set_render_scale(settings.render_scale)
-            ):
+            if scale_target_changed:
+                # A rebuild and a fullscreen toggle already follow the target;
+                # doing it twice only clears caches that are empty the second
+                # time, which is cheaper than missing the cascade here.
                 self._follow_the_target()
             self.scene_manager.set_ui_scale(self.ui_scale)
         except Exception:

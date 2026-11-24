@@ -356,6 +356,16 @@ def test_a_click_round_trips_at_every_render_scale(window: tuple[int, int], scal
     assert not presentation.pointer_in_viewport(outside)
 
 
+def test_a_scale_change_cannot_fit_a_window_below_the_floor() -> None:
+    """The render scale is not a back door around the minimum window rule."""
+    stage = FakeStage((240, 180))
+    presentation = Presentation(stage.surface, FRAMING)
+    target = presentation.surface
+    assert presentation.set_render_scale(0.5) is False
+    assert presentation.surface is target
+    assert presentation.render_scale == 1.0
+
+
 def test_changing_the_render_scale_repoints_the_target() -> None:
     """A scale change is a new render target, so the caller must follow it."""
     presentation = _presentation((1920, 1080))

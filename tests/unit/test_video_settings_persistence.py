@@ -298,7 +298,20 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
     game, store = _runtime(tmp_path)
     rebound = _rebound_bindings(game)
     game.apply_bindings(rebound)
-    game.apply_settings(game.settings.with_video(vsync=True, frame_limit=144, ui_scale=1.2))
+    # A non-default fit and render scale are the case the old `elif` chain
+    # missed: the reset changes both at once, so the scale used to be written
+    # back to 1.0 while the picture stayed upscaled.
+    game.apply_settings(
+        game.settings.with_video(
+            fit=FitPolicy.ZOOM,
+            vsync=True,
+            frame_limit=144,
+            render_scale=0.5,
+            ui_scale=1.2,
+        )
+    )
+    assert game.presentation is not None
+    assert game.presentation.render_scale == 0.5
     game.scene_manager.push(VideoScene(game))
     scene = game.scene_manager.current
     assert isinstance(scene, VideoScene)
@@ -310,6 +323,13 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
     assert game.settings.vsync is UserSettings().vsync
     assert game.settings.frame_limit == UserSettings().frame_limit
     assert game.settings.ui_scale == UserSettings().ui_scale
+    assert game.settings.fit == UserSettings().fit
+    assert game.settings.render_scale == UserSettings().render_scale
+    assert game.presentation is not None
+    assert game.presentation.render_scale == UserSettings().render_scale, (
+        "the settings were reset but the picture is still upscaled"
+    )
+    assert game.presentation.picture.window == game.presentation.stage.get_size()
     assert game.settings.bindings == rebound, "the bindings are not this screen's to reset"
     assert _relaunch(store, tmp_path).bindings == rebound
 
