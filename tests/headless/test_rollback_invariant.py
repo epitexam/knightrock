@@ -30,6 +30,7 @@ from src.core.level.level_data import LevelConfig, LevelData, ObjectData, Object
 from src.entities.entity import Entity
 from src.entities.player import Player
 from src.entities.player_kit import PromptKind
+from tests.conftest import requires_assets
 from tests.headless.conftest import make_viewport
 
 #: Attribute names that are not simulation state, and why.
@@ -176,6 +177,7 @@ def _scramble(level: Level) -> None:
             entity.prompt.open(PromptKind.THROW, "e0", random.Random(index))
 
 
+@requires_assets
 def test_a_restore_brings_back_every_simulated_value() -> None:
     level, pad = _level()
     attack, dash = frozenset({InputAction.ATTACK_1}), frozenset({InputAction.DASH})
@@ -211,6 +213,7 @@ def test_a_restore_brings_back_every_simulated_value() -> None:
     )
 
 
+@requires_assets
 def test_a_replay_from_a_restore_ends_where_the_first_run_did() -> None:
     """Restore, replay the same input: the end state is the same, to the last field."""
     level, pad = _level()

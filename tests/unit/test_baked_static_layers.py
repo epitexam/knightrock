@@ -25,6 +25,10 @@ from src.core.input.input_manager import InputManager  # noqa: E402
 from src.core.level.level import Level  # noqa: E402
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager  # noqa: E402
 from src.core.rendering.static_layer import bake_static_layer  # noqa: E402
+from tests.conftest import requires_assets  # noqa: E402
+
+# The real level and its tile art are git-ignored; a fresh checkout has neither.
+pytestmark = requires_assets
 
 
 def _level(window: tuple[int, int] = (1152, 648)) -> Level:
