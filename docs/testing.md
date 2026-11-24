@@ -1,5 +1,9 @@
 # Tests & quality
 
+The suite is the contract: it runs headless, in a fixed order, and pins behaviour
+rather than implementation. Start here before changing anything that touches
+combat, rendering or settings.
+
 ```bash
 uv run pytest
 ```
@@ -45,10 +49,22 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-`tests/unit/test_readme_claims.py` runs as part of the suite and re-checks this
-file: it recounts the collected tests and asserts that every test-count figure
-here equals the real one, and that the coverage badge and the coverage pair agree
-with each other. It checks internal consistency, not truth — keep this section in
-sync when the numbers move.
+`tests/unit/test_readme_claims.py` runs as part of the suite and re-checks the
+**root README**: it recounts the collected tests and asserts that every test-count
+figure there equals the real one, and that the coverage badge and the coverage
+pair agree with each other. It checks internal consistency, not truth — keep the
+numbers in sync when they move.
 
----
+## See also
+
+- [Benchmarks](benchmarks.md) — measurement scripts are smoke-tested here, not timed.
+- [Development](development.md) — conventions and the module reading map.
+
+[^coverage]: Measured on this commit. `tests/unit/test_readme_claims.py` checks
+    that the figures agree with each other, not that they agree with a run.
+
+[^mypy-tests]: Adding `tests/` to the mypy gate means first paying roughly 1400
+    errors across 122 files of intentionally loose test doubles. That figure grows
+    with every new test module — re-measure with `uv run mypy tests` rather than
+    trusting it, and note that it is far higher under recent mypy releases than
+    when it was first recorded.

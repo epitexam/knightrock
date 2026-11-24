@@ -1,5 +1,9 @@
 # Development
 
+Start with the [module map](#reading-the-code-module-by-module) if you are new to
+the tree. The conventions below explain the choices that are hardest to see from
+a single file.
+
 ## Reading the code, module by module
 
 | Module | Owns |
@@ -27,7 +31,6 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 > `tests/unit/test_layer_boundaries.py` enforces the direction, so the next
 > convenient import does not put it back.
 
----
 
 ## Conventions
 
@@ -70,7 +73,6 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
   which is pinned to the protocols it imitates. Production code does not read a
   declared field through `getattr(x, name, default)` to tolerate a partial fake.
 
----
 
 ## Further notes
 
@@ -80,12 +82,8 @@ Written in French unless stated otherwise.
 |---|---|
 | `docs/design/matrice-niveaux.md` | Proposal, not implemented: a world of rooms laid out as a matrix. |
 
----
+## See also
 
-[^coverage]: Measured on this commit. `tests/unit/test_readme_claims.py` checks
-    that the figures agree with each other, not that they agree with a run.
-
-[^mypy-tests]: Adding `tests/` to the mypy gate means first paying roughly 1400
-    errors across 122 files of intentionally loose test doubles. That figure grows
-    with every new test module — re-measure with `uv run mypy tests` rather than
-    trusting it, and note that it is far higher under recent mypy releases than
+- [Architecture and rendering](architecture.md) — the pipeline these modules
+  implement.
+- [Tests and quality](testing.md) — the gates that keep the conventions true.

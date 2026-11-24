@@ -1,5 +1,20 @@
 # Controls and options
 
+> **The one rule worth remembering:** a direction prompt accepts **only** a
+> direction — arrow key, D-pad, stick, or a button you explicitly rebound to a
+> direction. `Space` / `A` is Jump and never answers a prompt. Tap lengths shorter
+> than a frame are latched, including during hit-stop.
+
+```mermaid
+flowchart LR
+    K[Keyboard arrows] --> A[InputAction.MOVE_UP / DOWN / MOVE_X]
+    H[D-pad hat] --> A
+    S[Left stick axis] --> A
+    B[Rebound pad button] --> A
+    A --> IM[InputManager: held + just_pressed]
+    IM --> P[Direction prompt]
+```
+
 ## Controls
 
 **Keyboard**
@@ -159,4 +174,8 @@ the video one leaves your controls alone. A file that cannot be read is reported
 in the log with its reason rather than silently replaced, and the file being
 overwritten is kept as `settings.json.bak`.
 
----
+## See also
+
+- [Architecture and rendering](architecture.md) — how input reaches the fixed-tick
+  simulation.
+- [Debugging](debugging.md) — the F-key bench, including the prompt showcase.

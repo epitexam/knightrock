@@ -26,4 +26,8 @@ measured A/B and the reason for the narrow perimeter are in
    artifacts, with a **headless smoke test** that boots the packaged binary;
 3. publishes a GitHub Release with those artifacts when a `v*` tag is pushed.
 
----
+## See also
+
+- [Tests and quality](testing.md) — the gates the workflow runs before packaging.
+- [Benchmarks](benchmarks.md) — the optional native build is measured here, not
+  shipped in the bundle.

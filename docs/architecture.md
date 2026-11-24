@@ -1,6 +1,33 @@
 # Architecture and rendering
 
-## How it works
+> **In one sentence:** the simulation runs at a fixed 60 Hz in world units; the
+> renderer paints one frame into a target derived from the window; `Presentation`
+> puts that target on screen, optionally from a smaller internal frame.
+
+## The frame at a glance
+
+```mermaid
+flowchart LR
+    I[Input: keyboard / pad] --> SIM[Fixed 60 Hz simulation]
+    SIM --> W[World state: ECS tables + fighter proxies]
+    W --> C[Camera: framing + density]
+    W --> R[Renderer: cull and paint planes]
+    C --> R
+    R --> T[Render target]
+    T --> P{Presentation scale}
+    P -->|1.0| S[Window: 1:1 blit]
+    P -->|0.75 / 0.5| F[Offscreen frame] --> U[Upscale] --> S
+```
+
+> **Read this first:** the simulation never sees a window, a DPI or a render
+> scale. Everything display-related lives to the right of the camera.
+
+**On this page:** [rendering model](#rendering-model) ·
+[framing](#framing) · [camera and culling](#camera-rounding-and-culling) ·
+[physics](#physics-and-assists) · [combat](#combat-and-knockback) ·
+[draw planes](#draw-planes) · [code layout](#architecture)
+
+## Rendering model
 
 ### Framing
 
@@ -380,9 +407,23 @@ counter — reads `SpriteGroups.every_sprite` instead of one group. The index
 decides which sprites are *worth asking about*; `Camera.is_visible` still decides
 which are drawn, so a chunk can over-select but never under-select.
 
----
 
 ## Architecture
+
+Scenes own their lifecycle. A synchronous, ordered event bus publishes **facts**;
+systems and the audio bus subscribe without knowing which screen produced them.
+
+```mermaid
+flowchart TD
+    Game[Game: composition root] --> Stack[Scene stack]
+    Stack --> Menus[Menu / Options / Controls]
+    Stack --> Play[Gameplay scene]
+    Play --> Level[Level: ordered fixed-tick systems]
+    Menus --> Bus[(Event bus: facts)]
+    Play --> Bus
+    Bus --> Audio[Audio bus: navigate / confirm / back]
+    Bus --> HUD[HUD and panels]
+```
 
 ```
 src/
@@ -415,3 +456,9 @@ data/gameplay/     Tracked JSON gameplay values
 assets/            TMX levels and sprites — required at runtime
 docs/              Audit reports, measurements, open points, design proposals
 ```
+
+## See also
+
+- [Data-driven gameplay](data.md) — where world values come from.
+- [Debugging](debugging.md) — how to inspect the pipeline live.
+- [Benchmarks](benchmarks.md) — what each part of the frame costs.

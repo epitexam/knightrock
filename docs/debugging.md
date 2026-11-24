@@ -1,9 +1,9 @@
 # Debugging
 
-Everything below is inert unless the game runs with `DEBUG=1` (or
-`--debug`). Pressing an F-key without the flag shows a transitory notice naming
-it once, then stops — a key that silently does nothing is indistinguishable from
-a bug, but the flag is never implied either.
+> **The flag matters.** Everything below is inert unless the game runs with
+> `DEBUG=1` (or `--debug`). Pressing an F-key without the flag shows a transitory
+> notice naming it once, then stops: a key that silently does nothing is
+> indistinguishable from a bug, but the flag is never implied either.
 
 ## Test bench
 
@@ -76,3 +76,8 @@ contact damage keep **discrete** collision.
 > Measured on level 0 at 1280×720, dropping the layer took the whole overlay pass
 > from **1.98 ms to 0.09 ms** — 1.9 ms of a 16.7 ms budget, for a picture of the
 > tileset.
+
+## See also
+
+- [Benchmarks](benchmarks.md) — the standalone measurements behind these numbers.
+- [Architecture and rendering](architecture.md) — what the overlay is describing.

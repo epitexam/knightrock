@@ -4,6 +4,16 @@ Attacks, enemies, the player and the level registry live in **tracked JSON** und
 `data/gameplay/`. These files are versioned — unlike `assets/` — so balance changes
 are reviewable in a pull request. The frozen dataclasses stay the runtime model.
 
+```mermaid
+flowchart LR
+    J[data/gameplay/*.json] --> L{Strict loader}
+    L -->|valid| F[Frozen dataclasses]
+    L -->|unknown key / bad reference| E[GameplayDataError]
+    L -->|file missing| D[In-code fallback + warning]
+    F --> G[Gameplay systems]
+    D --> G
+```
+
 | File | Contents |
 |---|---|
 | `attacks.json` | Named attack sets (`player`, `goblin`, `slime`, …) with full frame data. |
@@ -27,4 +37,8 @@ data problem.
 | `SDL_VIDEODRIVER=dummy` | Headless rendering (CI, automated tests). |
 | `SDL_AUDIODRIVER=dummy` | Headless audio (CI, automated tests). |
 
----
+## See also
+
+- [Architecture and rendering](architecture.md) — how these values reach the
+  simulation and the renderer.
+- [Development](development.md) — the module map, including `src/data/`.
