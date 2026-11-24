@@ -11,7 +11,7 @@ import logging
 import pygame
 
 from .framing import DEFAULT_FRAMING, Framing
-from .letterbox import FitPolicy, Picture, picture
+from .letterbox import FitPolicy, Picture, density_for, picture
 from .monitors import MIN_WINDOW
 from .viewport import Viewport
 
@@ -20,6 +20,26 @@ logger = logging.getLogger(__name__)
 #: The letterbox strips: the darkest shade of the menus' background, so a
 #: wide screen reads as a frame around the picture rather than a broken one.
 BAR_COLOR = (10, 11, 15)
+
+#: The density at which the smallest offered UI preference still reaches
+#: ``ui.MIN_UI_SCALE``: 0.25 / 0.8. Kept here because ``core/display`` must not
+#: import the interface layer; :mod:`tests.unit.test_presentation` pins the two
+#: halves together so this number cannot drift from the ladders.
+MIN_DENSITY_FOR_UI = 0.3125
+
+
+def render_scale_is_usable(
+    window: tuple[int, int], scale: float, framing: Framing = DEFAULT_FRAMING
+) -> bool:
+    """Whether a scale leaves the internal target dense enough for the UI.
+
+    The window floor alone is not enough once the picture is shrunk: at
+    640x480 with a 0.5 scale the target is 320x240, and the smallest UI
+    preference produces a scale ``checked_ui_scale`` refuses. The game would
+    die on the first view it builds.
+    """
+    virtual = (max(1, round(window[0] * scale)), max(1, round(window[1] * scale)))
+    return density_for(picture(virtual, framing).target.size, framing) >= MIN_DENSITY_FOR_UI
 
 
 class Presentation:
@@ -43,7 +63,14 @@ class Presentation:
         self.framing = framing
         self.fit = fit
         self.convert = convert
-        self.render_scale = max(0.1, min(1.0, float(render_scale)))
+        wanted = max(0.1, min(1.0, float(render_scale)))
+        if not render_scale_is_usable(stage.get_size(), wanted, framing):
+            # A saved scale from a larger window must not take the game down on
+            # boot. The caller reads our effective scale back and corrects the
+            # settings file, so the two cannot disagree after this clamp.
+            logger.warning("Render scale %s is too small for this window; using 1.0", wanted)
+            wanted = 1.0
+        self.render_scale = wanted
         self._frame: pygame.Surface | None = None
         self.rect = pygame.Rect(0, 0, 1, 1)
         self.viewport: Viewport
@@ -73,6 +100,12 @@ class Presentation:
         self._painted = None
         return self.recompute()
 
+    def can_use_render_scale(
+        self, scale: float, window_size: tuple[int, int] | None = None
+    ) -> bool:
+        """Whether ``scale`` leaves a target the interface can be laid out in."""
+        return render_scale_is_usable(window_size or self.window_size, scale, self.framing)
+
     def set_render_scale(self, scale: float) -> bool:
         """Adopt a new internal resolution; return whether the target changed."""
         wanted = max(0.1, min(1.0, float(scale)))
@@ -80,7 +113,9 @@ class Presentation:
             return False
         # Keep the minimum-window rule: a scale change is not a reason to fit
         # a window in which the interface cannot be laid out.
-        if self._fitted is not None and self._is_too_small():
+        if self._fitted is not None and (
+            self._is_too_small() or not self.can_use_render_scale(wanted)
+        ):
             return False
         self.render_scale = wanted
         # Force a new target even when rounding gives the same virtual size:

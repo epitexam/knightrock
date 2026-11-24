@@ -26,7 +26,12 @@ from src.application.settings_store import UI_SCALES  # noqa: E402
 from src.core.display.framing import Framing  # noqa: E402
 from src.core.display.letterbox import density_for, picture  # noqa: E402
 from src.core.display.monitors import MIN_WINDOW  # noqa: E402
-from src.core.display.presentation import BAR_COLOR, Presentation  # noqa: E402
+from src.core.display.presentation import (  # noqa: E402
+    BAR_COLOR,
+    MIN_DENSITY_FOR_UI,
+    Presentation,
+    render_scale_is_usable,
+)
 from src.ui.scale import MIN_UI_SCALE, checked_ui_scale  # noqa: E402
 
 FRAMING = Framing(1152.0, 648.0)
@@ -354,6 +359,20 @@ def test_a_click_round_trips_at_every_render_scale(window: tuple[int, int], scal
 
     outside = (rect.x - 1, rect.centery) if rect.x else (rect.centerx, rect.y - 1)
     assert not presentation.pointer_in_viewport(outside)
+
+
+def test_the_render_scale_floor_and_the_interface_floor_are_the_same_number() -> None:
+    """The display layer cannot import the UI layer, so pin the duplicated value."""
+    assert pytest.approx(MIN_UI_SCALE / min(UI_SCALES)) == MIN_DENSITY_FOR_UI
+    assert not render_scale_is_usable((640, 480), 0.5)
+    assert render_scale_is_usable((640, 480), 1.0)
+
+
+def test_an_unusable_saved_scale_is_clamped_at_construction() -> None:
+    """A scale saved on a bigger desk must not kill the boot on a small window."""
+    presentation = Presentation(FakeStage((640, 480)).surface, FRAMING, render_scale=0.5)
+    assert presentation.render_scale == 1.0
+    assert presentation.surface.get_width() >= 1
 
 
 def test_a_scale_change_cannot_fit_a_window_below_the_floor() -> None:

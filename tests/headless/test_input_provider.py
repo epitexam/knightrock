@@ -187,6 +187,15 @@ def test_a_rebound_pad_button_can_answer_up(monkeypatch: pytest.MonkeyPatch) -> 
     joystick.buttons[7] = True
     assert InputAction.MOVE_UP in provider.poll().held_actions
 
+    # A tap made during hit-stop is over before the next poll: the latched
+    # edge is the only thing the prompt can answer with.
+    joystick.buttons[7] = False
+    provider.poll()
+    provider.note_event(
+        pygame.event.Event(pygame.JOYBUTTONDOWN, button=7, instance_id=joystick.get_instance_id())
+    )
+    assert InputAction.MOVE_UP in provider.poll().held_actions
+
 
 @pytest.mark.parametrize(
     ("hat", "menu_action", "crouching"),

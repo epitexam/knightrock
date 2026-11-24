@@ -340,6 +340,8 @@ def test_a_refused_apply_rolls_back_the_picture_as_well_as_the_settings(
     """A failed window change must not leave the target fitted for the new choices."""
     game, _store = _runtime(tmp_path)
     assert game.presentation is not None
+    overlay = game.world_overlay(game.presentation.surface)
+    before_panel = overlay.renderer._panel_scale
     before_fit = game.presentation.fit
     before_scale = game.presentation.render_scale
     before_target = tuple(game.presentation.picture.target)
@@ -349,16 +351,36 @@ def test_a_refused_apply_rolls_back_the_picture_as_well_as_the_settings(
 
     monkeypatch.setattr(game, "_rebuild_display", refuse)
     wanted = game.settings.with_video(
-        window_size=(1240, 700), fit=FitPolicy.ZOOM, render_scale=0.5
+        window_size=(1240, 700), fit=FitPolicy.ZOOM, render_scale=0.5, panel_scale=0.4
     )
     with pytest.raises(pygame.error):
         game.apply_settings(wanted)
 
     assert game.settings.fit == before_fit
     assert game.settings.render_scale == before_scale
+    assert game.settings.panel_scale == 1.0
+    assert overlay.renderer._panel_scale == before_panel, "the debug panels changed anyway"
     assert game.presentation.fit == before_fit
     assert game.presentation.render_scale == before_scale
     assert tuple(game.presentation.picture.target) == before_target
+
+
+def test_a_scale_too_small_for_the_window_is_refused_without_desync(
+    tmp_path: Path,
+) -> None:
+    """A refused scale must not be written to the file or shown in the menu."""
+    game, store = _runtime(tmp_path)
+    assert game.presentation is not None
+    game.presentation.retarget(pygame.Surface((640, 480)))
+    game._retarget()
+    before = game.settings
+
+    with pytest.raises(pygame.error, match="render scale"):
+        game.apply_settings(before.with_video(render_scale=0.5))
+
+    assert game.settings.render_scale == before.render_scale
+    assert game.presentation.render_scale == before.render_scale
+    assert _relaunch(store, tmp_path).render_scale == before.render_scale
 
 
 def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) -> None:

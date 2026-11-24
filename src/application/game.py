@@ -1,5 +1,6 @@
 import logging
 import traceback
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 
@@ -322,6 +323,18 @@ class Game:
             self.settings.last_window_screen,
             self.settings.render_scale,
         )
+        # Presentation clamps a scale that would leave the interface unreadable
+        # on this window (e.g. a 0.5 preference saved on a 4K desk, reopened on
+        # a small laptop). Adopt its decision as the setting so the file, the
+        # Video row and the picture all agree from the first frame.
+        assert self.presentation is not None
+        if self.presentation.render_scale != self.settings.render_scale:
+            logger.warning(
+                "Render scale %s was reduced to %s for this window",
+                self.settings.render_scale,
+                self.presentation.render_scale,
+            )
+            self.settings = replace(self.settings, render_scale=self.presentation.render_scale)
 
     def _retarget(self) -> bool:
         """Refit the picture after the window changed size; follow it if the target is new.
@@ -364,6 +377,29 @@ class Game:
         """The screen the window is on, or ``None`` when nobody can say."""
         return self.screen.window_monitor()
 
+    def _check_render_scale(self, settings: UserSettings) -> None:
+        """Refuse a scale that would leave the interface unreadable."""
+        if self.stage is None or self.presentation is None:
+            return
+        wanted_window = settings.window_size or self.presentation.window_size
+        if not self.presentation.can_use_render_scale(settings.render_scale, wanted_window):
+            raise pygame.error(
+                "That render scale is too small for this window: the interface "
+                "would not be readable."
+            )
+
+    def _apply_display_changes(self, previous: UserSettings, settings: UserSettings) -> bool:
+        """Apply the window/fullscreen/fit part of a change; was the target followed?"""
+        if self._window_signature(previous) != self._window_signature(settings):
+            self._rebuild_display()
+            return True
+        if previous.fullscreen != settings.fullscreen:
+            self._set_fullscreen(settings.fullscreen)
+            return True
+        if previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
+            return self._retarget()
+        return False
+
     def apply_settings(self, settings: UserSettings) -> None:
         """Apply new settings, doing only what the change touches.
 
@@ -372,6 +408,7 @@ class Game:
         written last and the in-memory state rolled back on failure, so a refused
         ``set_mode`` never leaves a file describing a window that does not exist.
         """
+        self._check_render_scale(settings)
         previous = self.settings
         self.settings = settings
         self.input_bindings = settings.bindings
@@ -401,20 +438,15 @@ class Game:
             # it first also means a rebuild or a retarget fits the new target.
             if previous.render_scale != settings.render_scale:
                 scale_target_changed = self.presentation.set_render_scale(settings.render_scale)
-            followed = False
-            if self._window_signature(previous) != self._window_signature(settings):
-                self._rebuild_display()
-                followed = True
-            elif previous.fullscreen != settings.fullscreen:
-                self._set_fullscreen(settings.fullscreen)
-                followed = True
-            elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
-                followed = self._retarget()
+                if not scale_target_changed:
+                    raise pygame.error("The render scale could not be applied")
+            followed = self._apply_display_changes(previous, settings)
             if scale_target_changed and not followed:
                 self._follow_the_target()
             self.scene_manager.set_ui_scale(self.ui_scale)
         except Exception:
             self.settings = previous
+            self._apply_panel_scale(previous)
             self.presentation.fit = previous_fit
             self.presentation.set_render_scale(previous_scale)
             # The fit and the scale have to be rolled back in the picture as
