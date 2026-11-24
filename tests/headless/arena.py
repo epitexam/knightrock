@@ -7,6 +7,7 @@ is a real ``Level`` on a long floor, so every stage of the tick runs.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import pygame
 
@@ -84,7 +85,7 @@ def arena() -> tuple[Level, Pad, Player]:
     return level, pad, level.player
 
 
-def foe(level: Level, name: str, x: float, **changes: object) -> Enemy:
+def foe(level: Level, name: str, x: float, **changes: Any) -> Enemy:
     """Put an enemy of type ``name`` in the arena, its config changed by ``changes``."""
     config = replace(DATA.enemies[name], **changes) if changes else DATA.enemies[name]
     enemy = create_enemy(

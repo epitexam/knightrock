@@ -41,7 +41,16 @@ def _run(cwd: Path, iterations: int) -> dict[str, object]:
     lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
     if not lines:
         raise RuntimeError(f"no measurement in:\n{result.stdout[-2000:]}")
-    return json.loads(lines[-1])
+    report: dict[str, object] = json.loads(lines[-1])
+    return report
+
+
+def _number(report: dict[str, object], key: str) -> float:
+    """A JSON number, checked: a missing or renamed field must fail loudly."""
+    value = report[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RuntimeError(f"benchmark field {key!r} is not a number: {value!r}")
+    return float(value)
 
 
 def _pure_tree(temp: Path) -> Path:
@@ -69,17 +78,15 @@ def main() -> None:
     samples: dict[str, list[float]] = {"native": [], "pure": []}
     checksums: set[float] = set()
     with tempfile.TemporaryDirectory(prefix="knightrock-native-ab-") as scratch:
-        pure = _pure_tree(Path(scratch))
+        pure_tree = _pure_tree(Path(scratch))
         for round_number in range(args.rounds):
             order = ("native", "pure") if round_number % 2 == 0 else ("pure", "native")
             for mode in order:
-                result = _run(ROOT if mode == "native" else pure, args.iterations)
-                checksums.add(float(result["checksum"]))
-                samples[mode].append(float(result["median_ms"]))
-                print(
-                    f"round {round_number + 1}: {mode:>6} "
-                    f"{float(result['median_ms']):.3f} ms/iteration"
-                )
+                result = _run(ROOT if mode == "native" else pure_tree, args.iterations)
+                checksums.add(_number(result, "checksum"))
+                ms = _number(result, "median_ms")
+                samples[mode].append(ms)
+                print(f"round {round_number + 1}: {mode:>6} {ms:.3f} ms/iteration")
 
     if len(checksums) != 1:
         raise SystemExit(f"the modes disagree on the world: {sorted(checksums)}")
