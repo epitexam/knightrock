@@ -309,6 +309,12 @@ class Renderer:
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     @staticmethod
+    def _entity_of(sprite: pygame.sprite.Sprite) -> Any:
+        """The simulation object behind a draw proxy, or the sprite itself."""
+        proxy = getattr(sprite, "entity", None)
+        return proxy if proxy is not None else sprite
+
+    @staticmethod
     def _interpolation_lag(groups: SpriteGroups, alpha: float) -> dict[int, tuple[float, float]]:
         """How far behind its simulated position each moving fighter is drawn.
 
@@ -324,7 +330,8 @@ class Renderer:
         if behind <= 0.0:
             return lag
         limit = Interpolation.MAX_STEP_PX
-        for fighter in groups.entity_sprites:
+        for proxy in groups.presentation_sprites or groups.entity_sprites:
+            fighter = Renderer._entity_of(proxy)
             previous = fighter.render_hints.previous_center
             if previous is None:
                 continue
@@ -339,7 +346,7 @@ class Renderer:
         self, sprite: pygame.sprite.Sprite, rect: pygame.FRect | pygame.Rect
     ) -> pygame.FRect | pygame.Rect:
         """``rect`` moved to where this frame draws the sprite."""
-        lag = self._lag.get(id(sprite))
+        lag = self._lag.get(id(self._entity_of(sprite)))
         if lag is None:
             return rect
         return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
@@ -499,10 +506,10 @@ class Renderer:
         # Only a player can be dashing, and a player is an entity, so this
         # branch is resolved by identity rather than by a ``getattr`` walk
         # over every tile of the level.
-        if self._dashing_player is not None and sprite is self._dashing_player:
+        if self._dashing_player is not None and self._entity_of(sprite) is self._dashing_player:
             image, screen_rect = dash_frame(image, screen_rect)
         turning = self._turning_player
-        if turning is not None and sprite is turning:
+        if turning is not None and self._entity_of(sprite) is turning:
             image, screen_rect = turn_frame(
                 image, screen_rect, turn_offset_px(turning), turn_skew_px(turning)
             )
