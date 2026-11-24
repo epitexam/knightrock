@@ -177,16 +177,17 @@ def overlapping_pairs(entities: Sequence[Any], grid: EntityGrid) -> Iterator[tup
     # roster costs more than the pairs it is sorting.
     use_grid = grid.indexed
     for index_a, ent_a in enumerate(entities):
+        box_a = ent_a.hitbox
         candidates: list[tuple[int, Any]] = []
         # Grid members outside `entities` (the grid may bucket a superset,
         # e.g. the whole entity group while the caller filtered it) sort to
         # index -1 and are dropped by the `index_b <= index_a` guard.
-        members = cast("list[Any]", grid.near(ent_a.hitbox)) if use_grid else list(entities)
+        members = cast("list[Any]", grid.near(box_a)) if use_grid else list(entities)
         for ent_b in members:
             index_b = position.get(id(ent_b), -1)
             if index_b <= index_a:
                 continue
-            if not ent_a.hitbox.colliderect(ent_b.hitbox):
+            if not box_a.colliderect(ent_b.hitbox):
                 continue
             candidates.append((index_b, ent_b))
         candidates.sort(key=lambda pair: pair[0])

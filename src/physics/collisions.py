@@ -298,6 +298,8 @@ def resolve_collisions(
         # Pass collision_sprites as positional arg for backward compatibility
         nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
 
+    box = entity.hitbox
+    old_box = entity.old_hitbox
     for sprite in nearby_sprites:
         if not hasattr(sprite, "rect") or sprite.rect is None:
             continue
@@ -309,7 +311,7 @@ def resolve_collisions(
         if sprite_box is None:
             sprite_box = sprite.rect
         if not isinstance(sprite_box, (pygame.Rect, pygame.FRect)) or not sprite_box.colliderect(
-            entity.hitbox
+            box
         ):
             continue
 
@@ -317,7 +319,7 @@ def resolve_collisions(
         if not _is_eligible(entity, axis, sprite_box, sprite_old, one_way):
             continue
 
-        was_overlapping = entity.old_hitbox.colliderect(sprite_old)
+        was_overlapping = old_box.colliderect(sprite_old)
 
         if axis == "horizontal":
             _resolve_horizontal(

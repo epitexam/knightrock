@@ -278,9 +278,10 @@ def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = 
     )
     step_move_x = move_x / steps_x
 
+    box = entity.hitbox
     for _ in range(steps_x):
-        entity.old_hitbox = entity.hitbox.copy()
-        entity.hitbox.x += step_move_x
+        entity.old_hitbox = box.copy()
+        box.x += step_move_x
         resolve_collisions(entity, "horizontal", nearby_sprites)
 
         if abs(entity.velocity.x) < VELOCITY_EPSILON:
@@ -298,8 +299,8 @@ def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = 
     step_move_y = move_y / steps_y
 
     for _ in range(steps_y):
-        entity.old_hitbox = entity.hitbox.copy()
-        entity.hitbox.y += step_move_y
+        entity.old_hitbox = box.copy()
+        box.y += step_move_y
         resolve_collisions(entity, "vertical", nearby_sprites)
         if abs(entity.velocity.y) < VELOCITY_EPSILON:
             entity.velocity.y = 0.0
