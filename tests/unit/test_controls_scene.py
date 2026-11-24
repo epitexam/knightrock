@@ -8,6 +8,8 @@ from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
 from src.core.display import letterbox
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import picture
 from src.core.display.monitors import degraded
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -25,7 +27,9 @@ def _game() -> SimpleNamespace:
             stage=pygame.Surface((2304, 1296)),
             pixel_perfect=False,
             window_size=(2304, 1296),
+            picture=picture((2304, 1296), DEFAULT_FRAMING),
             density=2.0,
+            render_scale=1.0,
         ),
         stage=None,
         # The video screen asks the runtime what displays exist, so a stand-in
@@ -83,13 +87,30 @@ def test_controls_exposes_keyboard_and_gamepad_columns() -> None:
 def test_gamepad_button_capture_is_independent_from_keyboard() -> None:
     game = _game()
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
-    controls.model.set_items(controls.model.items, 3)  # Jump
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    controls.model.set_items(controls.model.items, jump)
     controls.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
     controls.handle_routed(_confirm())
     controls.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=7))
 
     assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] == 7
     assert game.settings.bindings.gameplay.keyboard[InputAction.JUMP] == pygame.K_SPACE
+
+
+def test_rebinding_up_to_a_pad_button_clears_the_default_sources() -> None:
+    """The button replaces the stick and the D-pad, so the provider must read it."""
+    game = _game()
+    controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
+    up = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.MOVE_UP)
+    controls.model.set_items(controls.model.items, up)
+    controls.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    controls.handle_routed(_confirm())
+    controls.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=7))
+
+    gameplay = game.settings.bindings.gameplay
+    assert gameplay.gamepad_buttons[InputAction.MOVE_UP] == 7
+    assert InputAction.MOVE_UP not in gameplay.gamepad_axes
+    assert InputAction.MOVE_UP not in gameplay.gamepad_hats
 
 
 def test_gameplay_left_and_right_are_separate_rows_and_captures() -> None:

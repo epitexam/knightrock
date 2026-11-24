@@ -356,6 +356,16 @@ class Camera:
         width, height = self.scaled_size((rect.width, rect.height))
         return pygame.Rect(math.floor(exact.x), math.floor(exact.y), width, height)
 
+    @property
+    def frame_shift(self) -> tuple[float, float]:
+        """This frame's ``-offset + shake`` translation, in world units.
+
+        The baked static planes need it to place their viewport slice; reading
+        it here keeps the renderer out of the camera's private per-frame state.
+        """
+        self._ensure_frame()
+        return self._shift, self._shift_y
+
     def is_visible(self, rect: WorldRect) -> bool:
         """Check if a world rectangle intersects the framing rect.
 

@@ -14,6 +14,8 @@ from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
 from src.core.display import letterbox
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import picture
 from src.core.display.monitors import Monitor, Topology, degraded
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -33,7 +35,9 @@ def _game(topology=None) -> SimpleNamespace:
             stage=pygame.Surface((1152, 648)),
             pixel_perfect=False,
             window_size=(1152, 648),
+            picture=picture((1152, 648), DEFAULT_FRAMING),
             density=1.0,
+            render_scale=1.0,
         ),
         # The video screen asks the runtime what displays exist, so a stand-in
         # has to answer. One screen by default: enough for the rows about pacing
@@ -154,6 +158,7 @@ def test_video_menu_owns_every_display_setting() -> None:
         "section:performance",
         "vsync",
         "frame_limit",
+        "render_scale",
         "section:interface",
         "scale",
     ]

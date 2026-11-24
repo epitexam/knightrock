@@ -26,7 +26,12 @@ from src.application.settings_store import UI_SCALES  # noqa: E402
 from src.core.display.framing import Framing  # noqa: E402
 from src.core.display.letterbox import density_for, picture  # noqa: E402
 from src.core.display.monitors import MIN_WINDOW  # noqa: E402
-from src.core.display.presentation import BAR_COLOR, Presentation  # noqa: E402
+from src.core.display.presentation import (  # noqa: E402
+    BAR_COLOR,
+    MIN_DENSITY_FOR_UI,
+    Presentation,
+    render_scale_is_usable,
+)
 from src.ui.scale import MIN_UI_SCALE, checked_ui_scale  # noqa: E402
 
 FRAMING = Framing(1152.0, 648.0)
@@ -43,8 +48,15 @@ class FakeStage:
         return self.surface.get_size()
 
 
-def _presentation(window: tuple[int, int], *, pixel_perfect: bool = False) -> Presentation:
-    return Presentation(FakeStage(window).surface, FRAMING, pixel_perfect=pixel_perfect)
+def _presentation(
+    window: tuple[int, int], *, pixel_perfect: bool = False, render_scale: float = 1.0
+) -> Presentation:
+    return Presentation(
+        FakeStage(window).surface,
+        FRAMING,
+        pixel_perfect=pixel_perfect,
+        render_scale=render_scale,
+    )
 
 
 WINDOWS = [(1920, 1080), (1440, 900), (2560, 1440), (3440, 1440), (5120, 1440), (800, 600)]
@@ -298,3 +310,89 @@ def test_the_bars_are_repainted_when_the_rect_moves_but_its_size_does_not() -> N
     assert grown.get_at((960, presentation.rect.centery))[:3] == (200, 100, 50), (
         "the picture still has to arrive under it"
     )
+
+
+# -- the internal render scale ---------------------------------------------------
+
+
+@pytest.mark.parametrize("scale", [0.75, 0.5])
+def test_a_lower_render_scale_draws_fewer_pixels_and_fills_the_window(scale: float) -> None:
+    """The point of the setting: the fill cost follows the target, not the window."""
+    window = (1920, 1080)
+    presentation = _presentation(window, render_scale=scale)
+    virtual = (round(window[0] * scale), round(window[1] * scale))
+
+    assert presentation.picture.window == virtual
+    assert presentation.surface.get_size() < window
+    assert presentation.window_rect == pygame.Rect(0, 0, *window)
+
+    presentation.surface.fill((10, 20, 30))
+    presentation.present()
+    assert presentation.stage.get_at((960, 540))[:3] == (10, 20, 30)
+    assert presentation.stage.get_at((0, 0))[:3] == (10, 20, 30)
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.75, 0.5])
+@pytest.mark.parametrize("window", [(1920, 1080), (3440, 1440)])
+def test_a_click_round_trips_at_every_render_scale(window: tuple[int, int], scale: float) -> None:
+    """A click on the row the screen drew is the row the menu receives.
+
+    The upscale is the only new transform between the two; a pointer still
+    divided by the preference instead of the *actual* ratio drifts on any window
+    whose size does not divide evenly, and clicking in a bar must still be a
+    rejection rather than a clamp onto the nearest row.
+    """
+    presentation = _presentation(window, render_scale=scale)
+    rect = presentation.window_rect
+    points = [
+        (rect.x, rect.y),
+        (rect.centerx, rect.centery),
+        (rect.right - 1, rect.bottom - 1),
+    ]
+
+    for point in points:
+        assert presentation.pointer_in_viewport(point), (point, rect, scale)
+        target = presentation.pointer_to_viewport(point)
+        assert presentation.picture.source.collidepoint(target), (point, target, scale)
+        back = presentation.viewport_to_window(target)
+        assert back == pytest.approx(point, abs=1), (point, target, back, scale)
+
+    outside = (rect.x - 1, rect.centery) if rect.x else (rect.centerx, rect.y - 1)
+    assert not presentation.pointer_in_viewport(outside)
+
+
+def test_the_render_scale_floor_and_the_interface_floor_are_the_same_number() -> None:
+    """The display layer cannot import the UI layer, so pin the duplicated value."""
+    assert pytest.approx(MIN_UI_SCALE / min(UI_SCALES)) == MIN_DENSITY_FOR_UI
+    assert not render_scale_is_usable((640, 480), 0.5)
+    assert render_scale_is_usable((640, 480), 1.0)
+
+
+def test_an_unusable_saved_scale_is_clamped_at_construction() -> None:
+    """A scale saved on a bigger desk must not kill the boot on a small window."""
+    presentation = Presentation(FakeStage((640, 480)).surface, FRAMING, render_scale=0.5)
+    assert presentation.render_scale == 1.0
+    assert presentation.surface.get_width() >= 1
+
+
+def test_a_scale_change_cannot_fit_a_window_below_the_floor() -> None:
+    """The render scale is not a back door around the minimum window rule."""
+    stage = FakeStage((240, 180))
+    presentation = Presentation(stage.surface, FRAMING)
+    target = presentation.surface
+    assert presentation.set_render_scale(0.5) is False
+    assert presentation.surface is target
+    assert presentation.render_scale == 1.0
+
+
+def test_changing_the_render_scale_repoints_the_target() -> None:
+    """A scale change is a new render target, so the caller must follow it."""
+    presentation = _presentation((1920, 1080))
+    before = presentation.surface
+    assert presentation.set_render_scale(0.5) is True
+    assert presentation.surface is not before
+    assert presentation.surface.get_size() == (960, 540)
+    assert presentation.set_render_scale(0.5) is False
+    presentation.surface.fill((10, 20, 30))
+    presentation.present()
+    assert presentation.stage.get_at((960, 540))[:3] == (10, 20, 30)

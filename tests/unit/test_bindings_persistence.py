@@ -118,6 +118,26 @@ def test_legacy_conflicting_menu_arrows_are_repaired(tmp_path: Path) -> None:
     assert keyboard[InputAction.UI_RIGHT] == pygame.K_RIGHT
 
 
+def test_a_v1_bindings_file_gains_all_three_up_sources(tmp_path: Path) -> None:
+    """Before the finisher fix there was no Up action; a v1 file must gain it."""
+    path = tmp_path / "settings.json"
+    repository = _Bindings(path)
+    repository.save(InputBindings())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    bindings = payload["bindings"]
+    bindings["version"] = 1
+    gameplay = bindings["gameplay"]
+    del gameplay["keyboard"]["move_up"]
+    del gameplay["gamepad_axes"]["move_up"]
+    del gameplay["gamepad_hats"]["move_up"]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = repository.load()
+    assert loaded.gameplay.keyboard[InputAction.MOVE_UP] == pygame.K_UP
+    assert loaded.gameplay.gamepad_axes[InputAction.MOVE_UP] == 1
+    assert loaded.gameplay.gamepad_hats[InputAction.MOVE_UP] == 0
+
+
 def test_ui_actions_stay_out_of_the_gameplay_context(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text(

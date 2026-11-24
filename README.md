@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3739%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3841%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3809 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3841 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -318,6 +318,7 @@ uv run python tests/benchmarks/fx_benchmark.py       # cost to build one particl
 uv run python tests/benchmarks/render_benchmark.py
 uv run python tests/benchmarks/contact_benchmark.py
 uv run python tests/benchmarks/combat_feel.py      # how the combat plays: swings/s, kill times
+uv run python tests/benchmarks/native_benchmark.py # mypyc A/B (after tools/build_native.py)
 ```
 
 ---
@@ -340,7 +341,7 @@ than mapped from the menu.
 | `Framing` | the visible rectangle of the world, in world units. Fixed. |
 | `Viewport` | the surface everything is drawn into: the window's fitted rect |
 | `Stage` | the OS window: size, monitor, DPI, vsync |
-| `Presentation` | window onto target, and the pointer back. Scales nothing. |
+| `Presentation` | window onto target, and the pointer back. At a reduced render scale it upscales the finished frame to the window. |
 | `monitors` | what this machine has, and which panel holds the window |
 | `sdl_probe` | the libSDL2 pygame already links, for what pygame cannot say |
 
@@ -382,9 +383,10 @@ and the player chooses how big it is. Three rules replace all of that:
   primary. Where the window sits belongs to the window manager, which is why
   there is still no row claiming a screen and no stored position: a placement
   the game cannot guarantee is a setting it must not offer;
-- the **render target is the window** — more precisely the fitted rectangle of the
-  window that carries the picture at the framing's aspect. The finished frame is
-  blitted **1:1**, so presenting costs a copy rather than a resample;
+- the **render target is the window's fitted rectangle** at the default render
+  scale, and the finished frame is blitted **1:1**. An optional reduced scale
+  draws into a smaller offscreen target and upscales once; that path is off by
+  default because the CPU copy costs more than it saves here;
 - **how the picture fits is the player's choice**: bars, whole-pixel art (each art
   pixel an exact *k*×*k* block, bars taking the rest), or zoom to fill, which crops
   the overflow. All three show *at most* the framing — zoom shows strictly less,
@@ -846,9 +848,9 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3809 tests · 94 % instruction coverage · 84 % branch
-> coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
-> `mypy src` alone is 181).[^coverage]
+> **Current baseline:** 3841 tests · 94 % instruction coverage · 84 % branch
+> coverage · Ruff clean · mypy clean (218 files across `src main.py tools`;
+> `mypy src` alone is 212).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
 display. Coverage, from:
@@ -872,7 +874,7 @@ uv run mypy src main.py tools                         # types
 ```
 
 `C901` has no standalone CI step — it is enforced because it sits in the ruff
-`select` list consumed by the lint step. Ruff covers all four paths, 369 files.
+`select` list consumed by the lint step. Ruff covers all four paths, 442 files.
 
 `tests/` is **deliberately not type-checked**, which is why the mypy command omits
 it.[^mypy-tests] The suite pins behaviour, not annotations, and test doubles are
@@ -903,6 +905,18 @@ The game ships as a standalone PyInstaller bundle driven by `knightrock.spec`
 ```bash
 uv run --with pyinstaller==6.22.2 pyinstaller knightrock.spec --noconfirm --clean
 ```
+
+An optional, development-only native build compiles five physics helpers with mypyc:
+
+```bash
+uv run python tools/build_native.py            # install .so files next to the sources
+uv run python tools/benchmark_native.py        # A/B against the interpreted tree
+uv run python tools/build_native.py --clean    # remove every generated artifact
+```
+
+The source files remain authoritative and the released bundles are pure Python; the
+measured A/B and the reason for the narrow perimeter are in
+`docs/audit/performance-2026-11.md`.
 
 `.github/workflows/build.yml` then:
 

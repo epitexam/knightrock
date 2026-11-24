@@ -12,6 +12,7 @@ from src.core.ecs.presentation import PresentationSprite
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
+from src.core.rendering.static_layer import BakedStaticLayer
 from src.core.rendering.strike_trails import StrikeTrails
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.settings import Afterimage, HitFlash, Interpolation, ParryFlash
@@ -138,6 +139,11 @@ class Renderer:
         #: for a plane small enough not to need an index.
         self._static_index: TileChunkIndex | None = None
         self._foreground_index: TileChunkIndex | None = None
+        #: Pre-painted alternatives to the two culls. A plane that was baked
+        #: replaces its cull in the draw pass; the cull is still installed for
+        #: the other plane and as the fallback on oversized levels.
+        self._baked_static: BakedStaticLayer | None = None
+        self._baked_foreground: BakedStaticLayer | None = None
         self._debug_samples: dict[str, deque[float]] = {
             "world_ui_ms": deque(maxlen=120),
             "panels_ms": deque(maxlen=120),
@@ -154,6 +160,20 @@ class Renderer:
         """
         self._static_index = statics
         self._foreground_index = foreground
+
+    def set_baked_planes(
+        self,
+        static: BakedStaticLayer | None,
+        foreground: BakedStaticLayer | None = None,
+    ) -> None:
+        """Adopt pre-painted planes; ``None`` keeps the existing cull for that plane.
+
+        The renderer's contract with its callers is unchanged: whoever builds
+        the level decides which producer to install. A test with a handful of
+        sprites installs neither and keeps the linear draw path.
+        """
+        self._baked_static = static
+        self._baked_foreground = foreground
 
     def set_surface(self, surface: pygame.Surface) -> None:
         """Adopt a new render target, after the render scale changed.
@@ -252,6 +272,17 @@ class Renderer:
         ``pygame.blit`` from resampling it behind our back.
         """
         return pygame.transform.scale(image, self.camera.scaled_size(image.get_size()))
+
+    def rescale(self, image: pygame.Surface) -> pygame.Surface:
+        """Magnify ``image`` to the target density, for producers that bake planes.
+
+        The same nearest-neighbour rule as every sprite blit, so a pre-painted
+        plane and a moving sprite cannot disagree about the pixel grid.
+        """
+        # The same cache the draw path uses: at density 1 it returns the
+        # original image, and a needless transform.scale there changes alpha
+        # bits on transparent art even though the size does not move.
+        return self._scaled_image(image)
 
     def _record_debug_sample(self, name: str, elapsed_ms: float) -> None:
         self._debug_samples[name].append(elapsed_ms)
@@ -422,15 +453,52 @@ class Renderer:
         colliderect = viewport.colliderect
         behind_fx, front_fx = self._collect_fx_blits(groups, colliderect)
 
-        for sprite in self._static_plane(groups, static_index, viewport):
-            if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
-                visible.append(sprite)
+        baked_static = self._baked_static
+        if baked_static is not None:
+            self._append_baked_slice(baked_static, blits)
+            # DEBUG only: the overlay still labels the terrain. The scan is
+            # the price of that diagnostic, not of drawing the frame.
+            self._visible_for_debug(
+                self._static_plane(groups, None, viewport), colliderect, visible
+            )
+        else:
+            for sprite in self._static_plane(groups, static_index, viewport):
+                if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
+                    visible.append(sprite)
         blits.extend(behind_fx)
-        for sprite in self._sprite_planes(groups, foreground_index, viewport):
+
+        baked_foreground = self._baked_foreground
+        for sprite in self._sprite_planes(
+            groups, foreground_index, viewport, include_foreground=baked_foreground is None
+        ):
             if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
                 visible.append(sprite)
+        if baked_foreground is not None:
+            self._append_baked_slice(baked_foreground, blits)
+            self._visible_for_debug(groups.fg_sprites, colliderect, visible)
         blits.extend(front_fx)
         return blits
+
+    def _append_baked_slice(
+        self, layer: BakedStaticLayer, blits: list[tuple[pygame.Surface, pygame.Rect]]
+    ) -> None:
+        """Queue one pre-painted plane's viewport slice, if it covers the view."""
+        part = layer.slice(self.camera.viewport, self.camera.frame_shift)
+        if part is not None:
+            blits.append(part)
+
+    @staticmethod
+    def _visible_for_debug(
+        sprites: Iterable[pygame.sprite.Sprite],
+        colliderect: Callable[[pygame.FRect | pygame.Rect], bool],
+        visible: list[pygame.sprite.Sprite] | None,
+    ) -> None:
+        """Keep the DEBUG overlay's sprite list honest for a baked plane."""
+        if visible is None:
+            return
+        visible.extend(
+            sprite for sprite in sprites if sprite.rect is not None and colliderect(sprite.rect)
+        )
 
     def _collect_fx_blits(
         self, groups: SpriteGroups, colliderect: Callable[[pygame.FRect | pygame.Rect], bool]
@@ -472,6 +540,8 @@ class Renderer:
         groups: SpriteGroups,
         foreground_index: TileChunkIndex | None,
         viewport: pygame.FRect,
+        *,
+        include_foreground: bool = True,
     ) -> Iterable[pygame.sprite.Sprite]:
         """The moving plane and the foreground decor, in paint order.
 
@@ -480,9 +550,13 @@ class Renderer:
         planes being walked and the blit loop running would be drawn at a
         position that does not match the frame it belongs to.
         """
-        foreground = (
-            groups.fg_sprites if foreground_index is None else foreground_index.candidates(viewport)
-        )
+        foreground: Iterable[pygame.sprite.Sprite] = ()
+        if include_foreground:
+            foreground = (
+                groups.fg_sprites
+                if foreground_index is None
+                else foreground_index.candidates(viewport)
+            )
         moving: Iterable[pygame.sprite.Sprite]
         if groups.presentation_sprites:
             proxy_ids = {id(proxy) for proxy in groups.presentation_sprites}

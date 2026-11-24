@@ -34,7 +34,7 @@ from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
 from src.core.display import letterbox
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, picture
+from src.core.display.letterbox import FitPolicy, density_for, picture
 from src.core.display.monitors import Monitor, Topology
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -92,7 +92,9 @@ def _game(topology: Topology | None = None) -> SimpleNamespace:
             stage=pygame.Surface(WINDOW),
             pixel_perfect=False,
             window_size=WINDOW,
+            picture=picture(WINDOW, DEFAULT_FRAMING),
             density=2.0,
+            render_scale=1.0,
         ),
         ui_scale=1.0,
         topology=lambda: topology or DESK,
@@ -703,8 +705,10 @@ def test_the_window_read_out_describes_the_picture_that_is_drawn() -> None:
 
     for policy in FitPolicy:
         scene.game.settings = scene.game.settings.with_video(fit=policy)
-        scene._rebuild()
         fitted = picture(window, DEFAULT_FRAMING, policy)
+        scene.game.presentation.picture = fitted
+        scene.game.presentation.density = density_for(fitted.target.size, DEFAULT_FRAMING)
+        scene._rebuild()
         row = _row(scene, "info")
 
         assert scene.model.items[row].value.startswith(
@@ -713,6 +717,21 @@ def test_the_window_read_out_describes_the_picture_that_is_drawn() -> None:
         assert ("+ bars" in scene.model.items[row].value) is not fitted.covered, (
             f"{policy.value} reports bars the picture does not have"
         )
+
+
+def test_the_readout_reports_the_internal_target_at_a_reduced_scale() -> None:
+    """The diagnostic describes what the game draws, not the window it sits in."""
+    scene = _drawn()
+    game = scene.game
+    game.settings = game.settings.with_video(render_scale=0.5)
+    game.presentation.window_size = (3840, 2160)
+    game.presentation.render_scale = 0.5
+    game.presentation.picture = picture((1920, 1080), DEFAULT_FRAMING)
+    game.presentation.density = density_for((1920, 1080), DEFAULT_FRAMING)
+    scene._rebuild()
+
+    row = _row(scene, "info")
+    assert scene.model.items[row].value.startswith("1920x1080 at 1.67x")
 
 
 def test_the_window_read_out_follows_the_migrated_flag() -> None:
@@ -730,10 +749,11 @@ def test_the_window_read_out_follows_the_migrated_flag() -> None:
     scene = _drawn()
     scene.game.settings = scene.game.settings.with_video(pixel_perfect=True)
     scene.game.presentation.window_size = (1440, 900)  # not the framing's shape
-    scene._rebuild()
-
     bars = picture((1440, 900), DEFAULT_FRAMING, FitPolicy.BARS)
     integer = picture((1440, 900), DEFAULT_FRAMING, FitPolicy.INTEGER)
+    scene.game.presentation.picture = integer
+    scene.game.presentation.density = density_for(integer.target.size, DEFAULT_FRAMING)
+    scene._rebuild()
     assert bars.target.size != integer.target.size, "the pair must disagree here"
 
     row = _row(scene, "info")
@@ -953,6 +973,7 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
         "section:performance",
         "vsync",
         "frame_limit",
+        "render_scale",
         "section:interface",
         "scale",
         "reset",

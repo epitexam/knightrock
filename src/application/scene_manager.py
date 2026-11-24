@@ -119,6 +119,11 @@ class SceneManager:
                 view.set_surface(surface)
                 view.set_scale(self.game.ui_scale)
 
+    def invalidate_baked_layers(self) -> None:
+        """Drop the pre-painted world planes in every scene, frozen ones included."""
+        for scene in self._stack:
+            scene.invalidate_baked_layers()
+
     def set_ui_scale(self, scale: float) -> None:
         """Push a new interface scale through the whole stack, for the same
         reason as :meth:`set_surface`."""

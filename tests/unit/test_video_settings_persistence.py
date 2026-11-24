@@ -150,10 +150,7 @@ def _click_list(list_scene: OptionScreen, index: int) -> None:
     assert game.presentation is not None
     list_scene.draw(game.presentation.surface)
     centre = list_scene.view.item_rects[index].center
-    position = (
-        centre[0] + game.presentation.rect.x,
-        centre[1] + game.presentation.rect.y,
-    )
+    position = game.presentation.viewport_to_window(centre)
     event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position)
     game.scene_manager.handle_event(game._to_target_coordinates(event))
 
@@ -168,10 +165,7 @@ def _click(scene: VideoScene, index: int) -> None:
     game = scene.game
     assert game.presentation is not None
     centre = scene.view.item_rects[index].center
-    position = (
-        centre[0] + game.presentation.rect.x,
-        centre[1] + game.presentation.rect.y,
-    )
+    position = game.presentation.viewport_to_window(centre)
     event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position)
     game._handle_events()
     game.scene_manager.handle_event(game._to_target_coordinates(event))
@@ -273,6 +267,27 @@ def test_the_window_size_survives_a_relaunch(tmp_path: Path) -> None:
     assert relaunched.window_size == wanted
 
 
+def test_the_render_scale_survives_a_relaunch(tmp_path: Path) -> None:
+    """The row changes the live target, the file and the next launch together."""
+    game, store = _runtime(tmp_path)
+    game.scene_manager.push(VideoScene(game))
+    scene = game.scene_manager.current
+    assert isinstance(scene, VideoScene)
+    scene.draw(game.presentation.surface)
+
+    _pick_in_list(game, scene, "render_scale", 0.5)
+
+    assert game.settings.render_scale == 0.5
+    assert game.presentation is not None
+    assert game.presentation.render_scale == 0.5
+    assert game.presentation.surface.get_size() < game.presentation.stage.get_size()
+    game.step()
+
+    written = json.loads(store.path.read_text(encoding="utf-8"))
+    assert written["video"]["render_scale"] == 0.5
+    assert _relaunch(store, tmp_path).render_scale == 0.5
+
+
 def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path) -> None:
     """A reset on this screen must not cost the player their controls.
 
@@ -283,7 +298,20 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
     game, store = _runtime(tmp_path)
     rebound = _rebound_bindings(game)
     game.apply_bindings(rebound)
-    game.apply_settings(game.settings.with_video(vsync=True, frame_limit=144, ui_scale=1.2))
+    # A non-default fit and render scale are the case the old `elif` chain
+    # missed: the reset changes both at once, so the scale used to be written
+    # back to 1.0 while the picture stayed upscaled.
+    game.apply_settings(
+        game.settings.with_video(
+            fit=FitPolicy.ZOOM,
+            vsync=True,
+            frame_limit=144,
+            render_scale=0.5,
+            ui_scale=1.2,
+        )
+    )
+    assert game.presentation is not None
+    assert game.presentation.render_scale == 0.5
     game.scene_manager.push(VideoScene(game))
     scene = game.scene_manager.current
     assert isinstance(scene, VideoScene)
@@ -295,8 +323,64 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
     assert game.settings.vsync is UserSettings().vsync
     assert game.settings.frame_limit == UserSettings().frame_limit
     assert game.settings.ui_scale == UserSettings().ui_scale
+    assert game.settings.fit == UserSettings().fit
+    assert game.settings.render_scale == UserSettings().render_scale
+    assert game.presentation is not None
+    assert game.presentation.render_scale == UserSettings().render_scale, (
+        "the settings were reset but the picture is still upscaled"
+    )
+    assert game.presentation.picture.window == game.presentation.stage.get_size()
     assert game.settings.bindings == rebound, "the bindings are not this screen's to reset"
     assert _relaunch(store, tmp_path).bindings == rebound
+
+
+def test_a_refused_apply_rolls_back_the_picture_as_well_as_the_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed window change must not leave the target fitted for the new choices."""
+    game, _store = _runtime(tmp_path)
+    assert game.presentation is not None
+    overlay = game.world_overlay(game.presentation.surface)
+    before_panel = overlay.renderer._panel_scale
+    before_fit = game.presentation.fit
+    before_scale = game.presentation.render_scale
+    before_target = tuple(game.presentation.picture.target)
+
+    def refuse() -> None:
+        raise pygame.error("the platform refused the window")
+
+    monkeypatch.setattr(game, "_rebuild_display", refuse)
+    wanted = game.settings.with_video(
+        window_size=(1240, 700), fit=FitPolicy.ZOOM, render_scale=0.5, panel_scale=0.4
+    )
+    with pytest.raises(pygame.error):
+        game.apply_settings(wanted)
+
+    assert game.settings.fit == before_fit
+    assert game.settings.render_scale == before_scale
+    assert game.settings.panel_scale == 1.0
+    assert overlay.renderer._panel_scale == before_panel, "the debug panels changed anyway"
+    assert game.presentation.fit == before_fit
+    assert game.presentation.render_scale == before_scale
+    assert tuple(game.presentation.picture.target) == before_target
+
+
+def test_a_scale_too_small_for_the_window_is_refused_without_desync(
+    tmp_path: Path,
+) -> None:
+    """A refused scale must not be written to the file or shown in the menu."""
+    game, store = _runtime(tmp_path)
+    assert game.presentation is not None
+    game.presentation.retarget(pygame.Surface((640, 480)))
+    game._retarget()
+    before = game.settings
+
+    with pytest.raises(pygame.error, match="render scale"):
+        game.apply_settings(before.with_video(render_scale=0.5))
+
+    assert game.settings.render_scale == before.render_scale
+    assert game.presentation.render_scale == before.render_scale
+    assert _relaunch(store, tmp_path).render_scale == before.render_scale
 
 
 def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) -> None:
@@ -336,13 +420,13 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
         "fit",
         "vsync",
         "frame_limit",
+        "render_scale",
     }
     assert set(window) == {"size", "last", "screen", "fullscreen"}
     assert not {
         "width",
         "height",
         "size_mode",
-        "render_scale",
         "smoothing",
         "display",
         "monitor",
@@ -476,6 +560,7 @@ def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
         "fit",
         "vsync",
         "frame_limit",
+        "render_scale",
     }
     assert "panel_scale" in written["ui"]
 

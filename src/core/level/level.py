@@ -32,6 +32,7 @@ from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import WorldOverlay
 from src.core.rendering.renderer import Renderer
+from src.core.rendering.static_layer import BakedStaticLayer, bake_static_layer
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, ProjectileSnapshot, RollbackSystem
 from src.core.settings import Debug, World
@@ -95,6 +96,9 @@ class Level:
         self.surface = surface
         self.input_manager = input_manager
         self.level_data = level_data
+        #: An explicit producer choice survives a display-format change. The
+        #: module default is used until a caller opts in or out on this level.
+        self._bake_override: bool | None = None
 
         self.groups = SpriteGroups()
         from src.core.ecs.combat_table import CombatTable
@@ -268,8 +272,67 @@ class Level:
                 "linear cull is kept."
             )
             return
-        foreground = TileChunkIndex(self.groups.fg_sprites) if self.groups.fg_sprites else None
-        self.renderer.set_static_planes(TileChunkIndex(statics), foreground)
+        self.install_static_planes()
+
+    def install_static_planes(self, *, bake: bool | None = None) -> None:
+        """Choose the producer for each frozen plane: baked or chunk-culled.
+
+        Baking is the common case; a plane too large for the memory ceiling
+        keeps ``TileChunkIndex``, which is also the path the partition tests
+        exercise. The two producers are interchangeable at the renderer's
+        injection point, so paint order never depends on which one won.
+        """
+        if bake is not None:
+            self._bake_override = bake
+        statics = tuple(self.groups.static_sprites)
+        foreground = tuple(self.groups.fg_sprites)
+        baked_static, baked_foreground = self._bake_planes(
+            statics, foreground, enabled=self._bake_override
+        )
+        self.renderer.set_static_planes(
+            None if baked_static is not None else TileChunkIndex(statics),
+            None if baked_foreground is not None else (TileChunkIndex(foreground) if foreground else None),
+        )
+        self.renderer.set_baked_planes(baked_static, baked_foreground)
+
+    def _bake_planes(
+        self,
+        statics: tuple[Any, ...],
+        foreground: tuple[Any, ...],
+        *,
+        enabled: bool | None = None,
+    ) -> tuple[BakedStaticLayer | None, BakedStaticLayer | None]:
+        """Bake each frozen plane when its target-sized surface fits the cap."""
+        data = self.level_data
+        density = self.renderer.camera.density
+        background = self.renderer.background_color
+
+        def bake(sprites: tuple[Any, ...]) -> BakedStaticLayer | None:
+            return bake_static_layer(
+                sprites,
+                size=(data.pixel_width, data.pixel_height),
+                density=density,
+                background=background,
+                scale=self.renderer.rescale,
+                enabled=enabled,
+            )
+
+        return bake(statics), bake(foreground)
+
+    def invalidate_baked_layers(self) -> None:
+        """Drop pre-painted planes after the display format changed.
+
+        A surface converted against the old format blits with a per-pixel
+        conversion on every frame, which is precisely the cost E3 removes.
+        The planes are rebuilt at the next target adoption; dropping them now
+        also means a scene that is never drawn again retains nothing.
+        """
+        self.renderer.set_baked_planes(None, None)
+
+    def rebuild_baked_layers(self) -> None:
+        """Re-paint the frozen planes against the current display format."""
+        self.reconvert_tiles()
+        self.install_static_planes()
 
     def _moving_planes(self) -> tuple[Iterable[Any], ...]:
         """The sprite groups whose contents move during a session."""

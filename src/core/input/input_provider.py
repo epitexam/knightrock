@@ -217,6 +217,13 @@ class LocalInputProvider(InputProvider):
         )
         if axis < 0.0:
             return True
+        if self._button_held(gameplay.gamepad_buttons, InputAction.MOVE_UP):
+            # The controls screen removes the axis and the hat when a pad
+            # button is captured for this action. Reading the buttons is what
+            # keeps a rebound Up usable in a prompt. MOVE_DOWN is a posture and
+            # reads its button without the latch; Up is an edge the prompt must
+            # still see when the tap landed during hit-stop.
+            return True
         return self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_UP)[1] > 0
 
     def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:

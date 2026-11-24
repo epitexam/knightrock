@@ -6,16 +6,20 @@ Run it from the repo root::
 
 Two numbers decide things, and neither could be measured before this rework:
 
-- **the presentation is a 1:1 blit.** There is no resampling left to pay for, so
-  a window of any size costs the same handful of milliseconds it takes to copy a
-  frame, and the picture is exactly the picture. What used to be measured here --
-  ``smoothscale`` from a fixed target onto the window, 3.95 ms at 1280x720 rising
-  to 13.32 ms at 4K -- is gone, and gone for a reason that was a *correctness*
-  problem before it was a performance one: a resampled frame is a soft one, and
-  no setting could fix it because the ratio was not the game's to choose.
-- **the world draw is a function of the target, and the target is the window.**
-  So a bigger window costs more fill, and that is not a setting any more: it is
-  the window the player has.
+- **the presentation is a 1:1 blit at native scale.** There is no resampling
+  left to pay for at the default, so a window of any size costs the same handful
+  of milliseconds it takes to copy a frame, and the picture is exactly the
+  picture. What used to be measured here -- ``smoothscale`` from a fixed target
+  onto the window, 3.95 ms at 1280x720 rising to 13.32 ms at 4K -- is gone, and
+  gone for a reason that was a *correctness* problem before it was a performance
+  one: a resampled frame is a soft one, and no setting could fix it because the
+  ratio was not the game's to choose.
+- **a lower render scale is a choice, not a drift.** The optional scales draw
+  into a smaller target and upscale it once, on purpose, so the fill cost stops
+  following a window the player cannot be asked to shrink. The first table is
+  at native scale; the second walks the offered scales on the given window.
+- **the world draw is a function of the target.** A bigger window costs more
+  fill at native scale; at a lower scale it is the internal target that decides.
 
 The dummy SDL driver has no fast renderer, so these are CPU-only figures, which
 is representative for the scaling pygame does on the CPU for a software surface
@@ -54,6 +58,7 @@ from src.core.sprites import Sprite
 #: Window sizes worth a row: the common ones, 16:10, ultrawide and 4K.
 WINDOWS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3440, 1440), (3840, 2160)]
 FRAME_BUDGET_MS = 1000.0 / 60
+RENDER_SCALES = (1.0, 0.75, 0.5)
 
 
 def _median_ms(action, repeats: int) -> float:
@@ -66,13 +71,16 @@ def _median_ms(action, repeats: int) -> float:
     return statistics.median(samples)
 
 
-def measure_world_draw(window: tuple[int, int], repeats: int) -> tuple[float, int]:
+def measure_world_draw(
+    window: tuple[int, int], repeats: int, *, render_scale: float = 1.0
+) -> tuple[float, int]:
     """Milliseconds to draw the real level into the target a window asks for.
 
     Returns the cost and the density, because the second explains the first: the
-    draw scales with the pixels, and the pixels are the window.
+    draw scales with the pixels, and the pixels are the (possibly reduced) target.
     """
-    size = picture(window, DEFAULT_FRAMING).dest.size
+    presentation = Presentation(pygame.Surface(window), DEFAULT_FRAMING, render_scale=render_scale)
+    size = presentation.surface.get_size()
     viewport = pygame.Surface(size)
     level = Level(viewport, LevelManager(LEVEL_PATHS).get(0), InputManager())
     for _ in range(10):
@@ -85,51 +93,48 @@ def measure_world_draw(window: tuple[int, int], repeats: int) -> tuple[float, in
     )
 
 
-def measure_present(window: tuple[int, int], repeats: int) -> float:
+def measure_present(window: tuple[int, int], repeats: int, *, render_scale: float = 1.0) -> float:
     """Milliseconds to put a finished frame on a window of that size.
 
-    The bars are filled and the frame is blitted, with no scaling anywhere: this
-    is the number that used to depend on the ratio between a fixed target and the
-    window, and it now only depends on how many pixels have to be written.
+    The real :meth:`Presentation.present` is measured, including the one upscale
+    at a reduced scale. At native scale it is a plain 1:1 blit.
     """
-    stage = pygame.Surface(window)
-    presentation = Presentation(stage, DEFAULT_FRAMING)
+    presentation = Presentation(
+        pygame.Surface(window), DEFAULT_FRAMING, render_scale=render_scale
+    )
     presentation.surface.fill((24, 28, 36))
-
-    def present() -> None:
-        for bar in presentation.bars:
-            stage.fill((0, 0, 0), bar)
-        stage.blit(presentation.surface, presentation.rect)
-        pygame.display.flip()
-
-    return _median_ms(present, repeats)
+    return _median_ms(presentation.present, repeats)
 
 
-def measure_frame(window: tuple[int, int], repeats: int, *, pixel_perfect: bool) -> float:
+def measure_frame(
+    window: tuple[int, int],
+    repeats: int,
+    *,
+    pixel_perfect: bool = False,
+    render_scale: float = 1.0,
+) -> float:
     """Milliseconds for a whole presented frame at that window.
 
-    Both halves, because either one alone is misleading: whole-pixel art shrinks
-    the picture, so it makes the draw cheaper *and* the present no dearer, and a
-    table that reported only the second would sell it as free.
+    Both halves, because either one alone is misleading: a smaller target makes
+    the draw cheaper but adds an upscale, and a table that reported only the
+    first would sell the scale as free.
     """
-    stage = pygame.Surface(window)
-    presentation = Presentation(stage, DEFAULT_FRAMING, pixel_perfect=pixel_perfect)
-    size = presentation.surface.get_size()
-    viewport = pygame.Surface(size)
-    level = Level(viewport, LevelManager(LEVEL_PATHS).get(0), InputManager())
+    presentation = Presentation(
+        pygame.Surface(window),
+        DEFAULT_FRAMING,
+        pixel_perfect=pixel_perfect,
+        render_scale=render_scale,
+    )
+    level = Level(presentation.surface, LevelManager(LEVEL_PATHS).get(0), InputManager())
     for _ in range(10):
         level.update(Simulation.TIMESTEP)
     renderer = level.renderer
     renderer.camera.offset.update(300.0, 200.0)
     presentation.surface.fill((24, 28, 36))
 
-    def present() -> None:
-        for bar in presentation.bars:
-            stage.fill((0, 0, 0), bar)
-        stage.blit(presentation.surface, presentation.rect)
-        pygame.display.flip()
-
-    return _median_ms(lambda: (renderer.draw(level.groups, alpha=0.5), present()), repeats)
+    return _median_ms(
+        lambda: (renderer.draw(level.groups, alpha=0.5), presentation.present()), repeats
+    )
 
 
 def measure_level_load() -> str:
@@ -158,6 +163,12 @@ def measure_cull(level: Level, repeats: int) -> tuple[float, float]:
     """
     renderer = level.renderer
     groups = level.groups
+    # This table is about the cull, not the pre-painted alternative. The
+    # producer is opt-in, but a forced A/B row can leave one installed, so
+    # take it out first or both rows would measure the same one-blit path.
+    baked_static = renderer._baked_static
+    baked_foreground = renderer._baked_foreground
+    renderer.set_baked_planes(None, None)
     index = renderer._static_index
     foreground = TileChunkIndex(groups.fg_sprites) if groups.fg_sprites else None
 
@@ -177,7 +188,48 @@ def measure_cull(level: Level, repeats: int) -> tuple[float, float]:
             groups.all_sprites.remove(tile)
         if index is not None:
             renderer.set_static_planes(index, foreground)
+        renderer.set_baked_planes(baked_static, baked_foreground)
     return scanned, indexed
+
+
+def measure_baked_planes(level: Level, repeats: int) -> tuple[float, float] | None:
+    """Frame-collection cost with the baked planes versus with the chunk culls.
+
+    Only the collection is measured: the actual blit of a baked slice is a
+    whole-viewport copy, while the cull path blits each surviving tile, and
+    ``Renderer.draw`` does both in the same loop. A real level is needed, so a
+    synthetic two-sprite scene returns ``None`` rather than a meaningless row.
+    """
+    renderer = level.renderer
+    original_index = renderer._static_index
+    original_foreground_index = renderer._foreground_index
+    original_baked = renderer._baked_static
+    original_baked_foreground = renderer._baked_foreground
+    static = original_baked
+    if static is None:
+        # The producer is opt-in: force it on for this A/B row only.
+        level.install_static_planes(bake=True)
+        static = renderer._baked_static
+    if static is None:
+        return None
+    groups = level.groups
+
+    def collect() -> None:
+        renderer.camera.begin_frame(1.0)
+        renderer._collect_visible_blits(groups)
+
+    try:
+        baked = _median_ms(collect, repeats)
+        renderer.set_baked_planes(None, None)
+        # Forcing the baked producer installed no cull. Restore the index that
+        # the level had chosen, or this row would measure the linear fallback
+        # while the table calls it "chunked".
+        renderer.set_static_planes(original_index, original_foreground_index)
+        indexed = _median_ms(collect, repeats)
+        return baked, indexed
+    finally:
+        renderer.set_baked_planes(original_baked, original_baked_foreground)
+        renderer.set_static_planes(original_index, original_foreground_index)
 
 
 def _cull_once(renderer, groups) -> None:
@@ -243,6 +295,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=30, help="samples per measurement")
     parser.add_argument("--window", type=int, nargs=2, metavar=("W", "H"), default=None)
+    parser.add_argument(
+        "--scale", type=float, choices=RENDER_SCALES, default=1.0, help="internal render scale"
+    )
     arguments = parser.parse_args()
 
     pygame.init()
@@ -252,21 +307,38 @@ def main() -> None:
     print(f"p registered level: {measure_level_load()}")
 
     windows = [tuple(arguments.window)] if arguments.window else WINDOWS
-    print("\n-- one presented frame, by window (the target *is* the window) --")
+    print(f"\n-- one presented frame, by window (render scale {arguments.scale:g}) --")
     print(
         f"{'window':>14}{'target':>14}{'density':>9}{'world':>8}{'present':>9}"
         f"{'frame':>8}{'%':>6}{'whole-px':>10}{'%':>6}"
     )
     for window in windows:
-        draw, density = measure_world_draw(window, arguments.repeats)
-        present = measure_present(window, arguments.repeats)
-        size = picture(window, DEFAULT_FRAMING).dest.size
+        draw, density = measure_world_draw(window, arguments.repeats, render_scale=arguments.scale)
+        present = measure_present(window, arguments.repeats, render_scale=arguments.scale)
+        presentation = Presentation(
+            pygame.Surface(window), DEFAULT_FRAMING, render_scale=arguments.scale
+        )
+        size = presentation.surface.get_size()
         total = draw + present
-        whole = measure_frame(window, arguments.repeats, pixel_perfect=True)
+        whole = measure_frame(
+            window, arguments.repeats, pixel_perfect=True, render_scale=arguments.scale
+        )
         print(
             f"{window[0]}x{window[1]:<7}{size[0]}x{size[1]:<8}{density:>9.3f}{draw:>8.2f}"
             f"{present:>9.2f}{total:>8.2f}{100 * total / FRAME_BUDGET_MS:>5.0f}%"
             f"{whole:>10.2f}{100 * whole / FRAME_BUDGET_MS:>5.0f}%"
+        )
+
+    print(f"\n-- the render-scale ladder, on {windows[0][0]}x{windows[0][1]} --")
+    print(f"{'scale':>8}{'target':>14}{'world':>8}{'present':>9}{'frame':>8}{'%':>6}")
+    for scale in RENDER_SCALES:
+        draw, _density = measure_world_draw(windows[0], arguments.repeats, render_scale=scale)
+        present = measure_present(windows[0], arguments.repeats, render_scale=scale)
+        target = Presentation(pygame.Surface(windows[0]), DEFAULT_FRAMING, render_scale=scale)
+        total = draw + present
+        print(
+            f"{scale:>8.2f}{f'{target.surface.get_width()}x{target.surface.get_height()}':>14}"
+            f"{draw:>8.2f}{present:>9.2f}{total:>8.2f}{100 * total / FRAME_BUDGET_MS:>5.0f}%"
         )
 
     viewport = pygame.Surface(picture((1280, 720), DEFAULT_FRAMING).dest.size)
@@ -283,6 +355,14 @@ def main() -> None:
         f"{scanned:>9.3f}ms{indexed:>13.3f}ms{scanned - indexed:>8.3f}ms"
         f"{100 * (scanned - indexed) / scanned:>6.0f}%"
     )
+    baked = measure_baked_planes(level, arguments.repeats)
+    if baked is not None:
+        print("\n-- the two frozen-plane producers, same level --")
+        print(f"{'baked':>10}{'chunked':>12}{'saved':>9}{'%':>7}")
+        print(
+            f"{baked[0]:>9.3f}ms{baked[1]:>11.3f}ms{baked[1] - baked[0]:>8.3f}ms"
+            f"{100 * (baked[1] - baked[0]) / baked[1]:>6.0f}%"
+        )
     print(
         f"\n{'':>10}On the shipped level the index is worth a fifth of the cull,\n"
         f"which is a rounding error next to the frame. Two things explain why,\n"

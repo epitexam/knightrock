@@ -72,6 +72,7 @@ class ControlsScene(Scene):
         GAMEPLAY_SECTION: (
             RebindSpec("controls.move_left", InputAction.MOVE_X, side=0),
             RebindSpec("controls.move_right", InputAction.MOVE_X, side=1),
+            RebindSpec("controls.move_up", InputAction.MOVE_UP),
             RebindSpec("controls.low_stance", InputAction.MOVE_DOWN),
             RebindSpec("controls.jump", InputAction.JUMP),
             RebindSpec("controls.dash", InputAction.DASH),

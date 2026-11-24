@@ -412,10 +412,14 @@ def test_a_surface_that_is_not_the_framing_is_refused(manager: SceneManager) -> 
     manager.switch(gameplay)
     assert gameplay.level is not None
     before = (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height)
+    before_surface = gameplay.level.surface
+    before_renderer_surface = gameplay.level.renderer.surface
 
     with pytest.raises(ValueError):
         gameplay.set_surface(pygame.Surface((1280, 700)))
 
+    assert gameplay.level.surface is before_surface
+    assert gameplay.level.renderer.surface is before_renderer_surface
     assert (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height) == (before)
     assert before == DEFAULT_FRAMING.size
 
@@ -644,7 +648,8 @@ def test_the_cancel_button_leaves_a_capture_instead_of_binding(manager: SceneMan
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    for _ in range(3):
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    for _ in range(jump):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert controls.capturing
@@ -666,7 +671,8 @@ def test_escape_leaves_a_capture_on_either_column(manager: SceneManager) -> None
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    for _ in range(3):
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    for _ in range(jump):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     # Arm the *pad* cell, which is the column that used to have no way out.
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT))
@@ -684,7 +690,8 @@ def test_controls_rebinds_a_pad_button(manager: SceneManager) -> None:
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    for _ in range(3):
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    for _ in range(jump):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert controls.capturing

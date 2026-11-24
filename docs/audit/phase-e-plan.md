@@ -1,6 +1,6 @@
 # Plan — Phase E : optimizations structurantes
 
-Statut : **plan, non implémenté**. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
+Statut : **E1, E2 et E3 implémentés** (branche `phase/render-scale`, 2026-11-24). E1 et E3 restent optionnels et sans gain mesuré ici (le scale par défaut de E1 est 1.0 et le producteur E3 est désactivé) ; E2 reste optionnel et non embarqué. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
 
 ## Contexte et pourquoi une décision séparée
 
@@ -34,6 +34,18 @@ Rendre le coût de remplissage indépendant de la résolution de la fenêtre. Me
 - `test_render_target_chain.py`, `test_frame_coherence.py`, `test_menu_goldens.py`, `test_video_settings_persistence.py`, suites complètes et `DEBUG=1`.
 - Smoke PyInstaller.
 
+### Mesure (machine de travail, SDL dummy, 10 échantillons)
+
+`uv run python tests/benchmarks/render_benchmark.py --repeats 10 --window 3840 2160` :
+
+| scale | target | world | present | frame |
+|---|---|---|---|---|
+| 1.00 | 3840×2160 | 14,5 ms | 9,1 ms | 23,6 ms |
+| 0.75 | 2880×1620 | 9,8 ms | 23,9 ms | 33,8 ms |
+| 0.50 | 1920×1080 | 4,5 ms | 23,6 ms | 28,1 ms |
+
+Le draw suit bien le target, mais l'upscale CPU (`pygame.transform.scale` de la frame vers la fenêtre) coûte plus qu'il ne fait économiser ici : le reduced scale est **plus lent** que le 1:1 sur cette machine. Le réglage reste donc optionnel, avec 1.0 par défaut : il n'y a aucune régression sur le chemin livré. Un gain réel demanderait un upscale matériel (`pygame.SCALED`/OpenGL), exclu du périmètre par les décisions ci-dessous.
+
 ### Risques / rollback
 
 Risque principal : le scaling casse la précision pixel-art (d'où des valeurs discrètes et un défaut à 1.0) ou les clics souris. Rollback : retirer le réglage et revenir à `Presentation` sur la surface de la fenêtre ; les migrations de settings restent compatibles si le champ est ignoré.
@@ -61,9 +73,17 @@ Compiler en extensions C les modules où le profile montre le plus de temps Pyth
 
 `mypy src`, suite complète + `DEBUG=1`, digests, 675 issues, benchmarks de contact et de tick A/B, build PyInstaller avec et sans extensions.
 
+### Livré et mesure
+
+`tools/build_native.py` compile cinq modules (gravity, platforms, spatial_hash, spatial_query, velocity) dans une copie jetable du source, puis installe les extensions avec un manifeste que `--clean` sait retirer. Suite complète verte en mode natif : 3823 passed / 1 skipped, digests et goldens inchangés.
+
+Trois modules du périmètre initial ont dû rester interprétés, sans toucher au code de jeu : `collisions`, `movement` et `hit_resolver` annotent la vue ECS `SurfaceFlagsView` comme un `dict[str, bool]` ; mypyc en fait une vraie vérification de dict et chaque contact lève `TypeError`. `contact_system` appelle le resolver, et `entity_grid` est sous-classé par un double de test (interdit par mypyc). Le périmètre réel est donc documenté dans le script de build.
+
+`tools/benchmark_native.py` exécute les deux modes en processus séparés, en ordre alterné (9 rounds par défaut), avec le même checksum dans les mesures : dernière série à 15 rounds, médiane 1,994 ms (natif) contre 2,231 ms (interprété), soit 1,12× sur ce micro-bench. Le gain est réel mais limité ; le spec PyInstaller n'intègre donc **pas** les `.so`, et le jeu livré reste pure Python.
+
 ### Risques / rollback
 
-Risque : certaines optimisations mypyc changent des comportements limites (runtime type checks sur des valeurs `Any`, classes dynamiques). Rollback : supprimer le script de build et les artifacts ; le code source reste identique et interprétable. Ne jamais fusionner le build natif sans A/B favorable.
+Risque : certaines optimisations mypyc changent des comportements limites (runtime type checks sur des valeurs `Any`, classes dynamiques). Rollback : `uv run python tools/build_native.py --clean` (ou ne jamais lancer le build) ; le code source reste identique et interprétable. Ne jamais fusionner le build natif sans A/B favorable.
 
 ---
 
@@ -84,9 +104,13 @@ Supprimer le cull et les ~115 blits de tuiles par frame en peignant chaque calqu
 
 `test_tile_chunk_index.py` (partition totale), goldens de rendu et de culling, `render_benchmark.py` (cull et frame), `test_frame_coherence.py`, suites complètes.
 
+### Livré et mesure
+
+`src/core/rendering/static_layer.py` paint chaque calque gelé une fois à la densité de la cible, avec plafond de 64 Mo par calque et `TileChunkIndex` en fallback. Les surfaces sont invalidées par `ResourceCoordinator` et repaintées par `GameplayScene.set_surface`. `ENABLE_BAKED_PLANES` est **False** après A/B : le blit d'un viewport entier coûte plus que les tuiles visibles (7,4 ms contre 4,3 ms en 1920×1080), malgré une collecte trois fois moins chère. Table complète dans `docs/audit/performance-2026-11.md`.
+
 ### Risques / rollback
 
-Risque : consommation mémoire (~20–60 Mo selon les calques), parallaxe et formats de tuiles avec offset, formats d'affichage changeants. Rollback : remettre le chemin `TileChunkIndex` comme seul producteur ; le pré-rendu est une optimisation du producteur, pas du contrat du renderer.
+Risque : consommation mémoire (~20–60 Mo selon les calques), parallaxe et formats de tuiles avec offset, formats d'affichage changeants, et décalage d'un pixel sur les décors à rect fractionnaire sous une caméra interpolée. Rollback : constant déjà à `False` — le chemin `TileChunkIndex` reste le seul producteur livré ; le pré-rendu est une optimisation du producteur, pas du contrat du renderer.
 
 ---
 

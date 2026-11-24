@@ -269,7 +269,11 @@ def real_level() -> Level:
 
 def test_the_real_level_installs_an_index(real_level: Level) -> None:
     """A level that silently fell back to the scan would look identical and
-    cost four times as much at 22 000 tiles, which is why this is asserted."""
+    cost four times as much at 22 000 tiles, which is why this is asserted.
+
+    The pre-painted producer is opt-in and measured slower here, so the shipped
+    path must still install the index.
+    """
     level = real_level
 
     assert len(level.groups.static_sprites) > 500

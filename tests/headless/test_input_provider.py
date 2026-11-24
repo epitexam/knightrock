@@ -1,8 +1,11 @@
+from dataclasses import replace
+
 import pygame
 import pytest
 
 from src.core.input.event_router import EventRouter
 from src.core.input.input_actions import InputAction
+from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider, resolve_move_axis
 from src.core.settings import Input as InputSettings
@@ -158,6 +161,39 @@ def test_up_uses_keyboard_then_analog_then_hat(
 
     joystick.axes[1] = 0.0
     joystick.hat = (0, 1)
+    assert InputAction.MOVE_UP in provider.poll().held_actions
+
+
+def test_a_rebound_pad_button_can_answer_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Capturing Up on a pad button replaces the axis and hat, so read the button.
+
+    The controls screen deliberately clears the other sources when a button is
+    captured. Without this path a rebound Up would look bound on the screen and
+    never answer a direction prompt on the pad.
+    """
+    bindings = InputBindings()
+    gameplay = replace(
+        bindings.gameplay,
+        gamepad_buttons={InputAction.MOVE_UP: 7},
+        gamepad_axes={},
+        gamepad_hats={},
+    )
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: _press())
+    provider = LocalInputProvider(replace(bindings, gameplay=gameplay))
+    joystick = FakeJoystick()
+    provider.connect_joystick(joystick)  # type: ignore[arg-type]
+
+    assert InputAction.MOVE_UP not in provider.poll().held_actions
+    joystick.buttons[7] = True
+    assert InputAction.MOVE_UP in provider.poll().held_actions
+
+    # A tap made during hit-stop is over before the next poll: the latched
+    # edge is the only thing the prompt can answer with.
+    joystick.buttons[7] = False
+    provider.poll()
+    provider.note_event(
+        pygame.event.Event(pygame.JOYBUTTONDOWN, button=7, instance_id=joystick.get_instance_id())
+    )
     assert InputAction.MOVE_UP in provider.poll().held_actions
 
 
