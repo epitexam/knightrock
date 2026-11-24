@@ -115,8 +115,12 @@ def build():
 
 
 def once(query, boxes, bodies, platforms) -> float:
+    candidates = 0
     for box in boxes:
-        query.get_nearby(box)
+        # The hash and the query port are two of the compiled modules. Without
+        # feeding their result into the checksum the A/B could agree while
+        # both returned nonsense.
+        candidates += len(query.get_nearby(box))
     for body in bodies:
         apply_entity_gravity(body, DT)
         apply_velocity_friction(body, 8.0, DT)
@@ -124,7 +128,13 @@ def once(query, boxes, bodies, platforms) -> float:
         apply_slide_friction(body, 600.0, 2.0, DT)
     for platform in platforms:
         update_moving_platform(platform, DT)
-    return round(sum(body.velocity.y for body in bodies) + sum(p.pos.x for p in platforms), 3)
+    return round(
+        sum(body.velocity.y for body in bodies)
+        + sum(body.velocity.x for body in bodies)
+        + sum(p.pos.x for p in platforms)
+        + candidates,
+        3,
+    )
 
 
 def main() -> None:

@@ -64,6 +64,11 @@ def test_ui_benchmark_runs() -> None:
     assert "cache_entries=0." not in out
 
 
+def test_native_benchmark_runs() -> None:
+    out = _run("native_benchmark.py", ["--iterations", "2"])
+    assert '"checksum"' in out, out[-400:]
+
+
 def test_combat_feel_benchmark_runs() -> None:
     out = _run("combat_feel.py", ["--seconds", "1", "--json"])
     assert '"kill_s"' in out, out[-400:]
@@ -76,6 +81,7 @@ def test_combat_feel_benchmark_runs() -> None:
         "combat_feel.py",
         "contact_benchmark.py",
         "fx_benchmark.py",
+        "native_benchmark.py",
         "render_benchmark.py",
         "ui_benchmark.py",
     ],

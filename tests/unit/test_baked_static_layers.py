@@ -102,9 +102,12 @@ def test_a_fractional_offset_can_move_fractional_decor_by_one_pixel() -> None:
 
 
 def test_a_plane_too_large_for_the_ceiling_is_refused() -> None:
+    from types import SimpleNamespace
+
+    sprite = SimpleNamespace(rect=pygame.Rect(0, 0, 4, 4), image=pygame.Surface((4, 4)))
     assert (
         bake_static_layer(
-            (),
+            (sprite,),
             size=(20000, 20000),
             density=1.0,
             background=(0, 0, 0),
@@ -115,7 +118,18 @@ def test_a_plane_too_large_for_the_ceiling_is_refused() -> None:
     )
     assert (
         bake_static_layer(
-            (),
+            (sprite,),
+            size=(100, 100),
+            density=1.0,
+            background=(0, 0, 0),
+            scale=lambda image: image,
+            enabled=True,
+        )
+        is not None
+    ), "the ceiling must not be what refused a small, non-empty plane"
+    assert (
+        bake_static_layer(
+            (sprite,),
             size=(100, 100),
             density=1.0,
             background=(0, 0, 0),
