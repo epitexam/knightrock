@@ -11,7 +11,8 @@ stagger and finisher rules with melee.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 import pygame
 
@@ -33,6 +34,7 @@ from src.core.level.systems.contact_system import (
 )
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
+from src.entities.entity import Entity
 from src.entities.id_factory import IdFactory
 from src.entities.projectile import Projectile, ProjectileConfig
 from src.physics.entity_grid import EntityGrid
@@ -129,6 +131,7 @@ class ProjectileSystem:
         self,
         delta_time: float,
         entity_grid: EntityGrid | None = None,
+        fighters: Sequence[Entity] | None = None,
     ) -> None:
         """Advance every projectile and resolve contacts."""
         self.guard_events.clear()
@@ -149,7 +152,7 @@ class ProjectileSystem:
             if self._hit_wall(slot):
                 self._release(projectile)
                 continue
-            self._resolve_contacts(slot, entity_grid)
+            self._resolve_contacts(slot, entity_grid, fighters)
 
     def _swept_geometry(self, slot: int) -> tuple[pygame.FRect, tuple[SweptShape, ...]]:
         """The current tick's flight geometry, read from the dense row."""
@@ -185,7 +188,9 @@ class ProjectileSystem:
                 return True
         return False
 
-    def _resolve_contacts(self, slot: int, entity_grid: EntityGrid | None) -> None:
+    def _resolve_contacts(
+        self, slot: int, entity_grid: EntityGrid | None, fighters: Sequence[Entity] | None
+    ) -> None:
         """Emit the dense row's offensive box into the unified pipeline.
 
         The pooled sprite is still passed as ``attacker`` because the combat
@@ -212,10 +217,16 @@ class ProjectileSystem:
             stop_after_first=not config.pierce,
             record_contact=_record_target(targets, proxy),
         )
-        movement = self.groups.movement_table
-        target_list = (
-            tuple(movement.iter_entities()) if movement is not None else self.groups.entity_sprites
-        )
+        target_list: Any
+        if fighters is None:
+            movement = self.groups.movement_table
+            target_list = (
+                tuple(movement.iter_entities())
+                if movement is not None
+                else self.groups.entity_sprites
+            )
+        else:
+            target_list = fighters
         outcome = self.contact_system.resolve((box,), target_list, entity_grid)  # type: ignore[arg-type]
         self.guard_events.extend(outcome.guard_events)
         self.impact_events.extend(outcome.impact_events)

@@ -13,6 +13,7 @@ player sees moved: :meth:`after_movement` right after the entities moved,
 :meth:`after_combat` once melee and projectiles are resolved.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -145,9 +146,9 @@ class FeedbackSystem:
         # which foot threw it.
         self._step_clocks: dict[int, _StepClock] = {}
 
-    def after_movement(self, delta_time: float) -> None:
+    def after_movement(self, delta_time: float, fighters: Sequence[Entity] | None = None) -> None:
         """Movement FX for this tick's moves, then advance every FX sprite."""
-        self._spawn_movement_fx(delta_time)
+        self._spawn_movement_fx(delta_time, fighters)
         self.groups.fx_sprites.update(delta_time)
 
     def after_combat(
@@ -203,7 +204,9 @@ class FeedbackSystem:
         """
         spawn_corpse(self.groups.fx_sprites, entity)
 
-    def _spawn_movement_fx(self, delta_time: float) -> None:
+    def _spawn_movement_fx(
+        self, delta_time: float, fighters: Sequence[Entity] | None = None
+    ) -> None:
         """Turn movement and status into render-only FX.
 
         The puffs join ``fx_sprites`` (no collision, never snapshotted):
@@ -240,8 +243,13 @@ class FeedbackSystem:
         dashing_ids: set[int] = set()
         dizzy_ids: set[int] = set()
         stepping_ids: set[int] = set()
-        table = self.groups.movement_table
-        fighters = table.iter_entities() if table is not None else iter(self.groups.entity_sprites)
+        if fighters is None:
+            table = self.groups.movement_table
+            fighters = (
+                tuple(table.iter_entities())
+                if table is not None
+                else tuple(self.groups.entity_sprites)  # type: ignore[arg-type]
+            )
         for entity in fighters:
             self._process_entity_fx(  # type: ignore[arg-type]
                 entity,

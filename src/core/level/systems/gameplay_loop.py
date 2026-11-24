@@ -119,11 +119,13 @@ class CombatLoop:
         combat_sprites: Iterable[Combatant],
         entity_sprites: pygame.sprite.Group[Any],
         groups: SpriteGroups | None = None,
+        fighters: tuple[Entity, ...] | None = None,
     ) -> None:
         if effective_delta <= 0.0:
             return
 
-        fighters = self._fighters(groups) if groups is not None else tuple(entity_sprites)
+        if fighters is None:
+            fighters = self._fighters(groups) if groups is not None else tuple(entity_sprites)
         self.entity_grid.rebuild(fighters)
         displaced = self.separation_system.process(fighters, self.entity_grid)
         combat_table = groups.combat_table if groups is not None else None
@@ -247,14 +249,14 @@ class GameplayLoop(CombatLoop):
             world_delta = effective_delta * player.world_time_scale
             self.platform_system.process(world_delta)
             self.hazard_system.process(world_delta)
-            self.physics_system.process(effective_delta, world_delta, player)
-            self.feedback_system.after_movement(effective_delta)
+            self.physics_system.process(effective_delta, world_delta, player, fighters)
+            self.feedback_system.after_movement(effective_delta, fighters)
             self._launch_shots(groups.combat_sprites)
 
             self.process_combat_and_separation(
-                effective_delta, groups.combat_sprites, groups.entity_sprites, groups
+                effective_delta, groups.combat_sprites, groups.entity_sprites, groups, fighters
             )
-            self.projectile_system.process(world_delta, self.entity_grid)
+            self.projectile_system.process(world_delta, self.entity_grid, fighters)
             self.feedback_system.after_combat(
                 self.combat_system.impact,
                 self._collect_guard_events(),

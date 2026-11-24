@@ -5,6 +5,8 @@ each ``Entity.update``; this stage is where the tick hands it the clock. The
 dust and shake that follow a move are :class:`FeedbackSystem`'s.
 """
 
+from collections.abc import Sequence
+
 from src.core.sprite_groups import SpriteGroups
 from src.entities.entity import Entity
 from src.physics.movement import apply_moving_platform
@@ -28,6 +30,7 @@ class PhysicsSystem:
         delta_time: float,
         world_delta: float | None = None,
         unslowed: Entity | None = None,
+        fighters: Sequence[Entity] | None = None,
     ) -> None:
         """Apply the platform carry, then integrate the entities.
 
@@ -38,12 +41,13 @@ class PhysicsSystem:
         """
         if world_delta is None:
             world_delta = delta_time
-        table = self.groups.movement_table
-        # The dense rows are the roster: a fighter filed through add_fighter
-        # has a row, and a killed fighter has had its row released.
-        fighters = (
-            tuple(table.iter_entities()) if table is not None else tuple(self.groups.entity_sprites)
-        )
+        if fighters is None:
+            table = self.groups.movement_table
+            fighters = (
+                tuple(table.iter_entities())
+                if table is not None
+                else tuple(self.groups.entity_sprites)  # type: ignore[arg-type]
+            )
         for entity in fighters:
             apply_moving_platform(entity, self.groups.moving_platforms)  # type: ignore[arg-type]
         # A copy: an update may remove its own entity from the group.

@@ -162,7 +162,7 @@ def _noop_projectile_stage(calls: list[str]) -> SimpleNamespace:
 def _noop_feedback_stage(calls: list[str]) -> SimpleNamespace:
     """Feedback double: records its two entry points in the tick."""
     return SimpleNamespace(
-        after_movement=lambda delta_time: calls.append("feedback_movement"),
+        after_movement=lambda *args: calls.append("feedback_movement"),
         after_combat=lambda impact, events, player, camera, impacts: calls.append(
             "feedback_combat"
         ),
