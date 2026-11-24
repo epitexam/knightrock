@@ -117,6 +117,7 @@ class VideoScene(MenuPage):
             settings.vsync,
             settings.fullscreen,
             settings.frame_limit,
+            settings.render_scale,
             settings.ui_scale,
             settings.panel_scale,
             settings.fit,
@@ -210,11 +211,17 @@ class VideoScene(MenuPage):
     def _window_label(self) -> str:
         """The debug read-out: target size, density, and whether there are bars.
 
-        Computed with the fit in force (:meth:`Game.effective_fit`), not the saved
-        one, the same way the presentation computes it.
+        Read from the live presentation when there is one: at a reduced render
+        scale the internal target is smaller than the window, and recomputing
+        from the window would report a picture the game is not drawing.
         """
-        fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.effective_fit())
-        density = density_for(fitted.target.size, DEFAULT_FRAMING)
+        presentation = self.game.presentation
+        if presentation is not None:
+            fitted = presentation.picture
+            density = presentation.density
+        else:
+            fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.effective_fit())
+            density = density_for(fitted.target.size, DEFAULT_FRAMING)
         bars = "" if fitted.covered else " + bars"
         return f"{fitted.target.width}x{fitted.target.height} at {density:.2f}x{bars}"
 

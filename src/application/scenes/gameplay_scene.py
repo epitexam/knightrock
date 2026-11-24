@@ -12,6 +12,7 @@ from src.core.colors import Colors
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
+from src.core.rendering.camera import Camera
 from src.core.settings import Debug, Gameplay
 from src.ui.menu_model import MenuAction
 from src.ui.panel_renderer import compact_panels, set_compact_panels
@@ -182,6 +183,11 @@ class GameplayScene(Scene):
         untouched, which is the whole reason the target exists.
         """
         if self.level is not None:
+            # Validate the target before committing any of it. ``set_target``
+            # below re-reads the density and raises on a target whose axes
+            # disagree; assigning the surface first would leave the level and
+            # renderer pointing at a surface the camera still refuses.
+            Camera.for_target(surface)
             self.level.surface = surface
             self.level.renderer.set_surface(surface)
             # The camera has just re-read the density, so the baked planes have

@@ -412,10 +412,14 @@ def test_a_surface_that_is_not_the_framing_is_refused(manager: SceneManager) -> 
     manager.switch(gameplay)
     assert gameplay.level is not None
     before = (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height)
+    before_surface = gameplay.level.surface
+    before_renderer_surface = gameplay.level.renderer.surface
 
     with pytest.raises(ValueError):
         gameplay.set_surface(pygame.Surface((1280, 700)))
 
+    assert gameplay.level.surface is before_surface
+    assert gameplay.level.renderer.surface is before_renderer_surface
     assert (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height) == (before)
     assert before == DEFAULT_FRAMING.size
 

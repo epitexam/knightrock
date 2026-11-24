@@ -8,6 +8,8 @@ from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
 from src.core.display import letterbox
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import picture
 from src.core.display.monitors import degraded
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -25,7 +27,9 @@ def _game() -> SimpleNamespace:
             stage=pygame.Surface((2304, 1296)),
             pixel_perfect=False,
             window_size=(2304, 1296),
+            picture=picture((2304, 1296), DEFAULT_FRAMING),
             density=2.0,
+            render_scale=1.0,
         ),
         stage=None,
         # The video screen asks the runtime what displays exist, so a stand-in
