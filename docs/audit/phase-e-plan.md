@@ -1,6 +1,6 @@
 # Plan — Phase E : optimizations structurantes
 
-Statut : **E1, E2 et E3 implémentés** (branche `phase/render-scale`, 2026-11-24). E1 et E3 sont optimistes mais désactivés par défaut après mesure ; E2 reste optionnel et non embarqué. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
+Statut : **E1, E2 et E3 implémentés** (branche `phase/render-scale`, 2026-11-24). E1 et E3 restent optionnels et sans gain mesuré ici (le scale par défaut de E1 est 1.0 et le producteur E3 est désactivé) ; E2 reste optionnel et non embarqué. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
 
 ## Contexte et pourquoi une décision séparée
 
@@ -79,7 +79,7 @@ Compiler en extensions C les modules où le profile montre le plus de temps Pyth
 
 Trois modules du périmètre initial ont dû rester interprétés, sans toucher au code de jeu : `collisions`, `movement` et `hit_resolver` annotent la vue ECS `SurfaceFlagsView` comme un `dict[str, bool]` ; mypyc en fait une vraie vérification de dict et chaque contact lève `TypeError`. `contact_system` appelle le resolver, et `entity_grid` est sous-classé par un double de test (interdit par mypyc). Le périmètre réel est donc documenté dans le script de build.
 
-`tools/benchmark_native.py` exécute les deux modes en processus séparés, en ordre alterné (9 rounds par défaut), avec le même checksum dans les dix-huit mesures : médiane 1,627 ms (natif) contre 1,888 ms (interprété), soit 1,16× sur ce micro-bench. Le gain est réel mais limité ; le spec PyInstaller n'intègre donc **pas** les `.so`, et le jeu livré reste pure Python.
+`tools/benchmark_native.py` exécute les deux modes en processus séparés, en ordre alterné (9 rounds par défaut), avec le même checksum dans les mesures : dernière série à 15 rounds, médiane 1,994 ms (natif) contre 2,231 ms (interprété), soit 1,12× sur ce micro-bench. Le gain est réel mais limité ; le spec PyInstaller n'intègre donc **pas** les `.so`, et le jeu livré reste pure Python.
 
 ### Risques / rollback
 

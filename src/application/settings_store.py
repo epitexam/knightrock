@@ -137,7 +137,7 @@ class UserSettings:
     """Everything the player is allowed to have an opinion about.
 
     What is not here is any claim about the screen: a fixed window size, a size
-    mode, a render scale, a smoothing flag. The window is the desktop's size or
+    mode, a smoothing flag. The window is the desktop's size or
     whatever the player dragged it to; the picture is derived from it, so there
     is nothing to store and nothing to get wrong.
 

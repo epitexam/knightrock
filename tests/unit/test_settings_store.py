@@ -103,10 +103,10 @@ def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> No
       instead of being overwritten. It is the one window number the player chose,
       and the one number this menu still owns.
 
-    What is still refused is the rest: ``render_scale`` described a fixed render
-    target that no longer exists, ``smoothing`` described a per-frame resample
-    that no longer happens, and the screen picker and the display mode described a
-    request the window manager has the last word on. None has anything to say.
+    What is still refused is the rest: ``smoothing`` described a per-frame
+    resample that no longer happens, and the screen picker and the display mode
+    described a request the window manager has the last word on. None has
+    anything to say. ``render_scale`` came back as a real, optional preference.
 
     ``window.screen`` is not the screen picker coming back. It is the *name* of
     the screen the window closed on, remembered and never chosen: at launch it
