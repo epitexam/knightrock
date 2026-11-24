@@ -96,4 +96,12 @@ class SpriteGroups:
         overlay, the sprite counter. The draw path must not use it: it is an
         O(level) walk, which is the thing the tile index exists to avoid.
         """
-        return (*self.static_sprites, *self.all_sprites, *self.fg_sprites)
+        if self.presentation_sprites:
+            fighter_ids = {id(proxy.entity) for proxy in self.presentation_sprites}
+            moving = (
+                *self.presentation_sprites,
+                *(s for s in self.all_sprites if id(s) not in fighter_ids),
+            )
+        else:
+            moving = (*self.all_sprites,)
+        return (*self.static_sprites, *moving, *self.fg_sprites)
