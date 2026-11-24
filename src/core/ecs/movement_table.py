@@ -144,3 +144,8 @@ class MovementTable(DenseTable):
 
     def views_for(self, slot: int) -> tuple[Vector2View, SurfaceFlagsView]:
         return self._views[slot]
+
+    def iter_entities(self) -> Iterator[Entity]:
+        """The fighters in registration order, read from the dense rows."""
+        for slot in self.alive:
+            yield self.column("owner")[slot]

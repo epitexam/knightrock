@@ -38,8 +38,17 @@ class PhysicsSystem:
         """
         if world_delta is None:
             world_delta = delta_time
-        for entity in self.groups.entity_sprites:
+        table = self.groups.movement_table
+        # The dense rows are the roster: a fighter filed through add_fighter
+        # has a row, and a killed fighter has had its row released.
+        fighters = (
+            tuple(table.iter_entities())
+            if table is not None
+            else tuple(self.groups.entity_sprites)
+        )
+        for entity in fighters:
             apply_moving_platform(entity, self.groups.moving_platforms)
         # A copy: an update may remove its own entity from the group.
-        for entity in tuple(self.groups.entity_sprites):
-            entity.update(delta_time if entity is unslowed else world_delta)
+        for entity in fighters:
+            if entity in self.groups.entity_sprites:
+                entity.update(delta_time if entity is unslowed else world_delta)
