@@ -303,7 +303,8 @@ class Renderer:
             self._entity_of(self._turning_proxy) if self._turning_proxy is not None else None
         )
         self.surface.fill(self.background_color)
-        blits = self._collect_visible_blits(groups)
+        debug_sprites: list[pygame.sprite.Sprite] = []
+        blits = self._collect_visible_blits(groups, debug_sprites if debug_enabled else None)
         for surface, screen_rect in blits:
             self.surface.blit(surface, screen_rect)
         self._draw_ghosts(self._update_afterimages(groups, dt))
@@ -314,7 +315,7 @@ class Renderer:
         self.strike_trails.draw(self.surface, self.camera)
         if debug_enabled:
             overlays = perf_counter()
-            self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
+            self.overlay.draw_debug_overlays(debug_sprites, self.camera, dt)
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     @staticmethod
@@ -381,7 +382,9 @@ class Renderer:
         return None
 
     def _collect_visible_blits(
-        self, groups: SpriteGroups
+        self,
+        groups: SpriteGroups,
+        visible: list[pygame.sprite.Sprite] | None = None,
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute target rects for every visible plane.
 
@@ -420,10 +423,12 @@ class Renderer:
         behind_fx, front_fx = self._collect_fx_blits(groups, colliderect)
 
         for sprite in self._static_plane(groups, static_index, viewport):
-            self._append_cached_blit(blits, sprite, colliderect)
+            if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
+                visible.append(sprite)
         blits.extend(behind_fx)
         for sprite in self._sprite_planes(groups, foreground_index, viewport):
-            self._append_cached_blit(blits, sprite, colliderect)
+            if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
+                visible.append(sprite)
         blits.extend(front_fx)
         return blits
 
@@ -498,7 +503,7 @@ class Renderer:
         blits: list[tuple[pygame.Surface, pygame.Rect]],
         sprite: pygame.sprite.Sprite,
         colliderect: Callable[[pygame.FRect | pygame.Rect], bool],
-    ) -> None:
+    ) -> bool:
         """Cull one sprite through the scale cache and queue its blit.
 
         A sprite with no rectangle or no image is skipped: ``pygame`` allows
@@ -508,7 +513,7 @@ class Renderer:
         rect = sprite.rect
         image_source = sprite.image
         if rect is None or image_source is None or not colliderect(rect):
-            return
+            return False
         screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, rect))
         image = self._scaled_image(image_source)
         # Only a player can be dashing, and a player is an entity, so this
@@ -525,6 +530,7 @@ class Renderer:
                 turn_skew_px(turning),  # type: ignore[arg-type]
             )
         blits.append((image, screen_rect))
+        return True
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Tint overlays for entities that just took a hit or just parried.
