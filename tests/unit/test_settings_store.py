@@ -10,6 +10,7 @@ from src.application.settings_store import (
     SettingsStore,
     UserSettings,
 )
+from src.core.input.input_actions import InputAction
 
 
 def _write_v1(tmp_path: Path, *, width: int, height: int, fullscreen: bool) -> Path:
@@ -179,14 +180,24 @@ def test_the_render_scale_round_trips_and_a_v4_file_gains_the_default(tmp_path: 
     assert SettingsStore(path).load().render_scale == 1.0
 
 
-def test_a_render_scale_outside_the_ladder_is_refused(tmp_path: Path) -> None:
-    """A file asking for an upscale, or a half-step nobody offers, is not guessed at."""
+def test_an_invalid_render_scale_costs_one_setting_not_every_binding(tmp_path: Path) -> None:
+    """A bad picture field falls back to native without resetting the controls.
+
+    ``SettingsStore.load`` treats any ``ValueError`` as a ruined file and
+    returns the defaults, which would throw away every key the player rebound
+    over a value that only decides how many pixels to draw.
+    """
     for bad in (0.9, 1.5, 0, "half"):
         payload = UserSettings().to_dict()
         assert isinstance(payload, dict)
         payload["video"]["render_scale"] = bad
-        with pytest.raises(ValueError, match="render_scale"):
-            UserSettings.from_dict(payload)
+        payload["bindings"]["gameplay"]["keyboard"]["jump"] = 111
+        path = tmp_path / f"bad-{bad}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        loaded = SettingsStore(path).load()
+        assert loaded.render_scale == 1.0
+        assert loaded.bindings.gameplay.keyboard[InputAction.JUMP] == 111
 
 
 def test_uncapped_survives_the_round_trip(tmp_path: Path) -> None:

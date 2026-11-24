@@ -117,10 +117,18 @@ def _frame_limit(video: dict[str, Any]) -> int | None:
 
 
 def _render_scale(video: dict[str, Any]) -> float:
-    """The internal render resolution, validated against the offered ladder."""
+    """The internal render resolution, falling back to native if it is nonsense.
+
+    Unlike the interface ladders, this value is allowed to be wrong without
+    costing the player their bindings: a stale or hand-edited field is exactly
+    the kind of damage that should lose one picture setting, not every key
+    they rebound. ``SettingsStore.load`` turns any ``ValueError`` into a full
+    reset, so this validation deliberately does not raise.
+    """
     value = video.get("render_scale", DEFAULT_RENDER_SCALE)
     if value not in RENDER_SCALES:
-        raise ValueError(f"video.render_scale must be one of {RENDER_SCALES}")
+        logger.warning("video.render_scale is %r; using %s", value, DEFAULT_RENDER_SCALE)
+        return DEFAULT_RENDER_SCALE
     return float(value)
 
 
