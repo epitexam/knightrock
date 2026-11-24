@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.menu_page import MenuPage
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
@@ -77,6 +76,8 @@ class MenuScene(MenuPage):
         self._confirming = False
 
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
+        from src.application.scenes.gameplay_scene import GameplayScene
+
         if routed_input.variant == "device_removed":
             # A controller dropping out is not the player asking to quit.
             return None

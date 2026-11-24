@@ -28,7 +28,7 @@ exe = EXE(
     exclude_binaries=True,
     name="knightrock",
     debug=False,
-    strip=False,
+    strip=True,
     upx=False,
     console=False,
 )
@@ -38,6 +38,6 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     name="knightrock",
-    strip=False,
+    strip=True,
     upx=False,
 )

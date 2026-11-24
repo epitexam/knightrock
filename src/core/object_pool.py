@@ -39,9 +39,11 @@ class ObjectPool(Generic[T]):
         self,
         factory: Callable[[], T],
         reset: Callable[[T], None] | None = None,
+        max_free: int = 64,
     ) -> None:
         self._factory = factory
         self._reset = reset
+        self._max_free = max_free
         self._free: list[T] = []
         self._created = 0
 
@@ -56,8 +58,9 @@ class ObjectPool(Generic[T]):
         return self._factory()
 
     def release(self, instance: T) -> None:
-        """Park ``instance`` back into the free list."""
-        self._free.append(instance)
+        """Park ``instance`` back into the free list, up to its memory cap."""
+        if len(self._free) < self._max_free:
+            self._free.append(instance)
 
     def clear(self) -> None:
         """Drop every parked instance (they become garbage-collectable)."""
