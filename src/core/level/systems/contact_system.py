@@ -358,11 +358,17 @@ class ContactSystem:
         self._candidates_buffer: list[Combatant] = []
         self._target_geometry = _TargetGeometry()
         self._seen: set[int] = set()
+        #: Same-tick reuse of the target tuple and index map. Ghosts are still
+        #: recomputed per resolve: a fighter may start dodging mid-tick.
+        self._resolve_targets_source: Iterable[Combatant] | None = None
+        self._resolve_target_list: tuple[Combatant, ...] = ()
+        self._resolve_order: dict[int, int] = {}
 
     def begin_tick(self) -> None:
         """Reset the per-tick metric accumulator (shared-instance wiring)."""
         self.tick_metrics = CombatMetrics()
         self.zone_contacts = []
+        self._resolve_targets_source = None
         self.trace.begin_tick()
 
     def resolve(
@@ -385,8 +391,14 @@ class ContactSystem:
         # zone_contacts accumulates across producers of the same tick
         # (cleared only by begin_tick), mirroring tick_metrics.
         self._target_geometry.reset()
-        target_list = tuple(targets)
-        order = {id(target): index for index, target in enumerate(target_list)}
+        if targets is not self._resolve_targets_source:
+            self._resolve_targets_source = targets
+            self._resolve_target_list = tuple(targets)
+            self._resolve_order = {
+                id(target): index for index, target in enumerate(self._resolve_target_list)
+            }
+        target_list = self._resolve_target_list
+        order = self._resolve_order
         ghosts = tuple(target for target in target_list if target.dodge_ghost is not None)
 
         for box in boxes:
