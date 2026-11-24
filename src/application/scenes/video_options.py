@@ -7,7 +7,12 @@ entries with a note on the consequence, testable without a display.
 from __future__ import annotations
 
 from src.application.scenes.option_screen import Option
-from src.application.settings_store import FRAME_LIMITS, PANEL_SCALES, UI_SCALES
+from src.application.settings_store import (
+    FRAME_LIMITS,
+    PANEL_SCALES,
+    RENDER_SCALES,
+    UI_SCALES,
+)
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import (
     FitPolicy,
@@ -169,6 +174,18 @@ def frame_limit_options(vsync: bool) -> tuple[Option, ...]:
             t("limit.note.vsync") if vsync else _note(_FRAME_LIMIT_NOTES.get(value)),
         )
         for value in FRAME_LIMITS
+    )
+
+
+def render_scale_options() -> tuple[Option, ...]:
+    """The internal resolutions, each with what it costs the picture."""
+    return tuple(
+        Option(
+            "Native" if value == 1.0 else f"{value:g}x",
+            value,
+            t("note.render_scale") if value < 1.0 else "",
+        )
+        for value in RENDER_SCALES
     )
 
 

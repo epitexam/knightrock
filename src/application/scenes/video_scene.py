@@ -241,6 +241,18 @@ class VideoScene(MenuPage):
         """The limit is inert under VSync: the present paces, and the row says so."""
         return t("note.frame_limit.vsync" if self.game.settings.vsync else "note.frame_limit")
 
+    def _render_scale_label(self) -> str:
+        scale = self.game.settings.render_scale
+        return "Native" if scale == 1.0 else f"{scale:g}x"
+
+    def _submenu_render_scale(self) -> Submenu:
+        return (
+            t("title.render_scale"),
+            video_options.render_scale_options(),
+            self.game.settings.render_scale,
+            lambda value: self._apply(self.game.settings.with_video(render_scale=value)),
+        )
+
     def _screen_refresh_rate(self) -> int:
         """The refresh rate of the screen the window is on, or 0 when unknown.
 
@@ -416,6 +428,7 @@ class VideoScene(MenuPage):
                 fit=defaults.fit,
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
+                render_scale=defaults.render_scale,
                 ui_scale=defaults.ui_scale,
                 panel_scale=defaults.panel_scale,
             )
@@ -473,6 +486,13 @@ class VideoScene(MenuPage):
             _frame_limit_label,
             submenu=_submenu_frame_limit,
             note=_frame_limit_note,
+        ),
+        Row(
+            "render_scale",
+            "video.render_scale",
+            _render_scale_label,
+            submenu=_submenu_render_scale,
+            note=lambda scene: t("note.render_scale"),
         ),
         Row("section:interface", "section.interface", header=True),
         Row(

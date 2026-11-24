@@ -953,6 +953,7 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
         "section:performance",
         "vsync",
         "frame_limit",
+        "render_scale",
         "section:interface",
         "scale",
         "reset",

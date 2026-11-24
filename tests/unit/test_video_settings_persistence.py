@@ -150,10 +150,7 @@ def _click_list(list_scene: OptionScreen, index: int) -> None:
     assert game.presentation is not None
     list_scene.draw(game.presentation.surface)
     centre = list_scene.view.item_rects[index].center
-    position = (
-        centre[0] + game.presentation.rect.x,
-        centre[1] + game.presentation.rect.y,
-    )
+    position = game.presentation.viewport_to_window(centre)
     event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position)
     game.scene_manager.handle_event(game._to_target_coordinates(event))
 
@@ -168,10 +165,7 @@ def _click(scene: VideoScene, index: int) -> None:
     game = scene.game
     assert game.presentation is not None
     centre = scene.view.item_rects[index].center
-    position = (
-        centre[0] + game.presentation.rect.x,
-        centre[1] + game.presentation.rect.y,
-    )
+    position = game.presentation.viewport_to_window(centre)
     event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position)
     game._handle_events()
     game.scene_manager.handle_event(game._to_target_coordinates(event))
@@ -273,6 +267,27 @@ def test_the_window_size_survives_a_relaunch(tmp_path: Path) -> None:
     assert relaunched.window_size == wanted
 
 
+def test_the_render_scale_survives_a_relaunch(tmp_path: Path) -> None:
+    """The row changes the live target, the file and the next launch together."""
+    game, store = _runtime(tmp_path)
+    game.scene_manager.push(VideoScene(game))
+    scene = game.scene_manager.current
+    assert isinstance(scene, VideoScene)
+    scene.draw(game.presentation.surface)
+
+    _pick_in_list(game, scene, "render_scale", 0.5)
+
+    assert game.settings.render_scale == 0.5
+    assert game.presentation is not None
+    assert game.presentation.render_scale == 0.5
+    assert game.presentation.surface.get_size() < game.presentation.stage.get_size()
+    game.step()
+
+    written = json.loads(store.path.read_text(encoding="utf-8"))
+    assert written["video"]["render_scale"] == 0.5
+    assert _relaunch(store, tmp_path).render_scale == 0.5
+
+
 def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path) -> None:
     """A reset on this screen must not cost the player their controls.
 
@@ -336,13 +351,13 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
         "fit",
         "vsync",
         "frame_limit",
+        "render_scale",
     }
     assert set(window) == {"size", "last", "screen", "fullscreen"}
     assert not {
         "width",
         "height",
         "size_mode",
-        "render_scale",
         "smoothing",
         "display",
         "monitor",
@@ -476,6 +491,7 @@ def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
         "fit",
         "vsync",
         "frame_limit",
+        "render_scale",
     }
     assert "panel_scale" in written["ui"]
 

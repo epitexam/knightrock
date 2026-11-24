@@ -112,7 +112,13 @@ class Screen:
 
     # --------------------------------------------------------------- changes
 
-    def open(self, spec: WindowSpec, fit: FitPolicy, screen_name: str | None = None) -> None:
+    def open(
+        self,
+        spec: WindowSpec,
+        fit: FitPolicy,
+        screen_name: str | None = None,
+        render_scale: float = 1.0,
+    ) -> None:
         """Build the window and the picture drawn into it, once.
 
         On the screen called ``screen_name`` when there is one -- the screen the
@@ -120,7 +126,13 @@ class Screen:
         """
         self.stage = Stage(spec, self.topology().called(screen_name) or self.monitor())
         self.window.built(self.stage.size)
-        self.presentation = Presentation(self.stage.surface, DEFAULT_FRAMING, fit=fit, convert=True)
+        self.presentation = Presentation(
+            self.stage.surface,
+            DEFAULT_FRAMING,
+            fit=fit,
+            convert=True,
+            render_scale=render_scale,
+        )
 
     def refit(self) -> bool:
         """Fit the picture to the window again; whether the target is new."""
@@ -178,7 +190,7 @@ class Screen:
         if not self.presentation.pointer_in_viewport(position):
             if event.type in POINTER_PRESSES:
                 return None
-            rect = self.presentation.rect
+            rect = self.presentation.window_rect
             position = (
                 min(max(position[0], rect.left), rect.right - 1),
                 min(max(position[1], rect.top), rect.bottom - 1),

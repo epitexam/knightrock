@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 #: window size the player chose. All are read. The v4 keys that named a screen or
 #: a display mode were dropped without a new version: they are simply not read
 #: any more, and a file that still carries them loads unchanged.
-SETTINGS_FORMAT_VERSION = 4
+SETTINGS_FORMAT_VERSION = 5
 LEGACY_FORMAT_VERSIONS = (1, 2)
 
 #: Interface scale, as the player chooses it. The scale the views are handed is
@@ -71,6 +71,14 @@ PANEL_SCALES: tuple[float, ...] = (0.4, 0.5, 0.6, 0.8, 1.0, 1.2)
 #: the hardware do not have to agree -- but when they can, they should.
 FRAME_LIMITS: tuple[int | None, ...] = (None, 20, 30, 60, 120, 144, 180, 240)
 DEFAULT_FRAME_LIMIT: int | None = 60
+
+#: Internal render resolution as a fraction of the window. 1.0 keeps the old
+#: 1:1 blit; smaller values fill the window from a cheaper target. A preference
+#: again (v4 had deliberately dropped it) because high-DPI windows can exceed
+#: the frame budget on software blits. Never above 1.0: upscaling would ask
+#: the GPU for pixels the game did not draw.
+RENDER_SCALES: tuple[float, ...] = (1.0, 0.75, 0.5)
+DEFAULT_RENDER_SCALE: float = 1.0
 
 #: The floor, and the reason for it: this is where the fixed-step accumulator
 #: starts losing time. ``Simulation.MAX_FRAME_TIME`` truncates a frame at 100ms,
@@ -106,6 +114,14 @@ def _frame_limit(video: dict[str, Any]) -> int | None:
     if value is None:
         return None
     return _bounded_int(value, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT)
+
+
+def _render_scale(video: dict[str, Any]) -> float:
+    """The internal render resolution, validated against the offered ladder."""
+    value = video.get("render_scale", DEFAULT_RENDER_SCALE)
+    if value not in RENDER_SCALES:
+        raise ValueError(f"video.render_scale must be one of {RENDER_SCALES}")
+    return float(value)
 
 
 @dataclass(frozen=True)
@@ -147,6 +163,7 @@ class UserSettings:
     fit: FitPolicy = FitPolicy.AUTO
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
+    render_scale: float = DEFAULT_RENDER_SCALE
     ui_scale: float = 1.0
     panel_scale: float = 1.0
     #: The window size to open at, or ``None`` to keep the size the player last
@@ -175,6 +192,7 @@ class UserSettings:
                 "fit": self.fit.value,
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
+                "render_scale": self.render_scale,
             },
             "window": {
                 "size": list(self.window_size) if self.window_size else None,
@@ -199,9 +217,11 @@ class UserSettings:
             return cls._from_v1(data) if version == 1 else cls._from_v2(data)
         if version == 3:
             return cls._from_v3(data)
+        if version == 4:
+            return cls._from_v4(data)
         if version != SETTINGS_FORMAT_VERSION:
             raise ValueError("unsupported settings schema")
-        return cls._from_v4(data)
+        return cls._from_v5(data)
 
     @classmethod
     def _bindings(cls, data: dict[str, Any]) -> InputBindings:
@@ -263,6 +283,13 @@ class UserSettings:
             last_window_screen=_screen_name(window),
             fullscreen=_bounded_bool(window.get("fullscreen", False), "window.fullscreen"),
         )
+
+    @classmethod
+    def _from_v5(cls, data: dict[str, Any]) -> UserSettings:
+        """Read a v5 file: v4 with an internal render scale."""
+        base = cls._from_v4(data)
+        video, _ui = _sections(data)
+        return replace(base, render_scale=_render_scale(video))
 
     @classmethod
     def _from_v2(cls, data: dict[str, Any]) -> UserSettings:

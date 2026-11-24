@@ -319,6 +319,7 @@ class Game:
             self.screen.spec(self.settings),
             self.effective_fit(),
             self.settings.last_window_screen,
+            self.settings.render_scale,
         )
 
     def _retarget(self) -> None:
@@ -382,6 +383,7 @@ class Game:
         # snapping to whole pixels with the setting saying otherwise, which the
         # acceptance run caught and nothing else did.
         previous_fit = self.presentation.fit
+        previous_scale = self.presentation.render_scale
         self.presentation.fit = self.effective_fit()
         try:
             if self._window_signature(previous) != self._window_signature(settings):
@@ -390,10 +392,16 @@ class Game:
                 self._set_fullscreen(settings.fullscreen)
             elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
                 self._retarget()
+            elif (
+                previous.render_scale != settings.render_scale
+                and self.presentation.set_render_scale(settings.render_scale)
+            ):
+                self._follow_the_target()
             self.scene_manager.set_ui_scale(self.ui_scale)
         except Exception:
             self.settings = previous
             self.presentation.fit = previous_fit
+            self.presentation.set_render_scale(previous_scale)
             self.input_bindings = previous.bindings
             self.input_router.set_bindings(previous.bindings)
             self.input_provider.set_bindings(previous.bindings)

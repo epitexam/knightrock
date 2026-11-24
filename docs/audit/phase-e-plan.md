@@ -1,6 +1,6 @@
 # Plan — Phase E : optimizations structurantes
 
-Statut : **plan, non implémenté**. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
+Statut : **E1 implémenté** (branche `phase/e1-render-scale`, 2026-11-24) ; E2 et E3 restent des décisions séparées. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
 
 ## Contexte et pourquoi une décision séparée
 
@@ -33,6 +33,18 @@ Rendre le coût de remplissage indépendant de la résolution de la fenêtre. Me
 - Goldens PNG recapturés **uniquement avec preuve de cause unique** (un scale = un commit = un diff de captures lu).
 - `test_render_target_chain.py`, `test_frame_coherence.py`, `test_menu_goldens.py`, `test_video_settings_persistence.py`, suites complètes et `DEBUG=1`.
 - Smoke PyInstaller.
+
+### Mesure (machine de travail, SDL dummy, 10 échantillons)
+
+`uv run python tests/benchmarks/render_benchmark.py --repeats 10 --window 3840 2160` :
+
+| scale | target | world | present | frame |
+|---|---|---|---|---|
+| 1.00 | 3840×2160 | 14,5 ms | 9,1 ms | 23,6 ms |
+| 0.75 | 2880×1620 | 9,8 ms | 23,9 ms | 33,8 ms |
+| 0.50 | 1920×1080 | 4,5 ms | 23,6 ms | 28,1 ms |
+
+Le draw suit bien le target, mais l'upscale CPU (`pygame.transform.scale` de la frame vers la fenêtre) coûte plus qu'il ne fait économiser ici : le reduced scale est **plus lent** que le 1:1 sur cette machine. Le réglage reste donc optionnel, avec 1.0 par défaut : il n'y a aucune régression sur le chemin livré. Un gain réel demanderait un upscale matériel (`pygame.SCALED`/OpenGL), exclu du périmètre par les décisions ci-dessous.
 
 ### Risques / rollback
 

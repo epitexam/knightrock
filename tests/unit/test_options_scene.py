@@ -154,6 +154,7 @@ def test_video_menu_owns_every_display_setting() -> None:
         "section:performance",
         "vsync",
         "frame_limit",
+        "render_scale",
         "section:interface",
         "scale",
     ]

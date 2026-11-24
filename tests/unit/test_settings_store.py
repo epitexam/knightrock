@@ -122,9 +122,10 @@ def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> No
         "fit",
         "vsync",
         "frame_limit",
+        "render_scale",
     }
     assert set(payload["window"]) == {"size", "last", "screen", "fullscreen"}
-    for dead in ("width", "height", "size_mode", "render_scale", "smoothing"):
+    for dead in ("width", "height", "size_mode", "smoothing"):
         assert not hasattr(UserSettings(), dead), f"{dead} is gone and cannot come back"
         assert dead not in payload["video"], f"{dead} has nothing left to describe"
 
@@ -159,6 +160,33 @@ def test_a_v2_file_keeps_its_bindings_and_drops_its_window_claims(tmp_path: Path
     assert loaded.vsync is True
     assert loaded.frame_limit == 144
     assert not hasattr(loaded, "width")
+
+
+def test_the_render_scale_round_trips_and_a_v4_file_gains_the_default(tmp_path: Path) -> None:
+    """The new video preference survives a write/read, and old files stay loadable."""
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(UserSettings(render_scale=0.5))
+    loaded = store.load()
+    assert loaded.render_scale == 0.5
+    assert json.loads(store.path.read_text(encoding="utf-8"))["video"]["render_scale"] == 0.5
+
+    payload = UserSettings().to_dict()
+    assert isinstance(payload, dict)
+    payload["version"] = 4
+    del payload["video"]["render_scale"]
+    path = tmp_path / "v4.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert SettingsStore(path).load().render_scale == 1.0
+
+
+def test_a_render_scale_outside_the_ladder_is_refused(tmp_path: Path) -> None:
+    """A file asking for an upscale, or a half-step nobody offers, is not guessed at."""
+    for bad in (0.9, 1.5, 0, "half"):
+        payload = UserSettings().to_dict()
+        assert isinstance(payload, dict)
+        payload["video"]["render_scale"] = bad
+        with pytest.raises(ValueError, match="render_scale"):
+            UserSettings.from_dict(payload)
 
 
 def test_uncapped_survives_the_round_trip(tmp_path: Path) -> None:

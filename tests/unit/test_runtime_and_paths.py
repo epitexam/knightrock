@@ -786,13 +786,14 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
     game._initialize()
 
     names = {field.name for field in fields(UserSettings)}
-    assert not names & {"width", "height", "size_mode", "render_scale", "smoothing"}
+    assert not names & {"width", "height", "size_mode", "smoothing"}
     assert names == {
         "bindings",
         "pixel_perfect",
         "fit",
         "vsync",
         "frame_limit",
+        "render_scale",
         "ui_scale",
         "panel_scale",
         "window_size",
