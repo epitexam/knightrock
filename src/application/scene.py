@@ -52,6 +52,13 @@ class Scene(ABC):
     def set_ui_scale(self, scale: float) -> None:  # noqa: B027
         """Adopt a new interface scale. A no-op, like :meth:`set_surface`."""
 
+    def invalidate_baked_layers(self) -> None:  # noqa: B027
+        """Drop surfaces painted against a display format that just changed.
+
+        Declared on the base so the coordinator can call it on every scene
+        without a ``getattr`` that would let a new scene skip it in silence.
+        """
+
     @property
     def halts_simulation(self) -> bool:
         """Whether this scene stops the world while it is on top.

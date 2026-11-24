@@ -163,6 +163,12 @@ def measure_cull(level: Level, repeats: int) -> tuple[float, float]:
     """
     renderer = level.renderer
     groups = level.groups
+    # This table is about the cull, not the pre-painted alternative. A real
+    # level now installs a baked plane by default, so take it out first or
+    # both rows would measure the same one-blit path.
+    baked_static = renderer._baked_static
+    baked_foreground = renderer._baked_foreground
+    renderer.set_baked_planes(None, None)
     index = renderer._static_index
     foreground = TileChunkIndex(groups.fg_sprites) if groups.fg_sprites else None
 
@@ -182,7 +188,38 @@ def measure_cull(level: Level, repeats: int) -> tuple[float, float]:
             groups.all_sprites.remove(tile)
         if index is not None:
             renderer.set_static_planes(index, foreground)
+        renderer.set_baked_planes(baked_static, baked_foreground)
     return scanned, indexed
+
+
+def measure_baked_planes(level: Level, repeats: int) -> tuple[float, float] | None:
+    """Frame-collection cost with the baked planes versus with the chunk culls.
+
+    Only the collection is measured: the actual blit of a baked slice is a
+    whole-viewport copy, while the cull path blits each surviving tile, and
+    ``Renderer.draw`` does both in the same loop. A real level is needed, so a
+    synthetic two-sprite scene returns ``None`` rather than a meaningless row.
+    """
+    renderer = level.renderer
+    static = renderer._baked_static
+    if static is None:
+        # The producer is opt-in: force it on for this A/B row only.
+        level.install_static_planes(bake=True)
+        static = renderer._baked_static
+    if static is None:
+        return None
+    foreground = renderer._baked_foreground
+    groups = level.groups
+
+    def collect() -> None:
+        renderer.camera.begin_frame(1.0)
+        renderer._collect_visible_blits(groups)
+
+    baked = _median_ms(collect, repeats)
+    renderer.set_baked_planes(None, None)
+    indexed = _median_ms(collect, repeats)
+    renderer.set_baked_planes(static, foreground)
+    return baked, indexed
 
 
 def _cull_once(renderer, groups) -> None:
@@ -308,6 +345,14 @@ def main() -> None:
         f"{scanned:>9.3f}ms{indexed:>13.3f}ms{scanned - indexed:>8.3f}ms"
         f"{100 * (scanned - indexed) / scanned:>6.0f}%"
     )
+    baked = measure_baked_planes(level, arguments.repeats)
+    if baked is not None:
+        print("\n-- the two frozen-plane producers, same level --")
+        print(f"{'baked':>10}{'chunked':>12}{'saved':>9}{'%':>7}")
+        print(
+            f"{baked[0]:>9.3f}ms{baked[1]:>11.3f}ms{baked[1] - baked[0]:>8.3f}ms"
+            f"{100 * (baked[1] - baked[0]) / baked[1]:>6.0f}%"
+        )
     print(
         f"\n{'':>10}On the shipped level the index is worth a fifth of the cull,\n"
         f"which is a rounding error next to the frame. Two things explain why,\n"

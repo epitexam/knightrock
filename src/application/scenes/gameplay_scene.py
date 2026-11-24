@@ -183,8 +183,14 @@ class GameplayScene(Scene):
         """
         if self.level is not None:
             self.level.surface = surface
-            self.level.reconvert_tiles()
             self.level.renderer.set_surface(surface)
+            # The camera has just re-read the density, so the baked planes have
+            # to be repainted at that density before the next frame draws them.
+            self.level.rebuild_baked_layers()
+
+    def invalidate_baked_layers(self) -> None:
+        if self.level is not None:
+            self.level.invalidate_baked_layers()
 
     def set_ui_scale(self, scale: float) -> None:
         ui = self._ui

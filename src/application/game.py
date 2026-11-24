@@ -98,6 +98,7 @@ class Game:
             self.level_manager.invalidate,
             fx=fx.clear_frame_cache,
             renderer=clear_shear_cache,
+            baked=lambda: self.scene_manager.invalidate_baked_layers(),
         )
         self._save_path = save_path if save_path is not None else self.config.save_path
         self.save_game = SaveGame.load(self._save_path)

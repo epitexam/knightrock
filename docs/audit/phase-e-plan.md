@@ -1,6 +1,6 @@
 # Plan — Phase E : optimizations structurantes
 
-Statut : **E1 et E2 implémentés** (branche `phase/render-scale`, 2026-11-24) ; E3 reste une décision séparée. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
+Statut : **E1, E2 et E3 implémentés** (branche `phase/render-scale`, 2026-11-24). E1 et E3 sont optimistes mais désactivés par défaut après mesure ; E2 reste optionnel et non embarqué. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
 
 ## Contexte et pourquoi une décision séparée
 
@@ -104,9 +104,13 @@ Supprimer le cull et les ~115 blits de tuiles par frame en peignant chaque calqu
 
 `test_tile_chunk_index.py` (partition totale), goldens de rendu et de culling, `render_benchmark.py` (cull et frame), `test_frame_coherence.py`, suites complètes.
 
+### Livré et mesure
+
+`src/core/rendering/static_layer.py` paint chaque calque gelé une fois à la densité de la cible, avec plafond de 64 Mo par calque et `TileChunkIndex` en fallback. Les surfaces sont invalidées par `ResourceCoordinator` et repaintées par `GameplayScene.set_surface`. `ENABLE_BAKED_PLANES` est **False** après A/B : le blit d'un viewport entier coûte plus que les tuiles visibles (7,4 ms contre 4,3 ms en 1920×1080), malgré une collecte trois fois moins chère. Table complète dans `docs/audit/performance-2026-11.md`.
+
 ### Risques / rollback
 
-Risque : consommation mémoire (~20–60 Mo selon les calques), parallaxe et formats de tuiles avec offset, formats d'affichage changeants. Rollback : remettre le chemin `TileChunkIndex` comme seul producteur ; le pré-rendu est une optimisation du producteur, pas du contrat du renderer.
+Risque : consommation mémoire (~20–60 Mo selon les calques), parallaxe et formats de tuiles avec offset, formats d'affichage changeants, et décalage d'un pixel sur les décors à rect fractionnaire sous une caméra interpolée. Rollback : constant déjà à `False` — le chemin `TileChunkIndex` reste le seul producteur livré ; le pré-rendu est une optimisation du producteur, pas du contrat du renderer.
 
 ---
 

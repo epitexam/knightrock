@@ -25,11 +25,13 @@ class ResourceCoordinator:
         levels: Invalidate,
         fx: Invalidate | None = None,
         renderer: Invalidate | None = None,
+        baked: Invalidate | None = None,
     ) -> None:
         self._assets = assets
         self._levels = levels
         self._fx = fx
         self._renderer = renderer
+        self._baked = baked
 
     def invalidate_display_format(self) -> None:
         """Drop every surface derived from the old display format."""
@@ -39,3 +41,5 @@ class ResourceCoordinator:
             self._fx()
         if self._renderer is not None:
             self._renderer()
+        if self._baked is not None:
+            self._baked()

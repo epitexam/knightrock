@@ -42,7 +42,7 @@ Aucun golden, digest, oracle ou empreinte de données n'a changé.
 
 - **E1 — livré** (`phase/render-scale`) : `video.render_scale` (1.0 / 0.75 / 0.5, défaut 1.0), migration v5, upscale direct dans la fenêtre et inversion de souris exacte. Vert et sans régression au défaut, mais **sans gain ici** : l'upscale CPU coûte plus que le draw économisé (table complète dans `docs/audit/phase-e-plan.md`).
 - **E2 — livré** (même branche) : build mypyc optionnel de cinq modules de `src/physics/`, avec conservation du mode interprété et A/B reproductible. Détails et séries ci-dessous.
-- **E3 — non livré** : pré-rendu des calques statiques (~20 Mo/calque, invalidations au changement de format). À décider après E2.
+- **E3 — livré mais désactivé** : producteur de calques pré-peints (`src/core/rendering/static_layer.py`), invalidé via `ResourceCoordinator` et réappliqué au changement de cible. Le chemin collection est trois fois moins cher, mais le blit d'un plein viewport coûte plus que les ~115 tuiles du chunk index : le réglage reste **off** (`ENABLE_BAKED_PLANES = False`). Détails ci-dessous.
 
 ### A/B mypyc (E2)
 
@@ -58,5 +58,18 @@ Aucun golden, digest, oracle ou empreinte de données n'a changé.
 | **médiane** | **2,294 ms** | **2,903 ms** |
 
 Speedup **1,27×** sur ce micro-bench, dans un bruit de ±1 ms. Ce n'est pas une promesse de gain sur le tick complet : le périmètre compile surtout des helpers dont les paramètres sont `Any` (aucun type à exploiter), et il exclut les modules qui touchent aux vues ECS (voir `tools/build_native.py`). Le build natif n'est donc **pas intégré** au spec PyInstaller : le jeu livré reste pure Python, avec l'option de compiler localement pour mesurer.
+
+### Pré-rendu des calques statiques (E3)
+
+Le producteur existe, avec plafond mémoire (64 Mo/calque), fallback `TileChunkIndex`, invalidation au changement de format et réapplication au changement de densité. Il est branché sur le même point d'injection que l'index, donc l'ordre de peinture ne dépend pas du producteur. `ENABLE_BAKED_PLANES` reste à `False` après A/B en ordre alterné sur le niveau réel :
+
+| chemin | 1920×1080 | 1152×648 |
+|---|---|---|
+| calque pré-peint | 7,4 ms | 3,4 ms |
+| chunk index | 4,3 ms | 2,5 ms |
+
+La collecte est bien plus rapide (0,21 ms contre 0,97 ms pour réunir les blits), mais copier tout le viewport depuis une surface de 54 Mo coûte plus que blitter les tuiles visibles et laisser le `fill` faire le fond. Le pré-rendu est donc un levier uniquement si la copie de grandes surfaces devient moins chère (machine ou format different) ; le code et ses cinq tests restent pour refaire la mesure.
+
+À densité entière et offset caméra entier, les deux chemins produisent exactement les mêmes octets. À un offset interpolé fractionnaire, une poignée de décors dont le rect est fractionnaire peut différer d'un pixel : une seule origine ne peut pas reproduire deux arrondis indépendants. Le chemin livré (index) est inchangé.
 
 Écartés avec preuve : dirty rects (caméra mobile), free-threaded Python 3.14t (pénalité mono-thread + GIL réactivé par les extensions C), GPU/moderngl (inutile à ~100 sprites), optimisation du fingerprint 440 champs (test-only).
