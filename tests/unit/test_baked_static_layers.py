@@ -127,12 +127,16 @@ def test_a_plane_too_large_for_the_ceiling_is_refused() -> None:
 
 def test_invalidating_the_planes_drops_them_until_rebuilt() -> None:
     level = _level()
+    assert level.renderer._baked_static is None, "the producer must be opt-in"
     level.install_static_planes(bake=True)
     assert level.renderer._baked_static is not None
 
     level.invalidate_baked_layers()
     assert level.renderer._baked_static is None
     level.rebuild_baked_layers()
-    assert level.renderer._baked_static is None, "rebuild must respect the opt-in"
-    level.install_static_planes(bake=True)
-    assert level.renderer._baked_static is not None
+    assert level.renderer._baked_static is not None, "an explicit choice survives a repaint"
+
+    level.install_static_planes(bake=False)
+    level.invalidate_baked_layers()
+    level.rebuild_baked_layers()
+    assert level.renderer._baked_static is None, "opting out also survives a repaint"

@@ -68,7 +68,7 @@ Le producteur existe, avec plafond mémoire (64 Mo/calque), fallback `TileChunkI
 | calque pré-peint | 7,4 ms | 3,4 ms |
 | chunk index | 4,3 ms | 2,5 ms |
 
-La collecte est bien plus rapide (0,21 ms contre 0,97 ms pour réunir les blits), mais copier tout le viewport depuis une surface de 54 Mo coûte plus que blitter les tuiles visibles et laisser le `fill` faire le fond. Le pré-rendu est donc un levier uniquement si la copie de grandes surfaces devient moins chère (machine ou format different) ; le code et ses cinq tests restent pour refaire la mesure.
+La collecte est bien plus rapide (0,20 ms contre 0,65 ms pour réunir les blits avec le vrai chunk index), mais copier tout le viewport depuis une surface de 54 Mo coûte plus que blitter les tuiles visibles et laisser le `fill` faire le fond. Le pré-rendu est donc un levier uniquement si la copie de grandes surfaces devient moins chère (machine ou format different) ; le code et ses cinq tests restent pour refaire la mesure.
 
 À densité entière et offset caméra entier, les deux chemins produisent exactement les mêmes octets. À un offset interpolé fractionnaire, une poignée de décors dont le rect est fractionnaire peut différer d'un pixel : une seule origine ne peut pas reproduire deux arrondis indépendants. Le chemin livré (index) est inchangé.
 

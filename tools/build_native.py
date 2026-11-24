@@ -76,8 +76,11 @@ def build() -> list[Path]:
             check=False,
         )
         # mypyc's final copy step insists on a `src/src/...` destination that
-        # does not exist. The extensions themselves are in build/lib.* and are
-        # valid; the check below is the one that matters, not that exit code.
+        # does not exist. Tolerate that one known failure, but never hide a
+        # different compile error just because some .so files were produced.
+        known_copy_failure = "could not create 'src/src/" in result.stdout
+        if result.returncode and not known_copy_failure:
+            raise RuntimeError(f"mypyc failed:\n{result.stdout[-4000:]}")
         extensions = _native_sources(temp)
 
         installed: list[Path] = []

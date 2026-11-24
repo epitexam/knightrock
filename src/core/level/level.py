@@ -96,6 +96,9 @@ class Level:
         self.surface = surface
         self.input_manager = input_manager
         self.level_data = level_data
+        #: An explicit producer choice survives a display-format change. The
+        #: module default is used until a caller opts in or out on this level.
+        self._bake_override: bool | None = None
 
         self.groups = SpriteGroups()
         from src.core.ecs.combat_table import CombatTable
@@ -279,9 +282,13 @@ class Level:
         exercise. The two producers are interchangeable at the renderer's
         injection point, so paint order never depends on which one won.
         """
+        if bake is not None:
+            self._bake_override = bake
         statics = tuple(self.groups.static_sprites)
         foreground = tuple(self.groups.fg_sprites)
-        baked_static, baked_foreground = self._bake_planes(statics, foreground, enabled=bake)
+        baked_static, baked_foreground = self._bake_planes(
+            statics, foreground, enabled=self._bake_override
+        )
         self.renderer.set_static_planes(
             None if baked_static is not None else TileChunkIndex(statics),
             None if baked_foreground is not None else (TileChunkIndex(foreground) if foreground else None),

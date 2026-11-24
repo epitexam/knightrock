@@ -163,9 +163,9 @@ def measure_cull(level: Level, repeats: int) -> tuple[float, float]:
     """
     renderer = level.renderer
     groups = level.groups
-    # This table is about the cull, not the pre-painted alternative. A real
-    # level now installs a baked plane by default, so take it out first or
-    # both rows would measure the same one-blit path.
+    # This table is about the cull, not the pre-painted alternative. The
+    # producer is opt-in, but a forced A/B row can leave one installed, so
+    # take it out first or both rows would measure the same one-blit path.
     baked_static = renderer._baked_static
     baked_foreground = renderer._baked_foreground
     renderer.set_baked_planes(None, None)
@@ -201,25 +201,35 @@ def measure_baked_planes(level: Level, repeats: int) -> tuple[float, float] | No
     synthetic two-sprite scene returns ``None`` rather than a meaningless row.
     """
     renderer = level.renderer
-    static = renderer._baked_static
+    original_index = renderer._static_index
+    original_foreground_index = renderer._foreground_index
+    original_baked = renderer._baked_static
+    original_baked_foreground = renderer._baked_foreground
+    static = original_baked
     if static is None:
         # The producer is opt-in: force it on for this A/B row only.
         level.install_static_planes(bake=True)
         static = renderer._baked_static
     if static is None:
         return None
-    foreground = renderer._baked_foreground
     groups = level.groups
 
     def collect() -> None:
         renderer.camera.begin_frame(1.0)
         renderer._collect_visible_blits(groups)
 
-    baked = _median_ms(collect, repeats)
-    renderer.set_baked_planes(None, None)
-    indexed = _median_ms(collect, repeats)
-    renderer.set_baked_planes(static, foreground)
-    return baked, indexed
+    try:
+        baked = _median_ms(collect, repeats)
+        renderer.set_baked_planes(None, None)
+        # Forcing the baked producer installed no cull. Restore the index that
+        # the level had chosen, or this row would measure the linear fallback
+        # while the table calls it "chunked".
+        renderer.set_static_planes(original_index, original_foreground_index)
+        indexed = _median_ms(collect, repeats)
+        return baked, indexed
+    finally:
+        renderer.set_baked_planes(original_baked, original_baked_foreground)
+        renderer.set_static_planes(original_index, original_foreground_index)
 
 
 def _cull_once(renderer, groups) -> None:
