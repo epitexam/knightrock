@@ -309,7 +309,7 @@ class Renderer:
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     @staticmethod
-    def _entity_of(sprite: pygame.sprite.Sprite) -> Any:
+    def _entity_of(sprite: Any) -> Any:
         """The simulation object behind a draw proxy, or the sprite itself."""
         proxy = getattr(sprite, "entity", None)
         return proxy if proxy is not None else sprite
@@ -343,7 +343,7 @@ class Renderer:
         return lag
 
     def _drawn_rect(
-        self, sprite: pygame.sprite.Sprite, rect: pygame.FRect | pygame.Rect
+        self, sprite: Any, rect: pygame.FRect | pygame.Rect
     ) -> pygame.FRect | pygame.Rect:
         """``rect`` moved to where this frame draws the sprite."""
         lag = self._lag.get(id(self._entity_of(sprite)))
@@ -351,7 +351,7 @@ class Renderer:
             return rect
         return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
 
-    def _find_dashing_player(self, groups: SpriteGroups) -> Entity | None:
+    def _find_dashing_player(self, groups: SpriteGroups) -> Any:
         """The one sprite that can be a dashing player, or None.
 
         ``is_player_dashing`` needs three attribute lookups to answer, and
@@ -360,11 +360,12 @@ class Renderer:
         turns that into an identity comparison in the blit loop.
         """
         for sprite in groups.entity_sprites:
-            if is_player_dashing(sprite):
-                return sprite
+            fighter = self._entity_of(sprite)
+            if is_player_dashing(fighter):
+                return fighter
         return None
 
-    def _find_turning_player(self, groups: SpriteGroups) -> Entity | None:
+    def _find_turning_player(self, groups: SpriteGroups) -> Any:
         """The one sprite mid-pivot, or None.
 
         The same shape and the same reason as :meth:`_find_dashing_player`:
@@ -372,8 +373,9 @@ class Renderer:
         instead of of every visible sprite in the blit loop.
         """
         for sprite in groups.entity_sprites:
-            if sprite.render_hints.turn_ratio > 0.0:
-                return sprite
+            fighter = self._entity_of(sprite)
+            if fighter.render_hints.turn_ratio > 0.0:
+                return fighter
         return None
 
     def _collect_visible_blits(
@@ -477,6 +479,11 @@ class Renderer:
         moving: Iterable[pygame.sprite.Sprite]
         if groups.presentation_sprites:
             fighter_ids = {id(proxy.entity) for proxy in groups.presentation_sprites}
+            fighter_ids.update(
+                id(sprite)
+                for sprite in groups.all_sprites
+                if getattr(sprite, "presentation", None) is not None
+            )
             moving = chain(
                 groups.presentation_sprites,
                 (sprite for sprite in groups.all_sprites if id(sprite) not in fighter_ids),
@@ -511,7 +518,7 @@ class Renderer:
         turning = self._turning_player
         if turning is not None and self._entity_of(sprite) is turning:
             image, screen_rect = turn_frame(
-                image, screen_rect, turn_offset_px(turning), turn_skew_px(turning)
+                image, screen_rect, turn_offset_px(turning), turn_skew_px(turning)  # type: ignore[arg-type]
             )
         blits.append((image, screen_rect))
 
@@ -530,8 +537,9 @@ class Renderer:
         """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
         for sprite in groups.entity_sprites:
-            hurt = sprite.render_hints.flash_timer
-            parried = sprite.render_hints.parry_flash_timer
+            hints = self._entity_of(sprite).render_hints
+            hurt = hints.flash_timer
+            parried = hints.parry_flash_timer
             if hurt <= 0.0 and parried <= 0.0:
                 continue
             if not self.camera.is_visible(sprite.rect):
@@ -545,12 +553,13 @@ class Renderer:
             overlay.set_alpha(int(255 * min(1.0, strength)))
             screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, sprite.rect))
             overlay = self._scaled_image_once(overlay)
-            if is_player_dashing(sprite):
+            if is_player_dashing(self._entity_of(sprite)):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
             # The same slide and lean the body got, or a flash fired mid-pivot
             # paints a silhouette of a fighter who is not standing there.
+            fighter = self._entity_of(sprite)
             overlay, screen_rect = turn_frame(
-                overlay, screen_rect, turn_offset_px(sprite), turn_skew_px(sprite)
+                overlay, screen_rect, turn_offset_px(fighter), turn_skew_px(fighter)
             )
             flashes.append((overlay, screen_rect))
         return flashes
@@ -605,7 +614,7 @@ class Renderer:
         """
         dashing: set[int] = set()
         for sprite in groups.entity_sprites:
-            if not is_player_dashing(sprite):
+            if not is_player_dashing(self._entity_of(sprite)):
                 continue
             dashing.add(id(sprite))
             if not self.camera.is_visible(sprite.rect):
@@ -648,7 +657,7 @@ class Renderer:
         for surface, screen_rect in ghost_draws:
             self.surface.blit(surface, screen_rect)
 
-    def draw_health_bars(self, entities: Iterable[Entity]) -> list[pygame.Rect]:
+    def draw_health_bars(self, entities: Iterable[Any]) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy.
 
         The bars are anchored to the rects this frame blitted, not to the

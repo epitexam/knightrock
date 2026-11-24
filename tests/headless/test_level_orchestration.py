@@ -22,7 +22,7 @@ def test_level_builds_player_and_world(build_level) -> None:
     assert player is not None
     assert player.hitbox.top >= 100.0
     assert level.exit_reached is False
-    assert level.groups.entity_sprites.has(player)
+    assert player in level.groups.fighters
 
 
 def test_level_update_applies_gravity_and_moves_the_player(build_level) -> None:
@@ -137,7 +137,7 @@ def test_every_entity_the_level_builds_is_wired(build_level) -> None:
 
     unwired = [
         entity
-        for entity in level.groups.entity_sprites
+        for entity in level.groups.fighters
         if getattr(entity, "spatial_hash", None) is not level.spatial_hash
     ]
 

@@ -67,7 +67,7 @@ def _seed_entities(level: Level) -> None:
     grid.  Re-seed every entity per insertion index and recompute the value
     that was already drawn during construction.
     """
-    for index, entity in enumerate(level.groups.entity_sprites):
+    for index, entity in enumerate(level.groups.fighters):
         entity.rng = random.Random(SEED + index)
         if hasattr(entity, "patrol_direction"):
             entity.patrol_direction = 1 if entity.rng.random() > 0.5 else -1
@@ -96,7 +96,7 @@ def _snapshot(level: Level):
     player = level.player
     others = [
         (index, tuple(entity.hitbox), entity.health)
-        for index, entity in enumerate(level.groups.entity_sprites)
+        for index, entity in enumerate(level.groups.fighters)
         if entity is not player
     ]
     return (tuple(player.hitbox), player.health, tuple(others))
@@ -134,14 +134,14 @@ def test_grid_tick_actually_exercises_interactions(mock_input_manager) -> None:
     # The overlapping goblin got pushed away from its spawn...
     pushed = [
         entity
-        for entity in level.groups.entity_sprites
+        for entity in level.groups.fighters
         if entity is not level.player and entity.hitbox.x > 110.0
     ]
     assert pushed, "no separation happened: the scenario exercises nothing"
     # ...and the chase goblin moved toward the player (AI ran).
     chasers = [
         entity
-        for entity in level.groups.entity_sprites
+        for entity in level.groups.fighters
         if entity is not level.player and entity.hitbox.x < 400.0
     ]
     assert chasers, "no chase happened: the AI never engaged"

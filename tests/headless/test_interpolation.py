@@ -64,7 +64,7 @@ def test_the_health_bar_follows_the_drawn_fighter() -> None:
         lambda entities, camera, screen_rects=None: calls.append(screen_rects or {}) or []
     )
 
-    level.renderer.draw_health_bars(level.groups.entity_sprites)
+    level.renderer.draw_health_bars(level.groups.fighters)
 
     assert calls[0][id(foe)].x == pytest.approx(level.camera.apply(foe.hitbox).x - 40.0, abs=0.5)
     assert isinstance(calls[0][id(foe)], pygame.FRect)

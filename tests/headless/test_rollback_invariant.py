@@ -146,7 +146,7 @@ def _components(entity: Entity) -> dict[str, Any]:
 
 def _fingerprint(level: Level) -> dict[str, Any]:
     out: dict[str, Any] = {"level.tick": level.tick}
-    for entity in sorted(level.groups.entity_sprites, key=lambda e: e.id):
+    for entity in sorted(level.groups.fighters, key=lambda e: e.id):
         for prefix, part in _components(entity).items():
             _walk(part, f"{entity.id}:{prefix}", out)
         out[f"{entity.id}:rng"] = entity.rng.getstate()

@@ -246,7 +246,7 @@ class FeedbackSystem:
         )
         for entity in fighters:
             self._process_entity_fx(
-                entity, delta_time, sweating_ids, dashing_ids, dizzy_ids, stepping_ids
+                entity, delta_time, sweating_ids, dashing_ids, dizzy_ids, stepping_ids  # type: ignore[arg-type]
             )
         self._cleanup_timers(sweating_ids, dashing_ids, dizzy_ids, stepping_ids)
 

@@ -218,8 +218,8 @@ def test_spawn_juggle_dummy_is_airborne_and_rising() -> None:
     dummy = system.spawn_juggle_dummy(player)
 
     assert dummy is not None
-    assert dummy in groups.entity_sprites
-    assert dummy in groups.combat_sprites
+    assert dummy in groups.fighters
+    assert dummy in groups.fighters
     assert dummy.velocity.y < 0
     assert dummy.on_surface["floor"] is False
 
@@ -244,7 +244,7 @@ def test_a_spawned_enemy_is_wired_to_the_grid() -> None:
 
     system._spawn_enemy("goblin", player)
 
-    spawned = [enemy for enemy in groups.entity_sprites if enemy is not player]
+    spawned = [enemy for enemy in groups.fighters if enemy is not player]
     assert spawned, "the spawner should have produced an enemy"
     for enemy in spawned:
         assert enemy.spatial_hash is grid

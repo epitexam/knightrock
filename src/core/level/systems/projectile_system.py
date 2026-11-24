@@ -218,7 +218,7 @@ class ProjectileSystem:
             if movement is not None
             else self.groups.entity_sprites
         )
-        outcome = self.contact_system.resolve((box,), target_list, entity_grid)
+        outcome = self.contact_system.resolve((box,), target_list, entity_grid)  # type: ignore[arg-type]
         self.guard_events.extend(outcome.guard_events)
         self.impact_events.extend(outcome.impact_events)
         if outcome.metrics.contacts and not config.pierce:

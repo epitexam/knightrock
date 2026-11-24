@@ -137,6 +137,7 @@ class Entity(Sprite):
     combat_table: CombatTable | None = None
     combat_slot: int | None = None
     presentation: PresentationSprite | None = None
+    sprite_groups: SpriteGroups | None = None
 
     # Only the player drives attack poses off frame data. Declared here so the
     # animation publisher reads a declared field on every fighter instead of
@@ -223,7 +224,10 @@ class Entity(Sprite):
             the level, and a level that forgets to hand the grid over pays a
             measured x2.4 on the whole simulation with no visible symptom.
         """
-        super().__init__(groups)
+        # The sprite *proxy* is what pygame groups hold. The Sprite base is
+        # kept only so legacy callers that add an Entity straight to a group
+        # still work; the simulation reads the dense tables.
+        super().__init__()
         factory = id_factory if id_factory is not None else shared_id_factory()
         self.id: str = entity_id if entity_id is not None else factory.entity_id()
         self.pushable: bool = True
@@ -233,6 +237,7 @@ class Entity(Sprite):
         self.image = pygame.Surface(size)
         self.image.fill(color)
         self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
+        self.presentation = PresentationSprite(self, *groups)
         self._init_boxes(hitbox_inflate, hurtbox_inflate, hurtbox_zones)
 
         self.collision_sprites: Iterable[CollisionSprite] = cast(
@@ -1152,6 +1157,8 @@ class Entity(Sprite):
             self.combat_slot = None
         if self.presentation is not None:
             self.presentation.kill()
+        if self.sprite_groups is not None and self in self.sprite_groups.fighters:
+            self.sprite_groups.fighters.remove(self)
         self.vitals.unbind()
         super().kill()
 
@@ -1346,7 +1353,7 @@ class Entity(Sprite):
             combat=self.combat.save_state(),
             state_machine=self.state_machine.save_state(),
         )
-        snap.groups = list(self.groups())
+        snap.groups = list(self.presentation.groups()) if self.presentation is not None else []
         snap.extra = {
             "gravity_scale": self.gravity_scale,
             "juggle_timer": self.juggle_timer,

@@ -161,24 +161,23 @@ def test_rollback_resurrects_killed_enemy(build_level) -> None:
         collision_sprites=level.groups.collision_sprites,
         player_reference=level.player,
     )
-    level.groups.combat_sprites.add(enemy)
-    level.groups.entity_sprites.add(enemy)
+    level.groups.add_fighter(enemy)
     enemy.spatial_hash = level.spatial_hash
 
     # Tick 0: enemy alive, captured.
     level.update(1 / 60)
     assert level.rollback.latest_tick == 0
-    assert enemy in level.groups.entity_sprites
+    assert enemy in level.groups.fighters
 
     # Tick 1: kill the enemy; remove_dead_entities reaps it.
     enemy.health = 0.0
     level.update(1 / 60)
-    assert enemy not in level.groups.entity_sprites
+    assert enemy not in level.groups.fighters
     assert enemy.is_dead
 
     # Roll back to tick 0: enemy must reappear and be alive.
     assert level.rollback.rollback_to(level, 0) is True
-    assert enemy in level.groups.entity_sprites
+    assert enemy in level.groups.fighters
     assert enemy.is_dead is False
     assert enemy.health == pytest.approx(enemy.max_health)
 
@@ -200,15 +199,14 @@ def test_rollback_reaps_entity_spawned_after_snapshot(build_level) -> None:
         collision_sprites=level.groups.collision_sprites,
         player_reference=level.player,
     )
-    level.groups.combat_sprites.add(enemy)
-    level.groups.entity_sprites.add(enemy)
+    level.groups.add_fighter(enemy)
     enemy.spatial_hash = level.spatial_hash
     level.update(1 / 60)
-    assert enemy in level.groups.entity_sprites
+    assert enemy in level.groups.fighters
 
     # Roll back to tick 0 — the spawn happened AFTER, so it must be reaped.
     assert level.rollback.rollback_to(level, 0) is True
-    assert enemy not in level.groups.entity_sprites
+    assert enemy not in level.groups.fighters
     assert enemy.is_dead is False  # not killed, just removed from groups
 
 

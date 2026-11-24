@@ -43,7 +43,7 @@ def built_enemies() -> list[Enemy]:
 
     surface = pygame.Surface((1280, 720))
     level = Level(surface, LevelManager(LEVEL_PATHS).get(0), InputManager())
-    return [sprite for sprite in level.groups.entity_sprites if isinstance(sprite, Enemy)]
+    return [entity for entity in level.groups.fighters if isinstance(entity, Enemy)]
 
 
 @pytest.mark.skipif(not ASSETS_PRESENT, reason="assets/ is git-ignored and absent")

@@ -52,4 +52,4 @@ class PlatformSystem:
                     entity.hitbox.x += dx
                 else:
                     entity.hitbox.y += dy
-                entity.sync_rects()
+                entity.sync_rects()  # type: ignore[operator]

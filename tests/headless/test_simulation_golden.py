@@ -96,7 +96,7 @@ def build_physics_level() -> Level:
 
 def seed_entities(level: Level) -> None:
     """Make the run reproducible (Entity falls back to an os.urandom RNG)."""
-    for index, entity in enumerate(level.groups.entity_sprites):
+    for index, entity in enumerate(level.groups.fighters):
         entity.rng = random.Random(SEED + index)
         if hasattr(entity, "patrol_direction"):
             entity.patrol_direction = 1 if entity.rng.random() > 0.5 else -1
@@ -113,7 +113,7 @@ def frame(level: Level) -> tuple:
             round(getattr(entity, "health", 0.0), 4),
             bool(getattr(entity, "is_dead", False)),
         )
-        for entity in level.groups.entity_sprites
+        for entity in level.groups.fighters
     )
     return entities + (
         level.tick,

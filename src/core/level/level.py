@@ -147,7 +147,7 @@ class Level:
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         self._install_static_culls()
-        for entity in self.groups.entity_sprites:
+        for entity in self.groups.fighters:
             if entity.animator is not None:
                 entity.animator.preload()
 
@@ -155,7 +155,7 @@ class Level:
         # tick, so each one must know it (moving platforms are re-bucketed
         # each tick by PlatformSystem).
         self.spatial_hash.add_all(self.groups.collision_sprites)
-        for entity in self.groups.entity_sprites:
+        for entity in self.groups.fighters:
             if entity.spatial_hash is None:
                 entity.spatial_hash = self.spatial_hash
         for platform in self.groups.moving_platforms:
@@ -368,7 +368,7 @@ class Level:
         from entity positions / player position — so they are not captured.
         """
         entities: dict[str, EntitySnapshot] = {}
-        for entity in self.groups.entity_sprites:
+        for entity in self.groups.fighters:
             snapshot = entity.save_state()
             entities[snapshot.entity_id] = snapshot
 
@@ -439,14 +439,15 @@ class Level:
         # Reap entities that did not exist at capture time (e.g. a debug
         # spawn after the target tick) — they must not pollute the restored
         # simulation.
-        for entity in list(self.groups.entity_sprites):
+        for entity in list(self.groups.fighters):
             if entity.id not in snapshot.entities:
                 entity.kill()
 
         for entity_snapshot in snapshot.entities.values():
             entity = entity_snapshot.entity
-            if entity not in self.groups.entity_sprites:
-                entity.add(*entity_snapshot.groups)
+            if entity not in self.groups.fighters:
+                self.groups.fighters.append(entity)
+                entity.presentation.add(*entity_snapshot.groups)
             entity.bind_movement(self.movement_table)
             entity.bind_vitals(self.vitals_table)
             entity.bind_geometry(self.geometry_table)

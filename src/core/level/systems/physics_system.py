@@ -47,8 +47,7 @@ class PhysicsSystem:
             else tuple(self.groups.entity_sprites)
         )
         for entity in fighters:
-            apply_moving_platform(entity, self.groups.moving_platforms)
+            apply_moving_platform(entity, self.groups.moving_platforms)  # type: ignore[arg-type]
         # A copy: an update may remove its own entity from the group.
         for entity in fighters:
-            if entity in self.groups.entity_sprites:
-                entity.update(delta_time if entity is unslowed else world_delta)
+            entity.update(delta_time if entity is unslowed else world_delta)

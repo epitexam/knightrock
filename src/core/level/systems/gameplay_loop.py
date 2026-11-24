@@ -11,7 +11,7 @@ rollback bookkeeping — to :meth:`update` below.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pygame
 
@@ -103,17 +103,21 @@ class CombatLoop:
         """
         table = groups.movement_table
         if table is None:
-            return tuple(groups.entity_sprites)
+            return tuple(groups.entity_sprites)  # type: ignore[arg-type]
         bound = tuple(table.iter_entities())
         bound_ids = {id(entity) for entity in bound}
-        extra = tuple(entity for entity in groups.entity_sprites if id(entity) not in bound_ids)
+        extra = tuple(
+            cast(Entity, getattr(sprite, "entity", sprite))
+            for sprite in groups.entity_sprites
+            if id(getattr(sprite, "entity", sprite)) not in bound_ids
+        )
         return bound + extra
 
     def process_combat_and_separation(
         self,
         effective_delta: float,
         combat_sprites: Iterable[Combatant],
-        entity_sprites: pygame.sprite.Group[Entity],
+        entity_sprites: pygame.sprite.Group[Any],
         groups: SpriteGroups | None = None,
     ) -> None:
         if effective_delta <= 0.0:
@@ -223,7 +227,7 @@ class GameplayLoop(CombatLoop):
         results, which is why the order is listed here in one place.
         """
         for fighter in groups.entity_sprites:
-            fighter.render_hints.previous_center = fighter.hitbox.center
+            fighter.render_hints.previous_center = fighter.hitbox.center  # type: ignore[attr-defined]
         self.spawn_system.process(raw_delta, player)
         effective_delta = self.begin_tick(raw_delta)
         fighters = self._fighters(groups)

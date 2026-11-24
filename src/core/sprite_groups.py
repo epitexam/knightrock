@@ -43,9 +43,11 @@ class SpriteGroups:
     collision_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     moving_platforms: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     combat_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
-    entity_sprites: pygame.sprite.Group[Entity] = field(default_factory=pygame.sprite.Group)
-    """The fighters -- the player and the enemies -- and nothing else, so a
-    system that walks it reads an ``Entity`` and not a sprite it has to probe."""
+    entity_sprites: pygame.sprite.Group[PresentationSprite] = field(
+        default_factory=pygame.sprite.Group
+    )
+    """The fighters' draw proxies -- the player and the enemies -- and nothing
+    else. Simulation code reads ``fighters`` or the dense tables instead."""
     fx_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     hazard_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     projectile_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
@@ -61,6 +63,9 @@ class SpriteGroups:
     presentation_sprites: pygame.sprite.Group[PresentationSprite] = field(
         default_factory=pygame.sprite.Group
     )
+    #: Plain roster of simulation objects, for identity comparisons and
+    #: snapshots: pygame groups now hold only draw proxies.
+    fighters: list[Entity] = field(default_factory=list)
 
     static_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     """The frozen tile layers that draw *under* the world (``Terrain``,
@@ -74,10 +79,16 @@ class SpriteGroups:
         list the three groups each, and a fourth caller that forgot one would
         build an enemy that is drawn but never hit, or hit but never moved.
         """
-        self.all_sprites.add(fighter)
-        self.entity_sprites.add(fighter)
-        self.combat_sprites.add(fighter)
-        fighter.roster = self.entity_sprites
+        fighter.sprite_groups = self
+        if fighter not in self.fighters:
+            self.fighters.append(fighter)
+        fighter.ensure_presentation(self)
+        proxy = fighter.presentation
+        assert proxy is not None
+        self.all_sprites.add(proxy)
+        self.entity_sprites.add(proxy)
+        self.combat_sprites.add(proxy)
+        fighter.roster = self.fighters
         if self.movement_table is not None:
             fighter.bind_movement(self.movement_table)
         if self.vitals_table is not None:
@@ -86,7 +97,6 @@ class SpriteGroups:
             fighter.bind_geometry(self.geometry_table)
         if self.combat_table is not None:
             fighter.bind_combat(self.combat_table)
-        fighter.ensure_presentation(self)
 
     @property
     def every_sprite(self) -> tuple[pygame.sprite.Sprite, ...]:
@@ -98,6 +108,11 @@ class SpriteGroups:
         """
         if self.presentation_sprites:
             fighter_ids = {id(proxy.entity) for proxy in self.presentation_sprites}
+            fighter_ids.update(
+                id(sprite)
+                for sprite in self.all_sprites
+                if getattr(sprite, "presentation", None) is not None
+            )
             moving = (
                 *self.presentation_sprites,
                 *(s for s in self.all_sprites if id(s) not in fighter_ids),
