@@ -1,6 +1,5 @@
+from collections.abc import Iterable
 from typing import Any
-
-import pygame
 
 from src.core.settings import Separation as Sep
 from src.entities.entity import Entity
@@ -10,7 +9,7 @@ from src.physics.entity_grid import EntityGrid, overlapping_pairs
 class SeparationSystem:
     def process(
         self,
-        entity_sprites: pygame.sprite.Group[Entity],
+        entity_sprites: Iterable[Entity],
         entity_grid: EntityGrid | None = None,
     ) -> list[Entity]:
         """Push overlapping entities apart on the dominant overlap axis.

@@ -97,12 +97,15 @@ class CombatLoop:
         effective_delta: float,
         combat_sprites: Iterable[Combatant],
         entity_sprites: pygame.sprite.Group[Entity],
+        groups: SpriteGroups | None = None,
     ) -> None:
         if effective_delta <= 0.0:
             return
 
-        self.entity_grid.rebuild(entity_sprites)
-        displaced = self.separation_system.process(entity_sprites, self.entity_grid)
+        table = groups.movement_table if groups is not None else None
+        fighters = tuple(table.iter_entities()) if table is not None else tuple(entity_sprites)
+        self.entity_grid.rebuild(fighters)
+        displaced = self.separation_system.process(fighters, self.entity_grid)
         combatants = tuple(combat_sprites)
         # Only the fighters separation actually pushed need their attack box
         # re-positioned: it is derived from the hitbox, and separation moved
@@ -226,7 +229,7 @@ class GameplayLoop(CombatLoop):
             self._launch_shots(groups.combat_sprites)
 
             self.process_combat_and_separation(
-                effective_delta, groups.combat_sprites, groups.entity_sprites
+                effective_delta, groups.combat_sprites, groups.entity_sprites, groups
             )
             self.projectile_system.process(world_delta, self.entity_grid)
             self.feedback_system.after_combat(

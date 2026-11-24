@@ -110,6 +110,7 @@ def _empty_groups() -> SimpleNamespace:
         hazard_sprites=[],
         entity_sprites=[],
         combat_sprites=[],
+        movement_table=None,
     )
 
 
