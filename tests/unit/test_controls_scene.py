@@ -93,6 +93,22 @@ def test_gamepad_button_capture_is_independent_from_keyboard() -> None:
     assert game.settings.bindings.gameplay.keyboard[InputAction.JUMP] == pygame.K_SPACE
 
 
+def test_rebinding_up_to_a_pad_button_clears_the_default_sources() -> None:
+    """The button replaces the stick and the D-pad, so the provider must read it."""
+    game = _game()
+    controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
+    up = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.MOVE_UP)
+    controls.model.set_items(controls.model.items, up)
+    controls.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    controls.handle_routed(_confirm())
+    controls.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=7))
+
+    gameplay = game.settings.bindings.gameplay
+    assert gameplay.gamepad_buttons[InputAction.MOVE_UP] == 7
+    assert InputAction.MOVE_UP not in gameplay.gamepad_axes
+    assert InputAction.MOVE_UP not in gameplay.gamepad_hats
+
+
 def test_gameplay_left_and_right_are_separate_rows_and_captures() -> None:
     game = _game()
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
