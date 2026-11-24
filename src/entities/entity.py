@@ -314,6 +314,9 @@ class Entity:
         )
         self._hurtbox_rects: list[pygame.FRect] = []
         self._hurtbox_union: pygame.FRect = pygame.FRect(0, 0, 0, 0)
+        self._sync_signature: tuple[float, float, float, float, tuple[float, float], int] | None = (
+            None
+        )
         self._prev_hurtboxes: tuple[pygame.FRect, ...] = ()
         self._prev_pushbox: pygame.FRect | None = None
         self.contact_shape: ShapePose = ShapePose(
@@ -868,6 +871,16 @@ class Entity:
         approximation.
         """
         pushbox = self._pushbox
+        signature = (
+            pushbox.x,
+            pushbox.y,
+            pushbox.width,
+            pushbox.height,
+            self.rect.midbottom,
+            len(self._zones),
+        )
+        if signature == self._sync_signature:
+            return
         self.rect.midbottom = pushbox.midbottom
         while len(self._hurtbox_rects) < len(self._zones):
             self._hurtbox_rects.append(pygame.FRect(0, 0, 0, 0))
@@ -903,6 +916,14 @@ class Entity:
                 else self._hurtbox_rects[0].copy()
             )
             unchanged = False
+        self._sync_signature = (
+            pushbox.x,
+            pushbox.y,
+            pushbox.width,
+            pushbox.height,
+            self.rect.midbottom,
+            len(self._zones),
+        )
         if unchanged:
             return
         self.contact_shape = ShapePose(
