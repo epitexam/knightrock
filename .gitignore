@@ -20,6 +20,9 @@ venv/
 build/
 dist/
 *.egg-info/
+*.so
+*.pyd
+.native-manifest
 
 # Logs
 *.log

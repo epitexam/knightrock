@@ -38,10 +38,25 @@ build PyInstaller  OK, 45 Mo, smoke headless OK
 
 Aucun golden, digest, oracle ou empreinte de données n'a changé.
 
-## Non livré — Phase E (décision séparée)
+## Phase E — livraisons et décisions
 
-- **E1** : option de résolution interne réduite + upscale. Le levier le plus puissant en 4K (24,7 ms mesurés), mais c'est un réglage visible et un changement du pipeline `Screen`/`Presentation`.
-- **E2** : mypyc ciblé sur `physics/`, `hit_resolver.py` et `contact_system.py` (1,5–5× annoncé sur du code typé ; build C et conservations des modules interprétés).
-- **E3** : pré-rendu des calques statiques (~20 Mo/calque, invalidations au changement de format).
+- **E1 — livré** (`phase/render-scale`) : `video.render_scale` (1.0 / 0.75 / 0.5, défaut 1.0), migration v5, upscale direct dans la fenêtre et inversion de souris exacte. Vert et sans régression au défaut, mais **sans gain ici** : l'upscale CPU coûte plus que le draw économisé (table complète dans `docs/audit/phase-e-plan.md`).
+- **E2 — livré** (même branche) : build mypyc optionnel de cinq modules de `src/physics/`, avec conservation du mode interprété et A/B reproductible. Détails et séries ci-dessous.
+- **E3 — non livré** : pré-rendu des calques statiques (~20 Mo/calque, invalidations au changement de format). À décider après E2.
+
+### A/B mypyc (E2)
+
+`uv run python tools/build_native.py` puis `uv run python tools/benchmark_native.py --rounds 5 --iterations 100`. Chargement : 520 tuiles dans le hash, 168 queries, 256 corps (gravité + trois frictions), 16 plateformes. Ordre alterné à chaque round pour annuler le bruit ; même checksum dans les dix exécutions.
+
+| round | natif | interprété |
+|---|---|---|
+| 1 | 2,294 ms | 2,833 ms |
+| 2 | 3,253 ms | 2,903 ms |
+| 3 | 2,920 ms | 4,310 ms |
+| 4 | 1,741 ms | 2,982 ms |
+| 5 | 1,884 ms | 1,601 ms |
+| **médiane** | **2,294 ms** | **2,903 ms** |
+
+Speedup **1,27×** sur ce micro-bench, dans un bruit de ±1 ms. Ce n'est pas une promesse de gain sur le tick complet : le périmètre compile surtout des helpers dont les paramètres sont `Any` (aucun type à exploiter), et il exclut les modules qui touchent aux vues ECS (voir `tools/build_native.py`). Le build natif n'est donc **pas intégré** au spec PyInstaller : le jeu livré reste pure Python, avec l'option de compiler localement pour mesurer.
 
 Écartés avec preuve : dirty rects (caméra mobile), free-threaded Python 3.14t (pénalité mono-thread + GIL réactivé par les extensions C), GPU/moderngl (inutile à ~100 sprites), optimisation du fingerprint 440 champs (test-only).

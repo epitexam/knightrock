@@ -1,6 +1,6 @@
 # Plan — Phase E : optimizations structurantes
 
-Statut : **E1 implémenté** (branche `phase/e1-render-scale`, 2026-11-24) ; E2 et E3 restent des décisions séparées. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
+Statut : **E1 et E2 implémentés** (branche `phase/render-scale`, 2026-11-24) ; E3 reste une décision séparée. À exécuter uniquement après les phases A–D du plan de performance (voir `docs/audit/performance-2026-11.md`).
 
 ## Contexte et pourquoi une décision séparée
 
@@ -73,9 +73,17 @@ Compiler en extensions C les modules où le profile montre le plus de temps Pyth
 
 `mypy src`, suite complète + `DEBUG=1`, digests, 675 issues, benchmarks de contact et de tick A/B, build PyInstaller avec et sans extensions.
 
+### Livré et mesure
+
+`tools/build_native.py` compile cinq modules (gravity, platforms, spatial_hash, spatial_query, velocity) dans une copie jetable du source, puis installe les extensions avec un manifeste que `--clean` sait retirer. Suite complète verte en mode natif : 3823 passed / 1 skipped, digests et goldens inchangés.
+
+Trois modules du périmètre initial ont dû rester interprétés, sans toucher au code de jeu : `collisions`, `movement` et `hit_resolver` annotent la vue ECS `SurfaceFlagsView` comme un `dict[str, bool]` ; mypyc en fait une vraie vérification de dict et chaque contact lève `TypeError`. `contact_system` appelle le resolver, et `entity_grid` est sous-classé par un double de test (interdit par mypyc). Le périmètre réel est donc documenté dans le script de build.
+
+`tools/benchmark_native.py` exécute les deux modes en processus séparés, en ordre alterné, avec le même checksum dans les dix mesures : médiane 2,294 ms (natif) contre 2,903 ms (interprété), soit 1,27× sur ce micro-bench. Le gain est réel mais limité ; le spec PyInstaller n'intègre donc **pas** les `.so`, et le jeu livré reste pure Python.
+
 ### Risques / rollback
 
-Risque : certaines optimisations mypyc changent des comportements limites (runtime type checks sur des valeurs `Any`, classes dynamiques). Rollback : supprimer le script de build et les artifacts ; le code source reste identique et interprétable. Ne jamais fusionner le build natif sans A/B favorable.
+Risque : certaines optimisations mypyc changent des comportements limites (runtime type checks sur des valeurs `Any`, classes dynamiques). Rollback : `uv run python tools/build_native.py --clean` (ou ne jamais lancer le build) ; le code source reste identique et interprétable. Ne jamais fusionner le build natif sans A/B favorable.
 
 ---
 
