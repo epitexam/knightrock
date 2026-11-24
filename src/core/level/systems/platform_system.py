@@ -41,7 +41,9 @@ class PlatformSystem:
             dy = platform.hitbox.y - platform.old_hitbox.y
             if dx == 0 and dy == 0:
                 continue
-            for entity in self.groups.entity_sprites:
+            table = self.groups.movement_table
+            riders = table.iter_entities() if table is not None else self.groups.entity_sprites
+            for entity in riders:
                 if not entity.hitbox.colliderect(platform.hitbox):
                     continue
                 if entity.hitbox.colliderect(platform.old_hitbox):

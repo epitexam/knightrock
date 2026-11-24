@@ -92,6 +92,23 @@ class CombatLoop:
         self.combat_system.impact_events.clear()
         return events
 
+    @staticmethod
+    def _fighters(groups: SpriteGroups) -> tuple[Entity, ...]:
+        """Dense rows first, then any sprite filed without going through add_fighter.
+
+        A few test fixtures -- and a legacy debug path -- add a fighter straight
+        to ``entity_sprites``. Those have no dense row, so the roster is their
+        union: no fighter silently disappears from the tick because it skipped
+        the registration seam.
+        """
+        table = groups.movement_table
+        if table is None:
+            return tuple(groups.entity_sprites)
+        bound = tuple(table.iter_entities())
+        bound_ids = {id(entity) for entity in bound}
+        extra = tuple(entity for entity in groups.entity_sprites if id(entity) not in bound_ids)
+        return bound + extra
+
     def process_combat_and_separation(
         self,
         effective_delta: float,
@@ -102,16 +119,11 @@ class CombatLoop:
         if effective_delta <= 0.0:
             return
 
-        table = groups.movement_table if groups is not None else None
-        fighters = tuple(table.iter_entities()) if table is not None else tuple(entity_sprites)
+        fighters = self._fighters(groups) if groups is not None else tuple(entity_sprites)
         self.entity_grid.rebuild(fighters)
         displaced = self.separation_system.process(fighters, self.entity_grid)
         combat_table = groups.combat_table if groups is not None else None
-        combatants = (
-            tuple(combat_table.iter_entities())
-            if combat_table is not None
-            else tuple(combat_sprites)
-        )
+        combatants = fighters if combat_table is not None else tuple(combat_sprites)
         # Only the fighters separation actually pushed need their attack box
         # re-positioned: it is derived from the hitbox, and separation moved
         # that after ``Entity.update`` had already synced it.
@@ -214,12 +226,13 @@ class GameplayLoop(CombatLoop):
             fighter.render_hints.previous_center = fighter.hitbox.center
         self.spawn_system.process(raw_delta, player)
         effective_delta = self.begin_tick(raw_delta)
+        fighters = self._fighters(groups)
 
         if effective_delta > 0.0:
             # The tick frontier: one capture per tick, before any movement or
             # attack start, so a sweep covers the whole tick including the
             # platform carry. Covers sprites spawned this tick too.
-            for sprite in groups.entity_sprites:
+            for sprite in fighters:
                 if isinstance(sprite, Entity):
                     sprite.capture_sweep_origin()
             for combatant in groups.combat_sprites:
@@ -244,14 +257,14 @@ class GameplayLoop(CombatLoop):
                 self.camera_system,
                 self._collect_impact_events(),
             )
-            self.contact_damage_system.process(groups.entity_sprites, self.entity_grid)
+            self.contact_damage_system.process(fighters, self.entity_grid)
             self.hazard_damage_system.process(
-                groups.entity_sprites, groups.hazard_sprites, self.entity_grid
+                fighters, groups.hazard_sprites, self.entity_grid
             )
             self._flush_combat_trace()
-            self.remove_dead_entities(groups.entity_sprites, player)
+            self.remove_dead_entities(fighters, player)
 
-            self.respawn_system.process(effective_delta, groups.entity_sprites)
+            self.respawn_system.process(effective_delta, fighters)
             self.progression_system.process(player)
 
         # The tail runs on a frozen tick too: the camera keeps easing and the

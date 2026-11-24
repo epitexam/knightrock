@@ -90,7 +90,9 @@ class TestPlatformSystem:
         spatial_hash = SimpleNamespace(
             update_all=lambda sprites: seen_at_rebucket.append(sprites.delta)
         )
-        system = PlatformSystem(SimpleNamespace(moving_platforms=platforms), spatial_hash)
+        system = PlatformSystem(
+            SimpleNamespace(moving_platforms=platforms, movement_table=None), spatial_hash
+        )
 
         system.process(1 / 60)
 
