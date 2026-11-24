@@ -122,6 +122,12 @@ class WorldUI:
         camera: Camera,
         delta_time: float | None = None,
     ) -> None:
+        # The overlay walks a deliberately heterogeneous set of sprites:
+        # terrain tiles, fighters, their draw proxies, FX and projectiles.
+        # The `getattr` reads in the leaf layers are the adapters for those two
+        # real shapes (`rect` for scenery, `hitbox` for a collider), not a
+        # tolerance for partial doubles. Fighters are read through their
+        # declared fields elsewhere; these fallbacks are the contract here.
         # Fresh annotation bookkeeping: the rects drawn this frame feed both
         # the card obstacles and the card clearances.
         self._sink.clear()

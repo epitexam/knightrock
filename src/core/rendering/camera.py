@@ -36,16 +36,9 @@ def checked_density(density: float) -> float:
 class Camera:
     """Scrollable world camera: a translation and a magnification.
 
-    The camera used to scale as well as translate, and the scale was the
-    window's business -- it was built from the window's pixel size and a zoom
-    constant, so the slice of world a player saw was a free variable of a video
-    setting. ``Framing`` fixed that slice, which left nothing for a zoom to do:
-    the camera only says where in the world the frame is looking, and how large
-    a world unit is drawn is the render target's business.
-
-    What changed is where that number comes from. It used to be a constant
-    divided by the *window* size, which made the visible world a function of a
-    video setting; it is now the density read back off the target
+    The camera only says where in the world the frame is looking. ``Framing``
+    fixes the slice of world a player sees, so it cannot be a video setting;
+    the magnification is the density read back off the render target
     (:meth:`for_target`), which the window cannot contradict because the target
     *is* the window.
 
