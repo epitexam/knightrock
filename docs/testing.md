@@ -63,8 +63,7 @@ numbers in sync when they move.
 [^coverage]: Measured on this commit. `tests/unit/test_readme_claims.py` checks
     that the figures agree with each other, not that they agree with a run.
 
-[^mypy-tests]: Adding `tests/` to the mypy gate means first paying roughly 1400
-    errors across 122 files of intentionally loose test doubles. That figure grows
-    with every new test module — re-measure with `uv run mypy tests` rather than
-    trusting it, and note that it is far higher under recent mypy releases than
-    when it was first recorded.
+[^mypy-tests]: Adding `tests/` to the mypy gate means first paying down the
+    intentionally loose test doubles. At the time of writing `uv run mypy tests`
+    reports **1733 errors in 152 files**; re-measure rather than trusting that
+    number, as it grows with every new test module.

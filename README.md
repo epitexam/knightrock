@@ -28,8 +28,8 @@ uv run python main.py --debug    # play with the debug overlay
 - **Frame-data combat**: high and low slashes and guards, chargeable attacks,
   beats, throws, death blows on a direction prompt, a slot machine and a fury
   gauge that opens the dark side.
-- **Deterministic world**: a fixed 60 Hz simulation with swept collisions, moving
-  and one-way platforms, and spatial hashing.
+- **Deterministic world**: a fixed 60 Hz simulation; collisions are sub-stepped,
+  attack geometry is swept, and moving and one-way platforms use a spatial hash.
 - **Data-driven values**: attacks, enemies, the player and the level registry live
   in tracked JSON under `data/gameplay/`.
 - **Built for diagnosis**: an optional `DEBUG=1` test bench, overlay and a set of

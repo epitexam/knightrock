@@ -23,7 +23,8 @@ flowchart LR
 > scale. Everything display-related lives to the right of the camera.
 
 **On this page:** [rendering model](#rendering-model) ·
-[framing](#framing) · [camera and culling](#camera-rounding-and-culling) ·
+[framing](#framing) · [displays](#displays) · [window](#the-window-is-the-target) ·
+[camera and culling](#camera-rounding-and-culling) ·
 [physics](#physics-and-assists) · [combat](#combat-and-knockback) ·
 [draw planes](#draw-planes) · [code layout](#architecture)
 
@@ -49,113 +50,86 @@ than mapped from the menu.
 | `monitors` | what this machine has, and which panel holds the window |
 | `sdl_probe` | the libSDL2 pygame already links, for what pygame cannot say |
 
-How large the world is *drawn* is a separate question, answered by the window: a
-world unit gets `window / framing` pixels — 1.667 at 1920×1080, 0.694 in an
-800×600 window — and the art is magnified once, at load. The camera has no zoom;
-it has a density, read off the target so the two cannot disagree.
+**Drawing scale comes from the window, not the camera.** A world unit gets
+`window / framing` pixels — 1.667 at 1920×1080, 0.694 at 800×600. Art is magnified
+once at load; the camera has no zoom, only a density read off the target.
 
-**More than one screen is a first-class case.** pygame-ce reports display
-*sizes* and nothing else, which is why the window used to be pinned to the
-primary: the other screens' origins were described as unknowable. They are not
-unknowable, they are one layer down — `sdl_probe` reads the bundled SDL2 through
-`ctypes` (stdlib only) and gets each display's bounds, the area a taskbar leaves
-free, the name the platform gives it, its refresh rate and the compositor's
-scale. Measured on the development machine:
+### Displays
+
+- pygame-ce reports display **sizes** only. `src/core/display/sdl_probe.py` reads
+  the bundled SDL2 through `ctypes` for each screen's bounds, usable area,
+  platform name, refresh rate and compositor scale.
+- The probe is cross-checked against pygame's numbers and discarded if they
+  disagree: a second libSDL2 can answer plausibly while never initialised.
+- Without the probe, the game falls back to what pygame can say.
 
 ```
-pygame       SDL_GetDesktopSizes()   -> [(1920, 1080)]
-SDL          SDL_GetDisplayBounds(0) -> (0, 0, 1920, 1080)
-SDL          SDL_GetDisplayUsableBounds(0) -> (0, 32, 1920, 1048)
-SDL          SDL_GetDisplayName(0)   -> b'eDP-1 17"'
+pygame  SDL_GetDesktopSizes()          -> [(1920, 1080)]
+SDL     SDL_GetDisplayBounds(0)        -> (0, 0, 1920, 1080)
+SDL     SDL_GetDisplayUsableBounds(0)  -> (0, 32, 1920, 1048)
+SDL     SDL_GetDisplayName(0)          -> b'eDP-1 17"'
 ```
 
-The probe is cross-checked against pygame's own numbers and thrown away if they
-disagree — `find_library` can hand back a second libSDL2 whose video subsystem
-was never initialised, and it answers with plausible numbers describing nothing.
-When it cannot be reached the game runs on what pygame can say, which is what it
-did before.
+### The window is the target
 
-**The game is a window, full stop.** There is no display mode, no exclusive
-fullscreen, no borderless and no screen picker: the window is the render target
-and the player chooses how big it is. Three rules replace all of that:
+No display mode, exclusive fullscreen, borderless or screen picker. Three rules:
 
-- the window opens **centred on the screen the last session closed on**, or on
-  the primary display when that screen is not there, at the size the player
-  chose or as large as fits the panel when they have not chosen one, and the
-  player drags it from there. The screen is remembered by its name, so a
-  settings file carried to another machine matches nothing and falls back to the
-  primary. Where the window sits belongs to the window manager, which is why
-  there is still no row claiming a screen and no stored position: a placement
-  the game cannot guarantee is a setting it must not offer;
-- the **render target is the window's fitted rectangle** at the default render
-  scale, and the finished frame is blitted **1:1**. An optional reduced scale
-  draws into a smaller offscreen target and upscales once; that path is off by
-  default because the CPU copy costs more than it saves here;
-- **how the picture fits is the player's choice**: bars, whole-pixel art (each art
-  pixel an exact *k*×*k* block, bars taking the rest), or zoom to fill, which crops
-  the overflow. All three show *at most* the framing — zoom shows strictly less,
-  so a video setting can never show more level than another. The HUD is laid out
-  in the part of the target the window shows (`Game.shown_area`), so under zoom
-  the gauges sit on the corners the player sees, not on the cropped-off ones.
+1. **Size is a request.** The window opens on the screen it last closed on (or the
+   primary), at the player's chosen size or the largest that fits, then the player
+   drags it. The screen is remembered by name; position belongs to the window
+   manager.
+2. **The target is the window's fitted rectangle** at scale 1.0; the frame is
+   blitted 1:1. A reduced internal scale draws offscreen and upscales once — off
+   by default here because the CPU copy costs more than it saves.
+3. **Fit is a choice**: bars, whole-pixel blocks, or zoom with a crop. All show at
+   most the framing; the HUD is laid out in the visible part (`Game.shown_area`).
 
-Resizing the window rebuilds the render target, re-reads the pixel density and
-re-lays out the interface — the same cascade as a window rebuild, which is why it
-is one piece of code. What resizing never changes is **how much world you see**.
+Resizing rebuilds the target, re-reads density and re-lays out the interface: one
+cascade shared with a window rebuild. **It never changes how much world is seen.**
 
-A resize is **read off the window, not off an event**: pygame-ce turns one SDL
-window event into seven of its own, and which of them carries the new size depends
-on the platform *and* on the gesture — measured, a snap reports `WindowSizeChanged`,
-a maximise reports three events, a drag reports `VideoResize`. The size is polled
-once per frame (0.07 µs), and the frame in which it changed lays the interface out
-**before** the input is read. That ordering is the whole fix for "the clickable
-area moved": a click is converted through the picture in force *now* and hit-tested
-against the rectangles the last draw produced, and after a resize those two
-disagreed — measured, by 244 px, so a click landed on a neighbour or on nothing.
-`reset_cache` drops the rectangles too, covering the one case the runtime cannot
-see coming: a change the game performs *while* handling an input, with a second
-input already queued behind it in the same frame.
+- The size is **polled from the window**, not from an event: one SDL resize becomes
+  seven pygame events and the carrier depends on platform and gesture.
+- The frame in which the size changed re-lays out the interface **before** input
+  is read. Without that, a click was converted through the new picture and tested
+  against the old rectangles — measured 244 px off.
+- `reset_cache` drops the rectangles for a change the game makes while handling
+  input, with another input already queued.
 
-The screen the game reports — the VSync row's rate — is the screen **the window
-is actually on**, found from its position rather than from the primary. When the
-window's screen cannot be established, the row says nothing rather than the
-primary's rate: a missing hint is recoverable, a wrong number is a fact.
-
-Plugging a screen in or out mid-session is noticed: pygame-ce surfaces no event
-for a display appearing or disappearing, so the display list is re-read on a timer
-and a window whose screen has gone is rebuilt on the primary and says so.
+The **VSync row** reports the screen the window is actually on, found from its
+position. If it cannot be established the row says nothing. Display hot-plug is
+polled on a timer; a window whose screen disappears is rebuilt on the primary.
 
 <details>
-<summary><b>Why the window's size is only a request, and why the framing is not derived from the window</b></summary>
+<summary><b>Why size is a request and framing is not derived from the window</b></summary>
 
-**A size is asked for, not asserted.** A hardcoded list of window sizes is a
-claim about the player's monitor the game cannot check — offering 2560×1440 to a
-1366×768 laptop is what that costs. The sizes the menu offers are derived from
-the panel in force and filtered to what it can hold, and the choice is only ever
-*asked for*: the window manager grants it and the stage measures back what it
-actually got, so the row reports the window rather than the request.
+- A hardcoded size list claims things about a monitor the game cannot check
+  (e.g. 2560×1440 on a 1366×768 laptop). Offered sizes are derived from the
+  current panel and filtered to what it holds.
+- A saved size is honoured where it fits and clamped where it does not; the file
+  keeps what the player chose. The old `width`/`height` keys were overwritten at
+  launch, so a size never survived a change of machine.
+- The framing used to be built from window pixels and a zoom constant, making the
+  visible world a video setting: the reveal ran from 34 % to 60 % of a level's
+  height, and a large preset showed a whole 40×15 level. It is now fixed.
 
-**The window's remembered size is a request, not an assertion.** It is honoured
-where it fits and clamped where it does not, and the file keeps what the player
-chose — so a 4K window arrives at a laptop shrunk to fit and comes back at 4K on
-the next launch on a desk with the room. The old `width`/`height` keys were
-*overwritten* at launch whenever they did not fit, which is why a size could never
-survive a change of machine and why the menu and the screen used to disagree.
+Two tests pin it:
 
-**The framing is not derived from the window.** It used to be built from the
-window's pixel size and a zoom constant, which made the visible world a free
-variable of a video setting: the reveal ran from 34 % of the level's height at the
-smallest preset to 60 % at the largest, and on the 40×15 levels a high enough
-preset revealed a whole level, height included. A player could see more of a level
-by opening the video menu.
-
-Two tests pin it now:
-
-- `tests/unit/test_framing_contract.py` asserts the framing is smaller, on both
-  axes, than every level in `data/levels_manifest.json`;
-- `tests/unit/test_sim_is_display_independent.py` runs one input log at five
-  window sizes and five pixel densities and compares a world checksum.
+- `tests/unit/test_framing_contract.py` — framing is smaller than every level;
+- `tests/unit/test_sim_is_display_independent.py` — one input log, five window
+  sizes and five densities, same world checksum.
 
 </details>
+
+<details>
+<summary><b>Measured: 1:1 present vs <code>smoothscale</code></b></summary>
+
+| Window | 1:1 | `smoothscale` |
+|---|---|---|
+| 1280×720 | ~0.38 ms | ~3.95 ms |
+| 2560×1440 | ~1.33 ms | ~7.46 ms |
+
+</details>
+
 
 <details>
 <summary><b>Measured: presenting 1:1 versus <code>smoothscale</code></b></summary>
@@ -258,23 +232,26 @@ the FX plane (`CorpseParticle`, tuned by `fx.tuning.Corpse`) carries the hit on:
 thrown the way the blow pushed, tumbling, fading. Render-only — it collides with
 nothing and no snapshot or golden sees it.
 
-**Enemies choose and take turns.** An enemy type lists its `moves` in
-`enemies.json` -- an attack, the range it is thrown from and a weight. The chase
-picks one on entry (from the enemy's own random stream, so a rollback replays the
-choice) and closes in until it is in range. No more than `AI.MAX_ATTACKERS`
-enemies attack the player at once: the others wait at striking distance, which
-is counted from the roster's states each time and stored nowhere. The goblin and
-the tooth add a long claw that sweeps the floor, the slime a splash: both can be
-jumped. The goblin's swipe meets a slash blade to blade (`clash` on both hits).
+**Enemies choose and take turns.**
 
-**A slowed world is the same world on a slower clock.** During a dark step, a
-prompt or stasis, the physics stage hands every entity but the player a share
-of the tick's delta (`Player.world_time_scale`, `PhysicsSystem.process`), as do
-the platforms, the hazards and the projectiles; attacks count frames off that
-delta, so an enemy's swing takes that much longer. Fury, the dark side and
-blitz do the reverse: the player's attack clock runs fast, and the surplus
-frames are spent on the startup and the recovery only -- an active frame is
-never skipped, so a fast swing hits what a slow one would.
+- `enemies.json` lists each type's `moves`: an attack, its range and a weight.
+- The chase picks one on entry from the enemy's own random stream, so a rollback
+  replays the same choice.
+- At most `AI.MAX_ATTACKERS` enemies attack at once; the rest wait at striking
+  distance, counted from the roster's states rather than stored.
+- The goblin and the tooth sweep the floor with a long claw, the slime splashes:
+  both can be jumped. The goblin's swipe can meet a slash blade to blade
+  (`clash` on both hits).
+
+**A slowed world is the same world on a slower clock.**
+
+- Dark step, prompt and stasis give every entity but the player a share of the
+  tick's delta (`Player.world_time_scale`, `PhysicsSystem.process`), including
+  platforms, hazards and projectiles. Attacks count frames off that delta, so an
+  enemy's swing takes longer.
+- Fury, the dark side and blitz do the reverse for the player: the attack clock
+  runs fast, and the extra frames go to startup and recovery only. An active
+  frame is never skipped — a fast swing hits what a slow one would.
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
 > `src/states/reaction_states.py` fires for any entity whose `move_axis` is
@@ -289,12 +266,12 @@ never skipped, so a fast swing hits what a slow one would.
 > teleport. The velocity curve was never the problem — it always took about a
 > third of a second to cross zero. The picture refused to show any of it.
 
-A delay would be a value every interrupter has to be told to undo, and each of
-them would have to know the rule exists. A state is entered and exited, so an
-attack, a dash or a jump taken mid-pivot leaves through `PlayerTurnState.exit` —
-which is where the facing is finally committed. *"An attack inside the pivot
-still comes out where the player is pointing"* is not a special case anyone has
-to remember.
+- A delayed facing would be a value every interrupter has to undo, and each
+  would need to know the rule exists.
+- A state is entered and exited instead: an attack, dash or jump taken mid-pivot
+  leaves through `PlayerTurnState.exit`, where the facing is finally committed.
+- An attack inside the pivot therefore comes out where the player is pointing —
+  no special case to remember.
 
 | Constant | Shipped | Effect |
 |---|---|---|
@@ -306,11 +283,13 @@ to remember.
 | `Turn.SKEW_PX` | `20.0` | Shears the frame so the feet stay planted and the top of the body leans over. |
 | `Turn.STEP_DISTANCE_PX` / `SPREAD` | `40.0` / `1.15` | The pivot's row in `FootstepDust.TIER`. |
 
-**The pivot is registered in every fighter's state machine** under one shared name
-(`Turn.STATE`), and activation is decided by **group and sub-group** rather than
-by one entity at a time. Groups and sub-groups are named profiles in
-`settings.PROFILES`, layered by inheritance; every field is optional, and a field
-a layer leaves out is inherited.
+**The pivot is registered in every fighter's state machine** under one shared
+name (`Turn.STATE`). Activation is decided by **group and sub-group**, not per
+entity:
+
+- groups and sub-groups are named profiles in `settings.PROFILES`, layered by
+  inheritance;
+- every field is optional, and a layer that omits one inherits it.
 
 | Layer | Where it is named | Ships as |
 |---|---|---|
@@ -396,16 +375,18 @@ sprite moves.
 | `SpriteGroups.all_sprites` | Everything that moves | Scanned — exact and cheap, tens of sprites |
 | `SpriteGroups.fg_sprites` | Foreground tile layers | `TileChunkIndex` |
 
-That split is what makes the index pay: leaving the tiles in `all_sprites` would
-force the renderer to walk all 839 of them every frame just to discover it had
-already drawn them. Measured on level 0: **0.22 ms against 0.28 ms** for the scan;
-at 22 000 tiles, **0.07 ms against 2.67 ms**. The tile layers stay in
-`collision_sprites` as before, so physics is untouched.
+The split is what makes the index pay:
 
-Anything that genuinely wants the whole world — the debug overlay, the sprite
-counter — reads `SpriteGroups.every_sprite` instead of one group. The index
-decides which sprites are *worth asking about*; `Camera.is_visible` still decides
-which are drawn, so a chunk can over-select but never under-select.
+- Leaving tiles in `all_sprites` would make the renderer walk all 839 of them
+  each frame just to discover they were already drawn.
+- Measured on level 0: **0.22 ms indexed vs 0.28 ms scanned**; at 22 000 tiles,
+  **0.07 ms vs 2.67 ms**.
+- Tile layers stay in `collision_sprites`, so physics is untouched.
+
+Anything that genuinely needs the whole world — the debug overlay, the sprite
+counter — reads `SpriteGroups.every_sprite`. The index only decides which sprites
+are *worth asking about*; `Camera.is_visible` still decides which are drawn, so a
+chunk can over-select but never under-select.
 
 
 ## Architecture

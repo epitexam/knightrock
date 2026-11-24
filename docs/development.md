@@ -14,15 +14,19 @@ a single file.
 | `src/core/audio.py` | The only module that touches `pygame.mixer`, and it is a **consumer**: it never asks who did something and imports neither the input router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole policy — one effect, one cue — and `attach(bus)` subscribes to the facts it answers. It loads each sound once, caches it, applies the cue's category volume and never raises: no sound card, no asset and an undecodable file all end with a warning and a silent cue, which is also the CI path. |
 | `src/core/rendering/overlay.py` | The `WorldOverlay` port. `UIManager` implements it and `Game.world_overlay` builds it once. |
 
-The **frame loop is paced exactly once**: with vsync off the `Clock` holds the
-frame limit, with vsync on the present already blocks on the vertical blank, so the
-clock is ticked only against a runaway ceiling derived from that rate. Targeting
-60 on top of a 60 Hz present waits twice for one refresh and alternates between on
-time and one refresh late. The ceiling is a backstop, not a frame rate control,
-and it is derived rather than hardcoded so raising the limit can never leave it
-underneath. `Display.FPS` is a build target that feeds that ceiling — *not* the
-player-facing frame rate, which lives in `settings_store.FRAME_LIMITS`. A frame
-runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
+**The frame loop is paced exactly once.**
+
+- Vsync off — the `Clock` holds the frame limit.
+- Vsync on — the present already blocks on the vertical blank, so the clock is
+  ticked only against a runaway ceiling derived from that rate. Targeting 60 on a
+  60 Hz present would wait twice for one refresh and alternate between on time
+  and one refresh late.
+- The ceiling is a backstop, not a frame-rate control. It is derived, not
+  hardcoded, so raising the limit can never leave it underneath.
+- `Display.FPS` is a build target feeding that ceiling — **not** the player-facing
+  frame rate, which lives in `settings_store.FRAME_LIMITS`.
+- A frame runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks; the surplus is
+  dropped.
 
 > **The interface reaches the world by injection, not by import.** The renderer
 > takes a `WorldOverlay` and draws nothing beyond the world without one, so `core`
@@ -76,7 +80,8 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 
 ## Further notes
 
-Written in French unless stated otherwise.
+The README and the guides in `docs/` are in English. The audit notes in
+`docs/audit/`, the design proposals and the playtest write-ups are in French.
 
 | File | Contents |
 |---|---|

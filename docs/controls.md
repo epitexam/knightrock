@@ -55,13 +55,13 @@ flowchart LR
 | Menu navigation / confirm | Left stick or D-pad / `A` |
 | Back in menus | `B` |
 
-`B` is *Back* in the menus and the shot in the game, and it never pauses: the
-pause is `Start` on the pad and `Esc` on the keyboard. A settings file still on
-the previous default layout is moved to this one when it is read; a layout the
-player built is kept, with the reset moved off `Start`; a file from before the
-shot gets it on `B` and `D` unless something else is already there. Axis numbers are the
-joystick API's and differ by platform: on Windows axis `2` is the right stick's
-X, and the dash can be rebound from *Options → Controls*.
+- `B` is **Back** in menus and **Shoot** in game; it never pauses. Pause is
+  `Start` on the pad, `Esc` on the keyboard.
+- A file still on the old default layout is migrated on read. A custom layout is
+  kept, with Reset moved off `Start`; a file from before Shoot gains it on `B`
+  and `D` if those are free.
+- Axis numbers are the joystick API's and vary by platform: on Windows axis `2`
+  is the right stick's X. Dash can be rebound from *Options → Controls*.
 
 Three details of the menu navigation, all in `src/core/settings.py` under
 `Input`:
@@ -79,13 +79,13 @@ first two thrown high, or low with Down held, and all three charged when held.
 What a press throws depends on what the fighter is doing
 (`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
 
-A **phase** is one movement: its own timing, one hitbox and one effect. A
-**move** is a chain of phases that follow each other automatically on their
-frame data; a phase may name an `auto_into` move whose first phase then follows
-without an input, a second cooldown or a second combo entry. The **combos**
-below are the links *between* moves, opened by `cancel_into` on contact or in
-recovery and chosen by `follow_ups` from the button pressed. A phase either
-strikes or launches a shot, never both.
+- **Phase** — one movement: its timing, one hitbox, one effect.
+- **Move** — a chain of phases that follow on frame data. A phase may name an
+  `auto_into` move: its first phase then follows without input, cooldown or combo
+  entry.
+- **Combo** — a link *between* moves, opened by `cancel_into` on contact or in
+  recovery and chosen by `follow_ups` from the button pressed.
+- A phase either strikes or launches a shot, never both.
 
 | Input | Move |
 |---|---|
@@ -102,37 +102,59 @@ strikes or launches a shot, never both.
 | A slash that would kill | the foe is doomed: one direction, then `death_blow` |
 | Slash / beat / shoot in the air | `air_slash` / `air_kick` (dive) / `air_shot` |
 
-Every strike is sized to the drawn fighter (about 24 × 33 inside a 40 × 56
-hitbox): a blade about 28 long from the shoulder, a fist about 22, a leg about
-26; nothing reaches more than 48 in front or swings more than 150°, a high blow
-stays above the hips and a low one starts below them, and no two moves of one
-fighter share shape, timing, height and push (`tests/unit/test_move_proportions.py`).
-A charge grows what it throws: at the charge multiplier `m` (1 let go at once, 2 held to the end) the blow hits `m` times harder, pushes and stuns `m` times more, and its shape and reach are `1 + Combat.CHARGE_REACH_GAIN × (m − 1)` times the uncharged one's; a full charge keeps that power and adds its tier's extra (the crescent, the pierce). A charged shot grows the same way. The blade and the body are two kinds of blow: the blade is quicker, longer and pushes little; the body starts later, freezes longer on a hit, pushes hard, stuns and goes through guards (`tests/headless/test_charge_and_buttons.py`).
-A phase can launch a shot as it turns active (`launches`, from
-`src/entities/shots.py`): the bolt, the piercing bolt, the crescent of a full
-cut, the slime's lobbed glob. A launching phase strikes with the shot alone:
-its box marks the hand it leaves from and never touches. The crescent is its
-own move, reached from the full cut by `auto_into`, so the strike and the throw
-stay two well-defined movements.
+### Shape and timing
 
-**Enemies.** Each fighting type has its own moves: the goblin's two claws (an
-overhead swipe, a low reach), the tooth's bite at the head and snap at the
-ankles, the shell's shoulder bash and a roll along the floor that no guard
-stops -- it is jumped -- and the slime's slam and spat glob, which lands low.
+- **Proportions.** A strike is sized to the drawn fighter (about 24 × 33 inside a
+  40 × 56 hitbox): blade ≈28 px from the shoulder, fist ≈22, leg ≈26. Nothing
+  reaches past 48 px, swings more than 150°, and high and low blows stay on their
+  side of the hips. Two moves of one fighter never share shape, timing, height
+  and push (`tests/unit/test_move_proportions.py`).
+- **Charge.** With multiplier `m` (1 = released at once, 2 = held to the end):
+  damage, push and stun are ×m; shape and reach are
+  `1 + Combat.CHARGE_REACH_GAIN × (m − 1)`. A full charge adds its tier's extra
+  (crescent, pierce). Charged shots follow the same rule.
+- **Blade vs body.** The blade is quicker, longer and pushes little; the body
+  starts later, freezes longer on hit, pushes hard, stuns and goes through
+  guards (`tests/headless/test_charge_and_buttons.py`).
+- **Launched shots.** A phase can fire as it turns active (`launches` in
+  `src/entities/shots.py`): bolt, piercing bolt, charged crescent, slime glob.
+  The box marks the hand and does not touch; the crescent is its own move,
+  reached by `auto_into`.
 
-**What is drawn** (`src/core/rendering/strike_trails.py`, render only): a blade
-cuts a thin crescent, a heavy cut a wider one; the body leaves a short streak
-and a knuckle or a heel; a charged cut is gold and brighter the longer it was
-held, a full one white-hot with afterimages; the death blow is dark red. A
-held button gathers a ring at the hand that closes as it fills and flashes when
-full. An enemy winding up shows a chevron at the height it will strike -- red,
-or violet when no guard stops it. A blow that lands leaves its mark at the tip: a sharp cut for the blade, a burst of lines for the body, a cut with a flash for a charged one, drawn over the struck fighter's flash. A dash leaves stamps of the fighter spaced by the distance covered (`Afterimage.SPACING`), pale at the back and cyan nearer the fighter, with speed lines behind it that outlast it a moment and a clap of air where it started; a dark step throws out a violet ring and tints the slowed world; a block throws up a shield of light on the side of the blow -- a crescent that pushes outward, a brief bubble, sparks off its face -- gold for a perfect block.
+### Enemies
 
-A link of a chain starts as soon as the previous one has hit, and a press made a
-little early is kept for `Input.ATTACK_BUFFER_WINDOW` and played the moment it
-can be.
+Each type has its own moves:
 
-**The combat loop.** Modelled on No More Heroes 2, in 2D (`src/core/settings.py`:
+- **Goblin** — overhead claw, low claw.
+- **Tooth** — bite at the head, snap at the ankles.
+- **Shell** — shoulder bash; floor roll that guards cannot stop (jump it).
+- **Slime** — slam and a low lobbed glob.
+
+### What is drawn
+
+Render-only cues (`src/core/rendering/strike_trails.py`):
+
+- **Blade** — thin crescent; heavier cuts are wider.
+- **Body** — short streak with a knuckle or heel.
+- **Charge** — gold, brighter the longer it is held; full is white-hot with
+  afterimages. A held charge gathers a closing ring at the hand, flashing full.
+- **Death blow** — dark red.
+- **Wind-up** — a chevron at the strike height: red, violet if unguardable.
+- **Impact** — a marker at the tip: cut for the blade, burst for the body, cut
+  and flash for a charged blow; drawn over the struck fighter's flash.
+- **Dash** — afterimages spaced by `Afterimage.SPACING`, pale at the back and
+  cyan near the fighter; speed lines and a clap of air at the start.
+- **Dark step** — violet ring, tinted slowed world.
+- **Block** — light shield on the struck side: crescent, brief bubble, sparks;
+  gold for a perfect block.
+
+A chain link starts as soon as the previous hit lands; an early press is kept
+for `Input.ATTACK_BUFFER_WINDOW`.
+
+### The combat loop
+
+Modelled on No More Heroes 2, in 2D. The tuning lives in `src/core/settings.py`:
+`Battery`, `Fury`, `Finisher`, `Throw`, `Clash`, `Slot`, `Stun`, `Rush`, `Guard`.
 `Battery`, `Fury`, `Finisher`, `Throw`, `Clash`, `Slot`, `Stun`, `Rush`, `Guard`):
 
 | Mechanic | Rule |

@@ -51,25 +51,26 @@ Under `DEBUG=1` the overlay shows the offensive boxes plus `Combo (air xN)`,
 
 The full list is recalled on screen by the `DEBUG KEYS` panel.
 
-**What the overlay draws.** Hitboxes are blue (player), red (enemy), grey
-(neutral); overlaid with a green hurtbox and an orange offensive box. Velocity
-arrows are a tapered shaft, a filled head and a pivot dot, all wrapped in a dark
-rim so the silhouette survives a bright sky — the head length is clamped and
-short vectors are stretched, so a walk and a dash both stay legible. The arrow
-is **red** while the hit that caused it is fresh or while the knockback state
-still carries the entity, **gold** on a parry, yellow for locomotion. Outlines:
-cyan = OTG guard, purple = juggle gravity. Labels are short cards, with a second
-line only during an attack or when a flag is set; projectiles carry speed,
-lifetime and pierce; tiles are skipped. Multi-box indices are drawn as in-situ
-vector points, the first filled and the following ones hollow.
+### What the overlay draws
 
-**Everything is scaled by the density of the world it annotates**
-(`WorldOverlayMetrics`), because the overlay is a *description* of the world: an
-unscaled 1 px hitbox outline arrives at 53 % of its intent on a window whose
-density is 1.889, and a debug layer too thin to see is not a debug layer. Culling
-is `Camera.is_visible`, the one world-space cull in the renderer. Melee, projectile
-AABB and moving-hazard geometry use **swept** collision; static hazards and
-contact damage keep **discrete** collision.
+- **Hitboxes** — blue (player), red (enemy), grey (neutral), with a green hurtbox
+  and an orange offensive box on top.
+- **Velocity arrows** — tapered shaft, filled head, pivot dot, dark rim so the
+  shape survives a bright sky. Head length is clamped and short vectors are
+  stretched, so walks and dashes stay legible. Red while a hit is fresh or
+  knockback still carries the entity, gold on a parry, yellow for locomotion.
+- **Outlines** — cyan for OTG guard, purple for juggle gravity.
+- **Labels** — short cards, with a second line only during an attack or when a
+  flag is set. Projectiles show speed, lifetime and pierce; tiles are skipped.
+- **Multi-box indices** — in-situ vector points, first filled, the rest hollow.
+
+> **Everything is scaled by the density of the world it annotates**
+> (`WorldOverlayMetrics`). An unscaled 1 px outline would arrive at 53 % of its
+> intent at density 1.889 — a debug layer too thin to see is not a debug layer.
+
+Culling is `Camera.is_visible`, the renderer's one world-space cull. Melee,
+projectile AABB and moving-hazard geometry use **swept** collision; static
+hazards and contact damage stay **discrete**.
 
 > **Why `F4` ships off.** A level carries 839 terrain tiles whose outline tells
 > you nothing, and drawing them is the most expensive thing the overlay does.
