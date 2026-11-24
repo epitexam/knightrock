@@ -451,6 +451,7 @@ class Level:
             entity.bind_vitals(self.vitals_table)
             entity.bind_geometry(self.geometry_table)
             entity.bind_combat(self.combat_table)
+            entity.ensure_presentation(self.groups)
             entity.load_state(entity_snapshot)
 
         for platform_snapshot in snapshot.platforms:

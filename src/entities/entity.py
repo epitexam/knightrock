@@ -21,6 +21,7 @@ from src.core.animation.animator import Animator
 from src.core.ecs.combat_table import CombatTable
 from src.core.ecs.geometry_table import GeometryTable
 from src.core.ecs.movement_table import MovementTable
+from src.core.ecs.presentation import PresentationSprite
 from src.core.ecs.vitals_table import VitalsTable
 from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Clash as ClashSettings
@@ -33,6 +34,7 @@ from src.core.settings import (
     resolve_turn_profile,
 )
 from src.core.settings import Stun as StunSettings
+from src.core.sprite_groups import SpriteGroups
 from src.entities.components.animation_publisher import AnimationPublisher
 from src.entities.components.doom import DoomTracker
 from src.entities.components.environment import EnvironmentScanner
@@ -134,6 +136,7 @@ class Entity(Sprite):
     geometry_slot: int | None = None
     combat_table: CombatTable | None = None
     combat_slot: int | None = None
+    presentation: PresentationSprite | None = None
 
     # Only the player drives attack poses off frame data. Declared here so the
     # animation publisher reads a declared field on every fighter instead of
@@ -506,6 +509,14 @@ class Entity(Sprite):
     # in-place writes in ``src.physics`` and the state machines keep working;
     # standalone entities still delegate to their MovementComponent.
     # ------------------------------------------------------------------
+
+    def ensure_presentation(self, groups: SpriteGroups) -> None:
+        """Create or re-attach the draw proxy for this fighter."""
+        if self.presentation is None:
+            self.presentation = PresentationSprite(self)
+        proxy = self.presentation
+        if proxy not in groups.presentation_sprites:
+            groups.presentation_sprites.add(proxy)
 
     def bind_movement(self, table: MovementTable) -> None:
         """Attach this fighter to a level's kinematic table, once."""
@@ -1139,6 +1150,8 @@ class Entity(Sprite):
         if self.combat_table is not None and self.combat_slot is not None:
             self.combat_table.release(self.combat_slot)
             self.combat_slot = None
+        if self.presentation is not None:
+            self.presentation.kill()
         self.vitals.unbind()
         super().kill()
 

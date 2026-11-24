@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from src.core.ecs.combat_table import CombatTable
     from src.core.ecs.geometry_table import GeometryTable
     from src.core.ecs.movement_table import MovementTable
+    from src.core.ecs.presentation import PresentationSprite
     from src.core.ecs.vitals_table import VitalsTable
     from src.entities.entity import Entity
 
@@ -57,6 +58,9 @@ class SpriteGroups:
     vitals_table: VitalsTable | None = None
     geometry_table: GeometryTable | None = None
     combat_table: CombatTable | None = None
+    presentation_sprites: pygame.sprite.Group[PresentationSprite] = field(
+        default_factory=pygame.sprite.Group
+    )
 
     static_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     """The frozen tile layers that draw *under* the world (``Terrain``,
@@ -82,6 +86,7 @@ class SpriteGroups:
             fighter.bind_geometry(self.geometry_table)
         if self.combat_table is not None:
             fighter.bind_combat(self.combat_table)
+        fighter.ensure_presentation(self)
 
     @property
     def every_sprite(self) -> tuple[pygame.sprite.Sprite, ...]:
