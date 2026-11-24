@@ -79,7 +79,7 @@ Compiler en extensions C les modules où le profile montre le plus de temps Pyth
 
 Trois modules du périmètre initial ont dû rester interprétés, sans toucher au code de jeu : `collisions`, `movement` et `hit_resolver` annotent la vue ECS `SurfaceFlagsView` comme un `dict[str, bool]` ; mypyc en fait une vraie vérification de dict et chaque contact lève `TypeError`. `contact_system` appelle le resolver, et `entity_grid` est sous-classé par un double de test (interdit par mypyc). Le périmètre réel est donc documenté dans le script de build.
 
-`tools/benchmark_native.py` exécute les deux modes en processus séparés, en ordre alterné, avec le même checksum dans les dix mesures : médiane 2,294 ms (natif) contre 2,903 ms (interprété), soit 1,27× sur ce micro-bench. Le gain est réel mais limité ; le spec PyInstaller n'intègre donc **pas** les `.so`, et le jeu livré reste pure Python.
+`tools/benchmark_native.py` exécute les deux modes en processus séparés, en ordre alterné (9 rounds par défaut), avec le même checksum dans les dix-huit mesures : médiane 1,627 ms (natif) contre 1,888 ms (interprété), soit 1,16× sur ce micro-bench. Le gain est réel mais limité ; le spec PyInstaller n'intègre donc **pas** les `.so`, et le jeu livré reste pure Python.
 
 ### Risques / rollback
 

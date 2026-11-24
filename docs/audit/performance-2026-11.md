@@ -46,18 +46,22 @@ Aucun golden, digest, oracle ou empreinte de données n'a changé.
 
 ### A/B mypyc (E2)
 
-`uv run python tools/build_native.py` puis `uv run python tools/benchmark_native.py --rounds 5 --iterations 100`. Chargement : 520 tuiles dans le hash, 168 queries, 256 corps (gravité + trois frictions), 16 plateformes. Ordre alterné à chaque round pour annuler le bruit ; même checksum dans les dix exécutions.
+`uv run python tools/build_native.py` puis `uv run python tools/benchmark_native.py --rounds 9 --iterations 60`. Chargement : 520 tuiles dans le hash, 168 queries, 256 corps (gravité + trois frictions), 16 plateformes. Ordre alterné à chaque round pour annuler le bruit ; même checksum dans les dix-huit exécutions.
 
 | round | natif | interprété |
 |---|---|---|
-| 1 | 2,294 ms | 2,833 ms |
-| 2 | 3,253 ms | 2,903 ms |
-| 3 | 2,920 ms | 4,310 ms |
-| 4 | 1,741 ms | 2,982 ms |
-| 5 | 1,884 ms | 1,601 ms |
-| **médiane** | **2,294 ms** | **2,903 ms** |
+| 1 | 1,536 ms | 1,700 ms |
+| 2 | 1,627 ms | 1,704 ms |
+| 3 | 1,475 ms | 1,624 ms |
+| 4 | 1,599 ms | 1,926 ms |
+| 5 | 1,459 ms | 1,888 ms |
+| 6 | 1,758 ms | 1,776 ms |
+| 7 | 1,661 ms | 2,240 ms |
+| 8 | 1,819 ms | 2,268 ms |
+| 9 | 1,774 ms | 1,981 ms |
+| **médiane** | **1,627 ms** | **1,888 ms** |
 
-Speedup **1,27×** sur ce micro-bench, dans un bruit de ±1 ms. Ce n'est pas une promesse de gain sur le tick complet : le périmètre compile surtout des helpers dont les paramètres sont `Any` (aucun type à exploiter), et il exclut les modules qui touchent aux vues ECS (voir `tools/build_native.py`). Le build natif n'est donc **pas intégré** au spec PyInstaller : le jeu livré reste pure Python, avec l'option de compiler localement pour mesurer.
+Speedup **1,16×** sur ce micro-bench, dans un bruit de ±0,4 ms. La première série à 5 rounds donnait 1,27× : l'écart montre à quel point ce chiffre est sensible à la charge de la machine, ce qui motive le passage à 9 rounds. Ce n'est pas une promesse de gain sur le tick complet : le périmètre compile surtout des helpers dont les paramètres sont `Any` (aucun type à exploiter), et il exclut les modules qui touchent aux vues ECS (voir `tools/build_native.py`). Le build natif n'est donc **pas intégré** au spec PyInstaller : le jeu livré reste pure Python, avec l'option de compiler localement pour mesurer.
 
 ### Pré-rendu des calques statiques (E3)
 

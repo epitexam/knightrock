@@ -1,7 +1,7 @@
 """A/B the compiled physics helpers against the same workload in pure Python.
 
     uv run python tools/build_native.py
-    uv run python tools/benchmark_native.py --rounds 5
+    uv run python tools/benchmark_native.py --rounds 9
 
 Each round runs both modes in a fresh process, in alternating order, so a warm
 cache or a noisy neighbour cannot flatter whichever mode happens to go second.
@@ -59,7 +59,7 @@ def _pure_tree(temp: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rounds", type=int, default=5)
+    parser.add_argument("--rounds", type=int, default=9)
     parser.add_argument("--iterations", type=int, default=100)
     args = parser.parse_args()
 
