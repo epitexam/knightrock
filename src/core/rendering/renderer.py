@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import pygame
 
 from src.core.colors import BG_COLORS, Color, Colors
+from src.core.ecs.presentation import PresentationSprite
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
@@ -125,6 +126,8 @@ class Renderer:
         self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
         self._dashing_player: Entity | None = None
         self._turning_player: Entity | None = None
+        self._dashing_proxy: PresentationSprite | None = None
+        self._turning_proxy: PresentationSprite | None = None
         #: ``id(fighter) -> (dx, dy)`` this frame: how far behind its simulated
         #: position a fighter is drawn. Only fighters that moved are in it.
         self._lag: dict[int, tuple[float, float]] = {}
@@ -291,8 +294,14 @@ class Renderer:
         """
         self.camera.begin_frame(alpha)
         self._lag = self._interpolation_lag(groups, alpha)
-        self._dashing_player = self._find_dashing_player(groups)
-        self._turning_player = self._find_turning_player(groups)
+        self._dashing_proxy = self._find_dashing_proxy(groups)
+        self._turning_proxy = self._find_turning_proxy(groups)
+        self._dashing_player = (
+            self._entity_of(self._dashing_proxy) if self._dashing_proxy is not None else None
+        )
+        self._turning_player = (
+            self._entity_of(self._turning_proxy) if self._turning_proxy is not None else None
+        )
         self.surface.fill(self.background_color)
         blits = self._collect_visible_blits(groups)
         for surface, screen_rect in blits:
@@ -346,36 +355,29 @@ class Renderer:
         self, sprite: Any, rect: pygame.FRect | pygame.Rect
     ) -> pygame.FRect | pygame.Rect:
         """``rect`` moved to where this frame draws the sprite."""
+        if not self._lag:
+            return rect
         lag = self._lag.get(id(self._entity_of(sprite)))
         if lag is None:
             return rect
         return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
 
-    def _find_dashing_player(self, groups: SpriteGroups) -> Any:
-        """The one sprite that can be a dashing player, or None.
+    def _find_dashing_proxy(self, groups: SpriteGroups) -> Any:
+        """The draw proxy of the dashing player, or None.
 
-        ``is_player_dashing`` needs three attribute lookups to answer, and
-        ``_collect_visible_blits`` used to ask it of every visible sprite on
-        the level -- about a thousand, to find at most one. Resolving it once
-        turns that into an identity comparison in the blit loop.
+        Resolving it once per frame turns a three-attribute lookup on every
+        blitted sprite into an identity comparison in the blit loop.
         """
         for sprite in groups.entity_sprites:
-            fighter = self._entity_of(sprite)
-            if is_player_dashing(fighter):
-                return fighter
+            if is_player_dashing(self._entity_of(sprite)):
+                return sprite
         return None
 
-    def _find_turning_player(self, groups: SpriteGroups) -> Any:
-        """The one sprite mid-pivot, or None.
-
-        The same shape and the same reason as :meth:`_find_dashing_player`:
-        the pivot ratio is one lookup on the entity, asked once here
-        instead of of every visible sprite in the blit loop.
-        """
+    def _find_turning_proxy(self, groups: SpriteGroups) -> Any:
+        """The draw proxy of the fighter mid-pivot, or None."""
         for sprite in groups.entity_sprites:
-            fighter = self._entity_of(sprite)
-            if fighter.render_hints.turn_ratio > 0.0:
-                return fighter
+            if self._entity_of(sprite).render_hints.turn_ratio > 0.0:
+                return sprite
         return None
 
     def _collect_visible_blits(
@@ -478,15 +480,14 @@ class Renderer:
         )
         moving: Iterable[pygame.sprite.Sprite]
         if groups.presentation_sprites:
-            fighter_ids = {id(proxy.entity) for proxy in groups.presentation_sprites}
-            fighter_ids.update(
-                id(sprite)
-                for sprite in groups.all_sprites
-                if getattr(sprite, "presentation", None) is not None
-            )
+            proxy_ids = {id(proxy) for proxy in groups.presentation_sprites}
             moving = chain(
                 groups.presentation_sprites,
-                (sprite for sprite in groups.all_sprites if id(sprite) not in fighter_ids),
+                (
+                    sprite
+                    for sprite in groups.all_sprites
+                    if id(sprite) not in proxy_ids and not isinstance(sprite, PresentationSprite)
+                ),
             )
         else:
             moving = groups.all_sprites
@@ -513,10 +514,10 @@ class Renderer:
         # Only a player can be dashing, and a player is an entity, so this
         # branch is resolved by identity rather than by a ``getattr`` walk
         # over every tile of the level.
-        if self._dashing_player is not None and self._entity_of(sprite) is self._dashing_player:
+        if self._dashing_proxy is not None and sprite is self._dashing_proxy:
             image, screen_rect = dash_frame(image, screen_rect)
         turning = self._turning_player
-        if turning is not None and self._entity_of(sprite) is turning:
+        if turning is not None and sprite is self._turning_proxy:
             image, screen_rect = turn_frame(
                 image,
                 screen_rect,
@@ -540,7 +541,8 @@ class Renderer:
         """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
         for sprite in groups.entity_sprites:
-            hints = self._entity_of(sprite).render_hints
+            fighter = self._entity_of(sprite)
+            hints = fighter.render_hints
             hurt = hints.flash_timer
             parried = hints.parry_flash_timer
             if hurt <= 0.0 and parried <= 0.0:
@@ -556,11 +558,10 @@ class Renderer:
             overlay.set_alpha(int(255 * min(1.0, strength)))
             screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, sprite.rect))
             overlay = self._scaled_image_once(overlay)
-            if is_player_dashing(self._entity_of(sprite)):
+            if is_player_dashing(fighter):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
             # The same slide and lean the body got, or a flash fired mid-pivot
             # paints a silhouette of a fighter who is not standing there.
-            fighter = self._entity_of(sprite)
             overlay, screen_rect = turn_frame(
                 overlay, screen_rect, turn_offset_px(fighter), turn_skew_px(fighter)
             )

@@ -3,11 +3,12 @@ from typing import TYPE_CHECKING
 
 import pygame
 
+from src.core.ecs.presentation import PresentationSprite
+
 if TYPE_CHECKING:
     from src.core.ecs.combat_table import CombatTable
     from src.core.ecs.geometry_table import GeometryTable
     from src.core.ecs.movement_table import MovementTable
-    from src.core.ecs.presentation import PresentationSprite
     from src.core.ecs.vitals_table import VitalsTable
     from src.entities.entity import Entity
 
@@ -107,15 +108,14 @@ class SpriteGroups:
         O(level) walk, which is the thing the tile index exists to avoid.
         """
         if self.presentation_sprites:
-            fighter_ids = {id(proxy.entity) for proxy in self.presentation_sprites}
-            fighter_ids.update(
-                id(sprite)
-                for sprite in self.all_sprites
-                if getattr(sprite, "presentation", None) is not None
-            )
+            proxy_ids = {id(proxy) for proxy in self.presentation_sprites}
             moving = (
                 *self.presentation_sprites,
-                *(s for s in self.all_sprites if id(s) not in fighter_ids),
+                *(
+                    s
+                    for s in self.all_sprites
+                    if id(s) not in proxy_ids and not isinstance(s, PresentationSprite)
+                ),
             )
         else:
             moving = (*self.all_sprites,)
