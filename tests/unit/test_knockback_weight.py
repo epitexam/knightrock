@@ -234,7 +234,11 @@ def test_a_reaped_enemy_leaves_a_body_and_the_player_does_not() -> None:
     loop.remove_dead_entities(group, player)
 
     feedback.before_removal.assert_called_once_with(foe)
-    assert foe.presentation not in group and player.presentation in group and alive.presentation in group
+    assert (
+        foe.presentation not in group
+        and player.presentation in group
+        and alive.presentation in group
+    )
 
 
 def test_the_loop_without_feedback_still_reaps() -> None:

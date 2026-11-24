@@ -26,9 +26,7 @@ def test_a_press_buffered_before_a_death_blow_prompt_does_not_fire_after_it() ->
     player = level.player
     _buffer(player.input_handler, InputAction.ATTACK_1)
 
-    player.on_hit_confirmed(
-        SimpleNamespace(id="e1"), False, DamageResult(doomed=True)
-    )
+    player.on_hit_confirmed(SimpleNamespace(id="e1"), False, DamageResult(doomed=True))
     for tick in range(5):
         pad.tick = tick
         level.update(DT)

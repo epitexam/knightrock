@@ -194,9 +194,7 @@ def test_the_primary_hitbox_spec_is_built_once_per_phase() -> None:
 
 def test_boxes_are_the_primary_spec_followed_by_the_extras() -> None:
     """One derived tuple for runtime, validation and the v2 writer."""
-    definition = phase(
-        startup=1, active=2, recovery=1, extra=(((12.0, 8.0), (-9.0, 2.0)),)
-    )
+    definition = phase(startup=1, active=2, recovery=1, extra=(((12.0, 8.0), (-9.0, 2.0)),))
     extra = HitboxSpec(size=(12.0, 8.0), offset=(-9.0, 2.0))
 
     assert definition.boxes == (definition.hitbox_spec, extra)

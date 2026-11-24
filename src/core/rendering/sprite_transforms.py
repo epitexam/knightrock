@@ -239,7 +239,6 @@ def _evict_half(cache: dict) -> None:
         del cache[stale]
 
 
-
 def clear_shear_cache() -> None:
     """Drop sheared surfaces derived from an obsolete display format."""
     _SHEAR_CACHE.clear()

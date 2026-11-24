@@ -130,7 +130,9 @@ def test_bodies_already_touching_deal_damage_on_the_first_tick() -> None:
 def test_bodies_that_meet_deal_damage_on_the_tick_they_touch() -> None:
     runner, standing = _bodies(gap=150.0)
     system = ContactDamageSystem()
-    system.process(pygame.sprite.Group(runner.presentation, standing.presentation))  # apart: nothing
+    system.process(
+        pygame.sprite.Group(runner.presentation, standing.presentation)
+    )  # apart: nothing
     assert standing.health == standing.max_health
 
     standing.hitbox.x = runner.hitbox.right - 20.0

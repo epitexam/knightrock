@@ -226,9 +226,7 @@ class _FeelTrace:
             attacker_left = (phase.active_frames - state.frame_counter) + phase.recovery_frames
         else:
             attacker_left = 0
-        defender_left = math.ceil(
-            max(self.foe.combat.hurt_timer, self.foe.stagger_timer) / DT
-        )
+        defender_left = math.ceil(max(self.foe.combat.hurt_timer, self.foe.stagger_timer) / DT)
         self.advantage[kind].append(defender_left - attacker_left)
         self.contact_at = self.guard_at = -1
 
@@ -284,7 +282,8 @@ def _duel(
             for name, values in sorted(trace.hitstop.items())
         },
         "frame_advantage": {
-            kind: round(sum(values) / len(values)) for kind, values in sorted(trace.advantage.items())
+            kind: round(sum(values) / len(values))
+            for kind, values in sorted(trace.advantage.items())
         },
         "combo_peak": max(trace._peak, player.combat.combo_count),
         "recovery_after_whiff": (

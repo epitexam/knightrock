@@ -518,7 +518,10 @@ class Renderer:
         turning = self._turning_player
         if turning is not None and self._entity_of(sprite) is turning:
             image, screen_rect = turn_frame(
-                image, screen_rect, turn_offset_px(turning), turn_skew_px(turning)  # type: ignore[arg-type]
+                image,
+                screen_rect,
+                turn_offset_px(turning),
+                turn_skew_px(turning),  # type: ignore[arg-type]
             )
         blits.append((image, screen_rect))
 

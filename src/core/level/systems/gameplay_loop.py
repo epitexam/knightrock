@@ -263,9 +263,7 @@ class GameplayLoop(CombatLoop):
                 self._collect_impact_events(),
             )
             self.contact_damage_system.process(fighters, self.entity_grid)
-            self.hazard_damage_system.process(
-                fighters, groups.hazard_sprites, self.entity_grid
-            )
+            self.hazard_damage_system.process(fighters, groups.hazard_sprites, self.entity_grid)
             self._flush_combat_trace()
             self.remove_dead_entities(fighters, player)
 

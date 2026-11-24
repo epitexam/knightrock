@@ -87,9 +87,16 @@ class Vitals:
     def unbind(self) -> None:
         """Detach before the owner is killed and its row is reclaimed."""
         if self._table is not None and self._slot is not None:
-            for name in ("health", "max_health", "is_dead", "invincibility_timer",
-                         "invincibility_duration", "stagger_timer", "super_armor",
-                         "super_armor_count"):
+            for name in (
+                "health",
+                "max_health",
+                "is_dead",
+                "invincibility_timer",
+                "invincibility_duration",
+                "stagger_timer",
+                "super_armor",
+                "super_armor_count",
+            ):
                 self.__dict__[f"_{name}" if name in ("health", "max_health") else name] = (
                     self._table.column(name)[self._slot]
                 )

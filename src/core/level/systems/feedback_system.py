@@ -14,7 +14,7 @@ player sees moved: :meth:`after_movement` right after the entities moved,
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
@@ -241,18 +241,21 @@ class FeedbackSystem:
         dizzy_ids: set[int] = set()
         stepping_ids: set[int] = set()
         table = self.groups.movement_table
-        fighters = (
-            table.iter_entities() if table is not None else iter(self.groups.entity_sprites)
-        )
+        fighters = table.iter_entities() if table is not None else iter(self.groups.entity_sprites)
         for entity in fighters:
-            self._process_entity_fx(
-                entity, delta_time, sweating_ids, dashing_ids, dizzy_ids, stepping_ids  # type: ignore[arg-type]
+            self._process_entity_fx(  # type: ignore[arg-type]
+                entity,
+                delta_time,
+                sweating_ids,
+                dashing_ids,
+                dizzy_ids,
+                stepping_ids,
             )
         self._cleanup_timers(sweating_ids, dashing_ids, dizzy_ids, stepping_ids)
 
     def _process_entity_fx(
         self,
-        entity: Entity,
+        entity: Any,
         delta_time: float,
         sweating_ids: set[int],
         dashing_ids: set[int],

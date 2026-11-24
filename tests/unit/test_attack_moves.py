@@ -90,9 +90,7 @@ def test_the_body_breaks_guards_and_stuns_and_the_blade_does_not() -> None:
 
 
 def test_only_the_finishing_moves_execute() -> None:
-    executing = {
-        name for name, d in PLAYER_ATTACKS.items() if any(p.hit.execute for p in d.phases)
-    }
+    executing = {name for name, d in PLAYER_ATTACKS.items() if any(p.hit.execute for p in d.phases)}
 
     assert executing == {"stab", "death_blow", "throw"}
     # The first half of the throw is a marker pose: no offensive flags at all.
