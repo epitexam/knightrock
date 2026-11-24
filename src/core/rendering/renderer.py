@@ -467,7 +467,16 @@ class Renderer:
         foreground = (
             groups.fg_sprites if foreground_index is None else foreground_index.candidates(viewport)
         )
-        return chain(groups.all_sprites, foreground)
+        moving: Iterable[pygame.sprite.Sprite]
+        if groups.presentation_sprites:
+            fighter_ids = {id(proxy.entity) for proxy in groups.presentation_sprites}
+            moving = chain(
+                groups.presentation_sprites,
+                (sprite for sprite in groups.all_sprites if id(sprite) not in fighter_ids),
+            )
+        else:
+            moving = groups.all_sprites
+        return chain(moving, foreground)
 
     def _append_cached_blit(
         self,
