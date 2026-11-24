@@ -44,6 +44,7 @@ class GameplayBindings:
         default_factory=lambda: _immutable_keys(
             {
                 InputAction.MOVE_X: (pygame.K_LEFT, pygame.K_RIGHT),
+                InputAction.MOVE_UP: pygame.K_UP,
                 InputAction.MOVE_DOWN: pygame.K_DOWN,
                 InputAction.JUMP: pygame.K_SPACE,
                 InputAction.DASH: pygame.K_LSHIFT,
@@ -76,6 +77,7 @@ class GameplayBindings:
             {
                 InputAction.MOVE_X: 0,
                 InputAction.DASH: 2,
+                InputAction.MOVE_UP: 1,
                 InputAction.MOVE_DOWN: 1,
             }
         )
@@ -84,6 +86,7 @@ class GameplayBindings:
         default_factory=lambda: _immutable(
             {
                 InputAction.MOVE_X: 0,
+                InputAction.MOVE_UP: 0,
                 InputAction.MOVE_DOWN: 0,
             }
         )

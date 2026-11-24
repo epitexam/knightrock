@@ -144,6 +144,23 @@ def test_disconnect_and_reassign_joystick(monkeypatch: pytest.MonkeyPatch) -> No
     assert provider.poll().move_axis == 1.0
 
 
+def test_up_uses_keyboard_then_analog_then_hat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, joystick = _provider(monkeypatch, pygame.K_UP)
+    state = provider.poll()
+    assert InputAction.MOVE_UP in state.held_actions
+    assert InputAction.JUMP not in state.held_actions
+
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: _press())
+    joystick.axes[1] = -1.0
+    assert InputAction.MOVE_UP in provider.poll().held_actions
+
+    joystick.axes[1] = 0.0
+    joystick.hat = (0, 1)
+    assert InputAction.MOVE_UP in provider.poll().held_actions
+
+
 @pytest.mark.parametrize(
     ("hat", "menu_action", "crouching"),
     [

@@ -26,7 +26,7 @@ from src.core.input.input_bindings import (
     PadBinding,
 )
 
-BINDINGS_FORMAT_VERSION = 1
+BINDINGS_FORMAT_VERSION = 2
 
 # Actions bound as a (left, right) pair: the keyboard stores them as a tuple,
 # and ``gamepad_buttons`` can take a pair of buttons for pads that expose their
@@ -164,6 +164,19 @@ def _fill_menu_pause_default(bindings: ButtonMap) -> ButtonMap:
     if InputAction.UI_PAUSE in bindings:
         return bindings
     return MappingProxyType({**bindings, InputAction.UI_PAUSE: XBOX_START})
+
+
+def _fill_move_up_defaults(
+    keyboard: Any, axes: AxisMap, hats: ButtonMap
+) -> tuple[Any, AxisMap, ButtonMap]:
+    """Restore the arrow and D-pad/stick up for files written before MOVE_UP."""
+    if InputAction.MOVE_UP not in keyboard:
+        keyboard = MappingProxyType({**keyboard, InputAction.MOVE_UP: pygame.K_UP})
+    if InputAction.MOVE_UP not in axes:
+        axes = cast(AxisMap, MappingProxyType({**axes, InputAction.MOVE_UP: 1}))
+    if InputAction.MOVE_UP not in hats:
+        hats = cast(ButtonMap, MappingProxyType({**hats, InputAction.MOVE_UP: 0}))
+    return keyboard, axes, hats
 
 
 def _fill_shoot_default(bindings: Any, default: int) -> Any:
@@ -340,8 +353,9 @@ def bindings_from_dict(data: object) -> InputBindings:
     * ``move_x`` stays a pair: two keys on the keyboard, two buttons if the
       gameplay ``gamepad_buttons`` section declares it.
     """
-    if not isinstance(data, dict) or data.get("version") != BINDINGS_FORMAT_VERSION:
+    if not isinstance(data, dict) or data.get("version") not in (1, BINDINGS_FORMAT_VERSION):
         raise ValueError("unsupported bindings schema")
+    old_file = data["version"] == 1
     gameplay_data = data["gameplay"]
     menu_data = data["menu"]
     if not isinstance(gameplay_data, dict) or not isinstance(menu_data, dict):
@@ -349,6 +363,7 @@ def bindings_from_dict(data: object) -> InputBindings:
     gameplay_data = _without_retired(gameplay_data)
     gameplay_actions = {
         InputAction.MOVE_X,
+        InputAction.MOVE_UP,
         InputAction.MOVE_DOWN,
         InputAction.JUMP,
         InputAction.DASH,
@@ -385,6 +400,12 @@ def bindings_from_dict(data: object) -> InputBindings:
     # default key and button, unless the player already put something there.
     gameplay_keyboard = _fill_shoot_default(gameplay_keyboard, pygame.K_d)
     gameplay_buttons = _fill_shoot_default(gameplay_buttons, XBOX_B)
+    # Up arrived after the other directions: a file written before it gets
+    # the arrow and the D-pad/stick up back, not a dead direction in prompts.
+    if old_file:
+        gameplay_keyboard, gameplay_axes, gameplay_hats = _fill_move_up_defaults(
+            gameplay_keyboard, gameplay_axes, gameplay_hats
+        )
     gameplay_keyboard_combos = _parse_combo_map(gameplay_data["keyboard_combos"], gameplay_actions)
     gameplay_gamepad_combos = _parse_combo_map(gameplay_data["gamepad_combos"], gameplay_actions)
     menu_keyboard = _parse_action_map(menu_data["keyboard"], menu_actions)

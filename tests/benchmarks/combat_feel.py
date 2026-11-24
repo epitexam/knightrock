@@ -318,7 +318,7 @@ def _count_starts(player: Player) -> list[int]:
 _DIRECTIONS: dict[Direction, tuple[float, frozenset[InputAction]]] = {
     Direction.LEFT: (-1.0, frozenset()),
     Direction.RIGHT: (1.0, frozenset()),
-    Direction.UP: (0.0, frozenset({InputAction.JUMP})),
+    Direction.UP: (0.0, frozenset({InputAction.MOVE_UP})),
     Direction.DOWN: (0.0, frozenset({InputAction.MOVE_DOWN})),
 }
 

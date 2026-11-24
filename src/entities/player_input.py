@@ -70,7 +70,7 @@ class PlayerInputHandler:
         self.buffer_timer = 0.0
 
     def _directions(self) -> list[Direction]:
-        """The directions pushed this tick: a new side of the stick, Down, Jump."""
+        """The directions pushed this tick: a new side of the stick, Down, Up."""
         im = self._player.input_manager
         axis = im.axis(InputAction.MOVE_X)
         side = (
@@ -86,7 +86,7 @@ class PlayerInputHandler:
             pushed.append(Direction.RIGHT if side > 0 else Direction.LEFT)
         if down and not self.last_down:
             pushed.append(Direction.DOWN)
-        if im.just_pressed(InputAction.JUMP):
+        if im.just_pressed(InputAction.MOVE_UP):
             pushed.append(Direction.UP)
         self.last_axis = side
         self.last_down = down

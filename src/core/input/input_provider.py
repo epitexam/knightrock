@@ -6,7 +6,14 @@ from pygame.joystick import JoystickType
 
 from src.core.input.device_registry import DeviceRegistry
 from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import ActionMap, AxisMap, ButtonMap, ComboMap, InputBindings
+from src.core.input.input_bindings import (
+    ActionMap,
+    AxisMap,
+    ButtonMap,
+    ComboMap,
+    GameplayBindings,
+    InputBindings,
+)
 from src.core.input.input_state import InputState
 from src.core.settings import Input as InputSettings
 
@@ -149,12 +156,18 @@ class LocalInputProvider(InputProvider):
             hat = self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_DOWN)
             down_held = hat[1] < 0
 
+        up_held = self._move_up_held(keys, gameplay)
+
         held = {
             # ``MOVE_DOWN`` is the low stance on the ground and the fast fall in
             # the air: two postures, not presses. It is read with ``latch=False``
             # above so a tap shorter than a poll cannot arrive as a one-tick
             # hold and flicker the posture.
             InputAction.MOVE_DOWN: down_held,
+            # A prompt asks for Up with this action, not with Jump: Space and
+            # the A button are attacks outside a prompt, and the arrow/D-pad
+            # up is the direction the screen shows.
+            InputAction.MOVE_UP: up_held,
             InputAction.GUARD: self._key_held(keys, gameplay.keyboard, InputAction.GUARD)
             or self._button_held(gameplay.gamepad_buttons, InputAction.GUARD),
             InputAction.JUMP: self._key_held(keys, gameplay.keyboard, InputAction.JUMP)
@@ -192,6 +205,19 @@ class LocalInputProvider(InputProvider):
         self._latched_keys.clear()
         self._latched_buttons.clear()
         return state
+
+    def _move_up_held(
+        self, keys: Sequence[bool] | Mapping[int, bool], gameplay: GameplayBindings
+    ) -> bool:
+        """Up from the arrow key, the stick's negative Y, or D-pad up."""
+        if self._key_held(keys, gameplay.keyboard, InputAction.MOVE_UP):
+            return True
+        axis = self._apply_deadzone(
+            self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_UP)
+        )
+        if axis < 0.0:
+            return True
+        return self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_UP)[1] > 0
 
     def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
         bindings = self._bindings.gameplay

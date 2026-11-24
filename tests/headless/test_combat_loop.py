@@ -14,6 +14,7 @@ import pytest
 
 from src.combat.combatant_protocol import Finish
 from src.combat.frame_data import Height, PhaseState
+from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Battery, Clash, Finisher, Fury, Rush, Slot, Throw
 from src.core.settings import Guard as GuardSettings
@@ -29,7 +30,6 @@ from tests.headless.arena import (
     DOWN,
     DT,
     GUARD,
-    JUMP,
     PLAYER_X,
     SLASH,
     Pad,
@@ -40,6 +40,8 @@ from tests.headless.arena import (
     tap,
 )
 
+UP = InputAction.MOVE_UP
+
 #: An enemy with its states, its gauges and its guard that never comes for the player.
 STILL = {"vision_range": 0.0, "chase_speed": 0.0}
 
@@ -47,7 +49,7 @@ STILL = {"vision_range": 0.0, "chase_speed": 0.0}
 ANSWER = {
     Direction.LEFT: (-1.0, frozenset()),
     Direction.RIGHT: (1.0, frozenset()),
-    Direction.UP: (0.0, frozenset({JUMP})),
+    Direction.UP: (0.0, frozenset({UP})),
     Direction.DOWN: (0.0, frozenset({DOWN})),
 }
 

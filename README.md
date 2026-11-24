@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3805 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3809 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -72,6 +72,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | Action | Key |
 |---|---|
 | Move | `Left arrow` / `Right arrow` |
+| Direction prompt (death blow, throw) | `Up` / `Down` / `Left` / `Right arrow` |
 | Low stance (ground) / fast fall (air) | `Down arrow` |
 | Jump | `Space` |
 | Dodge (passes through enemies) | `Left Shift` |
@@ -90,6 +91,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | Action | Button / axis |
 |---|---|
 | Move | Left stick (axis `0`) or D-pad (`0`) |
+| Direction prompt (death blow, throw) | Left stick (axis `1`, up/down) or D-pad (`0`) |
 | Low stance / fast fall | Left stick (axis `1`) or D-pad (`0`) |
 | Jump | `A` (`0`) |
 | Slash (hold to charge) | `X` (`2`) |
@@ -844,7 +846,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3805 tests · 94 % instruction coverage · 84 % branch
+> **Current baseline:** 3809 tests · 94 % instruction coverage · 84 % branch
 > coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
 > `mypy src` alone is 181).[^coverage]
 
