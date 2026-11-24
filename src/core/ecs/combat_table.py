@@ -7,6 +7,7 @@ a fighter's combat by dense slot instead of by attribute walk on a sprite.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from src.core.ecs.table import DenseTable, Handle
@@ -30,3 +31,8 @@ class CombatTable(DenseTable):
 
     def combat_of(self, slot: int) -> Any:
         return self.column("combat")[slot]
+
+    def iter_entities(self) -> Iterator[Entity]:
+        """The fighters in row order, for systems that read combat state."""
+        for slot in self.alive:
+            yield self.column("owner")[slot]

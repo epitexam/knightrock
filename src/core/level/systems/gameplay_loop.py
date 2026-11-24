@@ -106,7 +106,12 @@ class CombatLoop:
         fighters = tuple(table.iter_entities()) if table is not None else tuple(entity_sprites)
         self.entity_grid.rebuild(fighters)
         displaced = self.separation_system.process(fighters, self.entity_grid)
-        combatants = tuple(combat_sprites)
+        combat_table = groups.combat_table if groups is not None else None
+        combatants = (
+            tuple(combat_table.iter_entities())
+            if combat_table is not None
+            else tuple(combat_sprites)
+        )
         # Only the fighters separation actually pushed need their attack box
         # re-positioned: it is derived from the hitbox, and separation moved
         # that after ``Entity.update`` had already synced it.

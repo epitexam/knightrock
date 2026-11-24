@@ -111,6 +111,7 @@ def _empty_groups() -> SimpleNamespace:
         entity_sprites=[],
         combat_sprites=[],
         movement_table=None,
+        combat_table=None,
     )
 
 
