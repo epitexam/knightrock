@@ -83,7 +83,8 @@ def test_controls_exposes_keyboard_and_gamepad_columns() -> None:
 def test_gamepad_button_capture_is_independent_from_keyboard() -> None:
     game = _game()
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
-    controls.model.set_items(controls.model.items, 3)  # Jump
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    controls.model.set_items(controls.model.items, jump)
     controls.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
     controls.handle_routed(_confirm())
     controls.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=7))

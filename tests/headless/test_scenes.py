@@ -644,7 +644,8 @@ def test_the_cancel_button_leaves_a_capture_instead_of_binding(manager: SceneMan
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    for _ in range(3):
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    for _ in range(jump):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert controls.capturing
@@ -666,7 +667,8 @@ def test_escape_leaves_a_capture_on_either_column(manager: SceneManager) -> None
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    for _ in range(3):
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    for _ in range(jump):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     # Arm the *pad* cell, which is the column that used to have no way out.
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT))
@@ -684,7 +686,8 @@ def test_controls_rebinds_a_pad_button(manager: SceneManager) -> None:
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    for _ in range(3):
+    jump = next(i for i, spec in enumerate(controls.specs) if spec.action is InputAction.JUMP)
+    for _ in range(jump):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert controls.capturing
