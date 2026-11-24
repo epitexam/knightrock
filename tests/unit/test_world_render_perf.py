@@ -78,8 +78,8 @@ def test_the_dashing_player_is_resolved_once_not_per_sprite(
     """
     renderer, groups = make_renderer()
     player = DashingPlayer()
-    groups.all_sprites.add(player)
-    groups.entity_sprites.add(player)
+    groups.all_sprites.add(getattr(player, "presentation", player))
+    groups.entity_sprites.add(getattr(player, "presentation", player))
     for _ in range(200):
         groups.all_sprites.add(Tile((32.0, 32.0)))
 
@@ -140,8 +140,8 @@ def test_the_ghost_pass_still_sees_a_dashing_entity() -> None:
     """The group swap must not silently disable the trail."""
     renderer, groups = make_renderer()
     player = DashingPlayer()
-    groups.all_sprites.add(player)
-    groups.entity_sprites.add(player)
+    groups.all_sprites.add(getattr(player, "presentation", player))
+    groups.entity_sprites.add(getattr(player, "presentation", player))
 
     renderer._spawn_afterimage(groups)
 

@@ -814,8 +814,8 @@ def test_the_renderer_resolves_the_pivoting_fighter_once() -> None:
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
     player = _player()
-    groups.all_sprites.add(player)
-    groups.entity_sprites.add(player)
+    groups.all_sprites.add(getattr(player, "presentation", player))
+    groups.entity_sprites.add(getattr(player, "presentation", player))
     player.render_hints.turn_ratio = 0.5
 
     renderer.draw(groups, dt=TICK)
@@ -839,8 +839,8 @@ def test_a_flash_lands_on_the_pivoting_body_and_not_where_it_was() -> None:
     player = _player()
     player.hitbox.topleft = (10.0, 10.0)
     player.sync_rects()
-    groups.all_sprites.add(player)
-    groups.entity_sprites.add(player)
+    groups.all_sprites.add(getattr(player, "presentation", player))
+    groups.entity_sprites.add(getattr(player, "presentation", player))
     player.render_hints.flash_timer = 0.05
     player.facing_right = True
     player.render_hints.turn_ratio = 0.5

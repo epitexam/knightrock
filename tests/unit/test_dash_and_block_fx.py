@@ -40,8 +40,8 @@ def _renderer() -> tuple[Renderer, SpriteGroups, DashSprite]:
     renderer = Renderer(pygame.Surface((400, 200)), camera)
     groups = SpriteGroups()
     dasher = DashSprite(state="dash")
-    groups.all_sprites.add(dasher)
-    groups.entity_sprites.add(dasher)
+    groups.all_sprites.add(getattr(dasher, "presentation", dasher))
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     return renderer, groups, dasher
 
 

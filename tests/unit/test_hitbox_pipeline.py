@@ -74,8 +74,8 @@ def test_attack_box_is_resynchronized_after_entity_separation() -> None:
 
     loop.process_combat_and_separation(
         1 / 60,
-        Group(attacker, other),
-        Group(attacker, other),
+        Group(attacker.presentation, other.presentation),
+        Group(attacker.presentation, other.presentation),
     )
 
     assert attacker.hitbox.center != initial_center

@@ -267,7 +267,7 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     entity = make_entity(pos=(100.0, 100.0))
     entity.state_machine = SimpleNamespace(current_state_name="idle")
     groups = SpriteGroups()
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     for _ in range(4):

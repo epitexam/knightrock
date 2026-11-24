@@ -163,8 +163,8 @@ def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
     sprite = _dashing_player()
     # The ghost pass walks entity_sprites: a dashing player is an entity, and
     # scanning all_sprites for it was the cost this change removed.
-    groups.all_sprites.add(sprite)
-    groups.entity_sprites.add(sprite)
+    groups.all_sprites.add(getattr(sprite, "presentation", sprite))
+    groups.entity_sprites.add(getattr(sprite, "presentation", sprite))
 
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
     assert len(renderer._ghosts) == 1
@@ -187,7 +187,7 @@ def test_idle_player_spawns_no_ghosts() -> None:
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
     sprite = DashSprite(state="run")
-    groups.all_sprites.add(sprite)
+    groups.all_sprites.add(getattr(sprite, "presentation", sprite))
 
     renderer.draw(groups, dt=1.0)
 
@@ -264,7 +264,7 @@ def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
     groups = SpriteGroups()
     lander = make_entity(pos=(50.0, 100.0))
     lander.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
-    groups.entity_sprites.add(lander)
+    groups.entity_sprites.add(getattr(lander, "presentation", lander))
     system = FeedbackSystem(groups)
 
     system._spawn_movement_fx(1 / 60)
@@ -317,7 +317,8 @@ def test_a_dash_trails_dust_and_nothing_else() -> None:
     much as the shove that started it.
     """
     groups = SpriteGroups()
-    groups.entity_sprites.add(_dasher())
+    _d = _dasher()
+    groups.entity_sprites.add(_d.presentation)
     system = FeedbackSystem(groups)
 
     ticks = int(Physics.DASH_DURATION * 60)
@@ -344,7 +345,8 @@ def test_the_dash_trail_bursts_once_per_dash_and_not_once_per_tick() -> None:
     rather than a shove followed by a ribbon.
     """
     groups = SpriteGroups()
-    groups.entity_sprites.add(_dasher())
+    _d = _dasher()
+    groups.entity_sprites.add(_d.presentation)
     system = FeedbackSystem(groups)
 
     for _ in range(3):
@@ -364,7 +366,7 @@ def test_a_second_dash_bursts_again() -> None:
     """
     groups = SpriteGroups()
     dasher = _dasher()
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     system = FeedbackSystem(groups)
 
     system._spawn_movement_fx(1 / 60)
@@ -385,7 +387,8 @@ def test_the_dash_trail_stops_at_the_family_budget() -> None:
     reads as the dash running out of dust, which is not a thing.
     """
     groups = SpriteGroups()
-    groups.entity_sprites.add(_dasher())
+    _d = _dasher()
+    groups.entity_sprites.add(_d.presentation)
     cap = FX_FAMILY_BUDGETS["dash_dust"]
     for _ in range(cap - 1):
         groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
@@ -412,7 +415,8 @@ def test_a_dash_in_mid_air_trails_nothing() -> None:
     of, and the effect is only worth having because it means a floor.
     """
     groups = SpriteGroups()
-    groups.entity_sprites.add(_dasher(grounded=False))
+    _d = _dasher(grounded=False)
+    groups.entity_sprites.add(_d.presentation)
     system = FeedbackSystem(groups)
 
     for _ in range(int(Physics.DASH_DURATION * 60)):
@@ -430,7 +434,7 @@ def test_a_dash_that_leaves_the_ground_stops_trail_but_keeps_its_dust() -> None:
     """
     groups = SpriteGroups()
     dasher = _dasher()
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     system = FeedbackSystem(groups)
 
     system._spawn_movement_fx(1 / 60)
@@ -455,7 +459,7 @@ def test_a_dash_that_begins_airborne_spends_its_burst_on_landing() -> None:
     """
     groups = SpriteGroups()
     dasher = _dasher(grounded=False)
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     system = FeedbackSystem(groups)
 
     for _ in range(int(Physics.DASH_DURATION * 60)):
@@ -481,7 +485,7 @@ def test_a_landing_still_wins_the_plane_over_a_dash_trail() -> None:
     groups = SpriteGroups()
     dasher = _dasher()
     dasher.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     for _ in range(FX_FAMILY_BUDGETS["dash_dust"]):
         groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
     system = FeedbackSystem(groups)
@@ -500,7 +504,7 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
     dasher = make_entity(pos=(200.0, 100.0))
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     dasher.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     for _ in range(MAX_FX_SPRITES):
         groups.fx_sprites.add(DustParticle((0.0, 0.0), (0.0, 0.0)))
     system = FeedbackSystem(groups)
@@ -520,8 +524,8 @@ def test_afterimage_ghosts_carry_the_speed_tint() -> None:
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
     dasher = _dashing_player()
-    groups.all_sprites.add(dasher)
-    groups.entity_sprites.add(dasher)
+    groups.all_sprites.add(getattr(dasher, "presentation", dasher))
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
 
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 
@@ -550,8 +554,8 @@ def test_an_afterimage_keeps_the_fighter_s_shape_and_not_the_dash_stretch() -> N
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
     dasher = _dashing_player()
-    groups.all_sprites.add(dasher)
-    groups.entity_sprites.add(dasher)
+    groups.all_sprites.add(getattr(dasher, "presentation", dasher))
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
 
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 
@@ -776,7 +780,7 @@ def test_a_fighter_rolling_on_a_floor_leaves_footsteps() -> None:
     """
     groups = SpriteGroups()
     entity = _walker()
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=60)
@@ -794,7 +798,7 @@ def test_a_fighter_standing_still_leaves_nothing() -> None:
     """
     groups = SpriteGroups()
     entity = _walker(speed=0.0)
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     _walk(system, entity, 0.0, ticks=60)
@@ -819,7 +823,7 @@ def test_the_footstep_cadence_is_distance_and_not_frames(
     speed = Physics.PLAYER_SPEED * Locomotion.WALK_SLOW_PROMOTE
     groups = SpriteGroups()
     entity = _walker(speed=speed, state=PlayerState.WALK.value)
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
     spy = _spy_on_steps
     spy.feet.clear()
@@ -852,7 +856,7 @@ def test_a_walk_marks_the_floor_and_a_run_marks_it_twice_as_fast(
         speed = Physics.PLAYER_SPEED * ratio
         groups = SpriteGroups()
         entity = _walker(speed=speed, state=state)
-        groups.entity_sprites.add(entity)
+        groups.entity_sprites.add(getattr(entity, "presentation", entity))
         system = FeedbackSystem(groups)
         spy = _spy_on_steps
         spy.feet.clear()
@@ -887,7 +891,7 @@ def test_a_run_is_a_comb_of_marks_and_not_a_trail(
     groups = SpriteGroups()
     speed = Physics.PLAYER_SPEED
     entity = _walker(speed=speed)
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
     spy = _spy_on_steps
     spy.feet.clear()
@@ -920,7 +924,7 @@ def test_a_guard_shuffle_marks_nothing() -> None:
     groups = SpriteGroups()
     speed = Physics.PLAYER_SPEED * GUARD_MOVE_MULT
     entity = _walker(speed=speed, state=PlayerState.WALK_SLOW.value)
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     _walk(system, entity, speed, ticks=120)
@@ -984,7 +988,7 @@ def test_a_fighter_with_no_locomotion_tier_marks_the_floor_anyway() -> None:
             entity.speed = Physics.PLAYER_SPEED
             entity.velocity.x = speed
             entity.on_surface["floor"] = True
-        groups.entity_sprites.add(entity)
+        groups.entity_sprites.add(getattr(entity, "presentation", entity))
         system = FeedbackSystem(groups)
 
         _walk(system, entity, speed, ticks=120)
@@ -1001,7 +1005,7 @@ def test_the_two_feet_alternate(_spy_on_steps: _StepSpy) -> None:
     """
     groups = SpriteGroups()
     entity = _walker()
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
     spy = _spy_on_steps
     spy.feet.clear()
@@ -1015,9 +1019,9 @@ def test_the_two_feet_alternate(_spy_on_steps: _StepSpy) -> None:
 
     # And it starts on the same foot every time, so two fighters walking off the
     # same edge do not set off mid-stride against each other.
-    groups.entity_sprites.remove(entity)
+    groups.entity_sprites.remove(getattr(entity, "presentation", entity))
     other = _walker()
-    groups.entity_sprites.add(other)
+    groups.entity_sprites.add(getattr(other, "presentation", other))
     spy.feet.clear()
 
     _walk(system, other, Physics.PLAYER_SPEED, ticks=120)
@@ -1035,7 +1039,7 @@ def test_a_stopped_fighter_lays_no_step_under_himself() -> None:
     """
     groups = SpriteGroups()
     entity = _walker()
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=120)
@@ -1057,7 +1061,7 @@ def test_a_walker_in_mid_air_leaves_nothing() -> None:
     """
     groups = SpriteGroups()
     entity = _walker(grounded=False)
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=120)
@@ -1077,7 +1081,7 @@ def test_a_walking_fighter_lays_no_step_under_his_own_dash() -> None:
     entity = _walker()
     entity.state_machine = SimpleNamespace(current_state_name="dash")
     entity.velocity.x = Physics.DASH_SPEED
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.DASH_SPEED, ticks=int(Physics.DASH_DURATION * 60))
@@ -1097,7 +1101,7 @@ def test_the_tick_a_landing_fires_carries_no_footstep() -> None:
     groups = SpriteGroups()
     entity = _walker()
     entity.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     system = FeedbackSystem(groups)
 
     entity.rect.x += Physics.PLAYER_SPEED * FootstepDust.TIER["run"].step_distance / 60.0
@@ -1117,7 +1121,7 @@ def test_a_step_that_does_not_fit_the_budget_is_not_half_thrown() -> None:
     """
     groups = SpriteGroups()
     entity = _walker()
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     cap = FX_FAMILY_BUDGETS["footstep_dust"]
     for _ in range(cap - 1):
         groups.fx_sprites.add(FootstepDustParticle((0.0, 0.0), (0.0, 0.0)))
@@ -1138,11 +1142,11 @@ def test_a_walking_fighter_never_starves_the_dash_trail() -> None:
     """
     groups = SpriteGroups()
     walker = _walker()
-    groups.entity_sprites.add(walker)
+    groups.entity_sprites.add(getattr(walker, "presentation", walker))
     for _ in range(FX_FAMILY_BUDGETS["footstep_dust"]):
         groups.fx_sprites.add(FootstepDustParticle((0.0, 0.0), (0.0, 0.0)))
     dasher = _dasher()
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
     system = FeedbackSystem(groups)
 
     system._spawn_movement_fx(1 / 60)
@@ -1430,8 +1434,8 @@ def test_the_afterimages_are_monochrome_copies_and_not_flat_fills() -> None:
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
     dasher = _detailed_dasher()
-    groups.all_sprites.add(dasher)
-    groups.entity_sprites.add(dasher)
+    groups.all_sprites.add(getattr(dasher, "presentation", dasher))
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
 
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 

@@ -294,8 +294,8 @@ def test_a_fighter_pushed_by_separation_gets_its_attack_box_moved_with_it() -> N
     attacker = entity_at(0.0, faction="player", definition=swing)
     blocker = entity_at(20.0, faction="enemy")
     groups = SimpleNamespace(
-        entity_sprites=pygame.sprite.Group(attacker, blocker),
-        combat_sprites=pygame.sprite.Group(attacker),
+        entity_sprites=pygame.sprite.Group(attacker.presentation, blocker.presentation),
+        combat_sprites=pygame.sprite.Group(attacker.presentation),
     )
 
     activate(attacker)
@@ -326,8 +326,8 @@ def test_a_fighter_nobody_pushed_ends_the_tick_where_it_started() -> None:
     swing = attack(phase(startup=1, active=30, recovery=1, size=(40.0, 20.0), offset=(30.0, 0.0)))
     attacker = entity_at(0.0, faction="player", definition=swing)
     groups = SimpleNamespace(
-        entity_sprites=pygame.sprite.Group(attacker),
-        combat_sprites=pygame.sprite.Group(attacker),
+        entity_sprites=pygame.sprite.Group(attacker.presentation),
+        combat_sprites=pygame.sprite.Group(attacker.presentation),
     )
 
     activate(attacker)

@@ -7,7 +7,7 @@ from typing import Any, Literal, cast
 
 import pygame
 from pygame.math import Vector2
-from pygame.sprite import Group, Sprite
+from pygame.sprite import Group
 
 from src.combat.attack_loading import load_attacks
 from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCombatComponent
@@ -92,7 +92,7 @@ class EntitySnapshot:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-class Entity(Sprite):
+class Entity:
     """Base class for any game entity with a hitbox, health, and combat capabilities.
 
     This class provides core functionality for movement, collision detection,
@@ -224,10 +224,8 @@ class Entity(Sprite):
             the level, and a level that forgets to hand the grid over pays a
             measured x2.4 on the whole simulation with no visible symptom.
         """
-        # The sprite *proxy* is what pygame groups hold. The Sprite base is
-        # kept only so legacy callers that add an Entity straight to a group
-        # still work; the simulation reads the dense tables.
-        super().__init__()
+        # The sprite *proxy* is what pygame groups hold; the simulation
+        # itself is a plain object backed by dense tables.
         factory = id_factory if id_factory is not None else shared_id_factory()
         self.id: str = entity_id if entity_id is not None else factory.entity_id()
         self.pushable: bool = True
@@ -1160,7 +1158,6 @@ class Entity(Sprite):
         if self.sprite_groups is not None and self in self.sprite_groups.fighters:
             self.sprite_groups.fighters.remove(self)
         self.vitals.unbind()
-        super().kill()
 
     def receive_damage(
         self,

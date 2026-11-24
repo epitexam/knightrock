@@ -229,8 +229,8 @@ def test_a_dash_ghost_stays_anchored_to_the_world_while_the_camera_moves() -> No
     renderer, _groups, _body = make()
     groups = SpriteGroups()
     dasher = DashingPlayer(100.0, 100.0)
-    groups.entity_sprites.add(dasher)
-    groups.all_sprites.add(dasher)
+    groups.entity_sprites.add(getattr(dasher, "presentation", dasher))
+    groups.all_sprites.add(getattr(dasher, "presentation", dasher))
 
     renderer.draw(groups, dt=1.0)
     spawn = renderer._ghosts[0]

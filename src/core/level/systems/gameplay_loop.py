@@ -140,7 +140,8 @@ class CombatLoop:
         entity_sprites: Iterable[Entity],
         player: Entity | None,
     ) -> None:
-        for entity in tuple(entity_sprites):
+        for sprite in tuple(entity_sprites):
+            entity = getattr(sprite, "entity", sprite)
             if entity.is_dead and entity is not player:
                 if self.reaper_feedback is not None:
                     self.reaper_feedback.before_removal(entity)

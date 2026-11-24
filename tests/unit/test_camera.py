@@ -585,7 +585,7 @@ def test_the_background_is_erased_every_frame() -> None:
 def test_a_flashing_entity_is_collected_without_touching_the_scale_cache() -> None:
     groups = SpriteGroups()
     entity = _FlashingEntity()
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     renderer = _renderer(1.0)
     renderer.camera.begin_frame(1.0)
 
@@ -615,7 +615,7 @@ def test_a_parry_washes_the_fighter_gold_and_not_white() -> None:
     entity.image.fill((120, 120, 120))
     entity.render_hints.flash_timer = 0.0
     entity.render_hints.parry_flash_timer = ParryFlash.DURATION
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     renderer = _renderer(1.0)
     renderer.camera.begin_frame(1.0)
 
@@ -634,7 +634,7 @@ def test_a_parry_on_top_of_a_hit_reads_as_the_hit_it_is() -> None:
     entity = _FlashingEntity()
     entity.image.fill((120, 120, 120))
     entity.render_hints.parry_flash_timer = ParryFlash.DURATION
-    groups.entity_sprites.add(entity)
+    groups.entity_sprites.add(getattr(entity, "presentation", entity))
     renderer = _renderer(1.0)
     renderer.camera.begin_frame(1.0)
 

@@ -225,7 +225,7 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     enemy.max_health = 80
     enemy.health = 30
     enemy.is_dead = False
-    level.groups.entity_sprites.add(enemy)
+    level.groups.entity_sprites.add(getattr(enemy, "presentation", enemy))
 
     assert level.draw(60.0, scene_host=None, frame_time=16.0) is None
 

@@ -41,8 +41,8 @@ def _big_config() -> ProjectileConfig:
 
 def _groups_with_target(target) -> SpriteGroups:
     groups = SpriteGroups()
-    groups.entity_sprites.add(target)
-    groups.all_sprites.add(target)
+    groups.entity_sprites.add(getattr(target, "presentation", target))
+    groups.all_sprites.add(getattr(target, "presentation", target))
     return groups
 
 
@@ -95,8 +95,8 @@ def test_pierce_hits_multiple_targets_once_each() -> None:
     left = make_entity(pos=(100.0, 100.0), faction="enemy")
     right = make_entity(pos=(100.0, 100.0), faction="enemy")
     groups = SpriteGroups()
-    groups.entity_sprites.add(left, right)
-    groups.all_sprites.add(left, right)
+    groups.entity_sprites.add(left.presentation, right.presentation)
+    groups.all_sprites.add(left.presentation, right.presentation)
     system = ProjectileSystem(groups)
 
     system.spawn(_config(pierce=True), pos=(100.0, 100.0), velocity=(0.0, 0.0), faction="player")

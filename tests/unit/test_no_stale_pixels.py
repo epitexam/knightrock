@@ -82,8 +82,8 @@ def make_world() -> tuple[Renderer, SpriteGroups, Enemy, HUD, Player]:
     renderer.background_color = BACKGROUND
     groups = SpriteGroups()
     enemy = Enemy()
-    groups.all_sprites.add(enemy)
-    groups.entity_sprites.add(enemy)
+    groups.all_sprites.add(getattr(enemy, "presentation", enemy))
+    groups.entity_sprites.add(getattr(enemy, "presentation", enemy))
     return renderer, groups, enemy, HUD(renderer.overlay.renderer), Player()
 
 

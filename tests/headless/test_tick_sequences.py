@@ -122,7 +122,7 @@ def _bodies(gap: float, speed: float = 500.0):
 def test_bodies_already_touching_deal_damage_on_the_first_tick() -> None:
     runner, standing = _bodies(gap=-20.0)
 
-    ContactDamageSystem().process(pygame.sprite.Group(runner, standing))
+    ContactDamageSystem().process(pygame.sprite.Group(runner.presentation, standing.presentation))
 
     assert standing.health == standing.max_health - CombatSettings.CONTACT_DAMAGE_AMOUNT
 
@@ -130,12 +130,12 @@ def test_bodies_already_touching_deal_damage_on_the_first_tick() -> None:
 def test_bodies_that_meet_deal_damage_on_the_tick_they_touch() -> None:
     runner, standing = _bodies(gap=150.0)
     system = ContactDamageSystem()
-    system.process(pygame.sprite.Group(runner, standing))  # apart: nothing
+    system.process(pygame.sprite.Group(runner.presentation, standing.presentation))  # apart: nothing
     assert standing.health == standing.max_health
 
     standing.hitbox.x = runner.hitbox.right - 20.0
     standing.sync_rects()
-    system.process(pygame.sprite.Group(runner, standing))
+    system.process(pygame.sprite.Group(runner.presentation, standing.presentation))
 
     assert standing.health == standing.max_health - CombatSettings.CONTACT_DAMAGE_AMOUNT
 
@@ -145,7 +145,7 @@ def test_a_slow_touch_arms_no_cooldown() -> None:
     runner, standing = _bodies(gap=-20.0, speed=10.0)
     system = ContactDamageSystem()
 
-    system.process(pygame.sprite.Group(runner, standing))
+    system.process(pygame.sprite.Group(runner.presentation, standing.presentation))
 
     assert not system._cooldowns
 

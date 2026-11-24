@@ -95,8 +95,8 @@ def test_neutral_projectile_records_nothing_but_hits() -> None:
 
     target = make_entity(faction="enemy")
     groups = SpriteGroups()
-    groups.entity_sprites.add(target)
-    groups.all_sprites.add(target)
+    groups.entity_sprites.add(getattr(target, "presentation", target))
+    groups.all_sprites.add(getattr(target, "presentation", target))
     system = ProjectileSystem(groups)
     system.spawn(
         __import__(

@@ -147,8 +147,8 @@ def test_projectile_parity_with_direct_resolver() -> None:
 
     target = make_entity(pos=(100.0, 100.0), faction="enemy")
     groups = SpriteGroups()
-    groups.entity_sprites.add(target)
-    groups.all_sprites.add(target)
+    groups.entity_sprites.add(getattr(target, "presentation", target))
+    groups.all_sprites.add(getattr(target, "presentation", target))
     engine = ContactSystem()
     system = ProjectileSystem(groups, contact_system=engine)
     system.spawn(
@@ -169,8 +169,8 @@ def test_projectile_pierce_keeps_flying_but_remembers_targets() -> None:
     """Piercing box keeps flying but still remembers its targets."""
     target = make_entity(pos=(100.0, 100.0), faction="enemy")
     groups = SpriteGroups()
-    groups.entity_sprites.add(target)
-    groups.all_sprites.add(target)
+    groups.entity_sprites.add(getattr(target, "presentation", target))
+    groups.all_sprites.add(getattr(target, "presentation", target))
     system = ProjectileSystem(groups)
     projectile = system.spawn(
         ProjectileConfig(size=(10.0, 10.0), lifetime=2.0, hit=_hit(), pierce=True),
