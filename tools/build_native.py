@@ -53,7 +53,11 @@ def _native_sources(source: Path) -> list[Path]:
     if not libraries:
         raise RuntimeError("mypyc produced no build directory")
     found = [path for library in libraries for path in library.rglob("*.so")]
-    missing = [module for module in MODULES if not any(p.name.startswith(Path(module).stem + ".") for p in found)]
+    missing = [
+        module
+        for module in MODULES
+        if not any(p.name.startswith(Path(module).stem + ".") for p in found)
+    ]
     if missing:
         raise RuntimeError(f"mypyc did not produce: {', '.join(missing)}")
     if not any("__mypyc." in path.name for path in found):
@@ -65,7 +69,9 @@ def build() -> list[Path]:
     """Compile the module list and install the extensions in the real tree."""
     with tempfile.TemporaryDirectory(prefix="knightrock-mypyc-") as scratch:
         temp = Path(scratch)
-        shutil.copytree(ROOT / "src", temp / "src", ignore=shutil.ignore_patterns("*.so", "__pycache__"))
+        shutil.copytree(
+            ROOT / "src", temp / "src", ignore=shutil.ignore_patterns("*.so", "__pycache__")
+        )
         shutil.copy(ROOT / "pyproject.toml", temp / "pyproject.toml")
         result = subprocess.run(
             [sys.executable, "-m", "mypyc", *MODULES],

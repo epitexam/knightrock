@@ -86,7 +86,9 @@ class BakedStaticLayer:
         if left >= right or top >= bottom:
             return None
         area = pygame.Rect(left, top, right - left, bottom - top)
-        dest = pygame.Rect(dest_x + left - source_x, dest_y + top - source_y, area.width, area.height)
+        dest = pygame.Rect(
+            dest_x + left - source_x, dest_y + top - source_y, area.width, area.height
+        )
         return self.surface.subsurface(area), dest
 
 

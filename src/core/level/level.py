@@ -291,7 +291,9 @@ class Level:
         )
         self.renderer.set_static_planes(
             None if baked_static is not None else TileChunkIndex(statics),
-            None if baked_foreground is not None else (TileChunkIndex(foreground) if foreground else None),
+            None
+            if baked_foreground is not None
+            else (TileChunkIndex(foreground) if foreground else None),
         )
         self.renderer.set_baked_planes(baked_static, baked_foreground)
 

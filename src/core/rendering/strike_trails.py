@@ -330,7 +330,9 @@ class StrikeTrails:
             self._sample_warning(fighter)
         self._retain_keys(self._charges, charging)
         self._rushing = rushing
-        self._retain_values(self._trails, lambda trail: bool(trail.samples) or trail.live is not None)
+        self._retain_values(
+            self._trails, lambda trail: bool(trail.samples) or trail.live is not None
+        )
         self._sample_shots(shots, dt)
 
     def _sample(self, fighter: Any) -> None:

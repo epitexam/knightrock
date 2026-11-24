@@ -212,9 +212,7 @@ class LocalInputProvider(InputProvider):
         """Up from the arrow key, the stick's negative Y, or D-pad up."""
         if self._key_held(keys, gameplay.keyboard, InputAction.MOVE_UP):
             return True
-        axis = self._apply_deadzone(
-            self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_UP)
-        )
+        axis = self._apply_deadzone(self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_UP))
         if axis < 0.0:
             return True
         if self._button_held(gameplay.gamepad_buttons, InputAction.MOVE_UP):

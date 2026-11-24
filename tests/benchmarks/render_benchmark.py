@@ -99,9 +99,7 @@ def measure_present(window: tuple[int, int], repeats: int, *, render_scale: floa
     The real :meth:`Presentation.present` is measured, including the one upscale
     at a reduced scale. At native scale it is a plain 1:1 blit.
     """
-    presentation = Presentation(
-        pygame.Surface(window), DEFAULT_FRAMING, render_scale=render_scale
-    )
+    presentation = Presentation(pygame.Surface(window), DEFAULT_FRAMING, render_scale=render_scale)
     presentation.surface.fill((24, 28, 36))
     return _median_ms(presentation.present, repeats)
 
