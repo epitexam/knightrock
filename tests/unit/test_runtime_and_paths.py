@@ -13,6 +13,7 @@ import pygame
 import pytest
 
 from src.application.game import Game
+from src.application.scenes.fatal_error_scene import FatalErrorScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
@@ -20,6 +21,7 @@ from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.monitors import Monitor, Topology, centre_on, fit_size, opening_size
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
+from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level_manager import LevelManager, UnknownLevelError
 from src.core.paths import PROJECT_ROOT, resource_path
@@ -99,6 +101,7 @@ def test_run_handles_initialization_errors_and_always_quits(
     quit_pygame = Mock()
     monkeypatch.setattr(game, "bootstrap", initialize)
     monkeypatch.setattr(game, "_handle_fatal_error", handle_fatal_error)
+    monkeypatch.setattr("src.application.game.show_fatal_error", Mock(return_value="quit"))
     monkeypatch.setattr(pygame, "quit", quit_pygame)
 
     with pytest.raises(SystemExit) as exit_info:
@@ -121,6 +124,7 @@ def test_run_handles_loop_errors_and_always_quits(
     monkeypatch.setattr(game, "bootstrap", initialize)
     monkeypatch.setattr(game, "_run_loop", run_loop)
     monkeypatch.setattr(game, "_handle_fatal_error", handle_fatal_error)
+    monkeypatch.setattr("src.application.game.show_fatal_error", Mock(return_value="quit"))
     monkeypatch.setattr(pygame, "quit", quit_pygame)
 
     with pytest.raises(SystemExit) as exit_info:
@@ -1371,3 +1375,71 @@ def test_a_crash_with_an_empty_message_still_says_something(
         game._handle_fatal_error(RuntimeError())
 
     assert "RuntimeError" in caplog.text
+
+
+def test_run_recovers_into_the_interactive_error_screen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    monkeypatch.setattr(game, "bootstrap", Mock())
+    loop = Mock(side_effect=[RuntimeError("boom"), None])
+    monkeypatch.setattr(game, "_run_loop", loop)
+    monkeypatch.setattr(pygame, "quit", Mock())
+
+    game.run()
+
+    assert loop.call_count == 2, "the fatal screen must drive frames of its own"
+    assert isinstance(game.scene_manager.current, FatalErrorScene)
+
+
+def test_fatal_screen_actions_set_the_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pygame, "quit", Mock())
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    assert game._enter_fatal_screen(RuntimeError("boom")) is True
+    scene = game.scene_manager.current
+    assert isinstance(scene, FatalErrorScene)
+    scene.update(1.0)  # let the input grace expire
+
+    scene.handle_routed(RoutedInput(action=InputAction.UI_BACK, device=InputDevice.GAMEPAD))
+    assert game.running is False
+    assert game._fatal_exit_code == 1
+
+
+def test_fatal_screen_can_return_to_the_main_menu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pygame, "quit", Mock())
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    assert game._enter_fatal_screen(RuntimeError("boom")) is True
+    scene = game.scene_manager.current
+    assert isinstance(scene, FatalErrorScene)
+    index = next(i for i, item in enumerate(scene.model.items) if item.action == "menu")
+    rect = scene.view.item_rects[index]
+    scene.update(1.0)  # let the input grace expire
+
+    scene.handle_routed(
+        RoutedInput(
+            action=InputAction.UI_POINTER_DOWN, device=InputDevice.MOUSE, position=rect.center
+        )
+    )
+
+    assert isinstance(game.scene_manager.current, MenuScene)
+    assert game._fatal_exit_code is None
+
+
+def test_a_second_crash_uses_the_static_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pygame, "quit", Mock())
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    game._fatal_screen_shown = True
+
+    assert game._enter_fatal_screen(RuntimeError("again")) is False

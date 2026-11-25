@@ -25,6 +25,7 @@ ENGLISH: dict[str, str] = {
     "title.window_size": "WINDOW SIZE",
     "title.fit": "PICTURE FIT",
     "title.frame_limit": "FRAME LIMIT",
+    "title.fatal_error": "FATAL ERROR",
     "title.render_scale": "RENDER RESOLUTION",
     "title.ui_scale": "UI SCALE",
     "title.panel_scale": "DEBUG PANEL SCALE",
@@ -48,6 +49,8 @@ ENGLISH: dict[str, str] = {
     "row.menu_controls": "Menu controls",
     "row.gameplay_controls": "Gameplay controls",
     "row.quit_no": "No, go back",
+    "row.quit_game": "Quit the game",
+    "row.back_to_main_menu": "Back to main menu",
     "row.quit_yes": "Yes, quit",
     # -- the Video screen
     "section.window": "WINDOW",

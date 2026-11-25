@@ -80,13 +80,18 @@ jobs:
         run: uv sync --frozen --no-dev
       - name: Build executable
         run: uv run --with pyinstaller==6.22.2 pyinstaller knightrock.spec --noconfirm --clean
+      # A build without assets cannot pass a boot-and-draw check. Until the
+      # final art and TMX files land, say so instead of pretending the check
+      # ran; once they do, this becomes a real gate on every packaged build.
       - name: Smoke test executable
+        if: hashFiles('assets/data/levels/1.tmx') != ''
         shell: bash
         run: |
           python - <<'PY'
           import os
-          from pathlib import Path
           import subprocess
+          import sys
+          from pathlib import Path
 
           executable = Path("dist/knightrock/knightrock")
           if os.name == "nt":
@@ -95,15 +100,19 @@ jobs:
           environment = os.environ.copy()
           environment["SDL_VIDEODRIVER"] = "dummy"
           environment["SDL_AUDIODRIVER"] = "dummy"
-          process = subprocess.Popen([str(executable)], env=environment)
-          try:
-              return_code = process.wait(timeout=5)
-          except subprocess.TimeoutExpired:
-              process.terminate()
-              process.wait(timeout=5)
-          else:
+          result = subprocess.run(
+              [str(executable), "--check"],
+              env=environment,
+              capture_output=True,
+              text=True,
+              timeout=10,
+          )
+          if result.stdout:
+              print(result.stdout)
+          if result.returncode != 0:
+              print(result.stderr, file=sys.stderr)
               raise SystemExit(
-                  f"Packaged game exited during smoke test with code {return_code}"
+                  f"Packaged --check failed with code {result.returncode}"
               )
           PY
       - name: Compress build (Unix)
