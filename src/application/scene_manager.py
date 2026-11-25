@@ -150,6 +150,15 @@ class SceneManager:
     #: new page shows on the very frame after the press.
     TRANSITION_START_ALPHA = 192
 
+    def clear_transition(self) -> None:
+        """Show the current stack at once, without fading out a crashed frame.
+
+        The fatal screen must not spend its first 150ms under a copy of the
+        picture that broke, and a stale fade can hide a newly built menu too.
+        """
+        self._leaving = None
+        self._fade = 0.0
+
     def _begin_transition(self) -> None:
         """Keep the frame on screen now, to fade it out over the next one.
 

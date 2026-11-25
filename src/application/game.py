@@ -7,10 +7,12 @@ from time import perf_counter
 import pygame
 from pygame.joystick import JoystickType
 
+from src.application.fatal_screen import show_fatal_error
 from src.application.runtime_clock import FrameClock, PygameFrameClock
 from src.application.runtime_config import RuntimeConfig
 from src.application.save_game import SaveGame
 from src.application.scene_manager import SceneManager
+from src.application.scenes.fatal_error_scene import FatalErrorScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.screen import Screen
 from src.application.settings_store import (
@@ -124,6 +126,12 @@ class Game:
         #: the loop owns, which is why there is exactly one.
         self._notice: tuple[str, ...] = ()
         self._notice_ttl = 0.0
+        #: The one-shot fatal screen: a second crash while it is up must not
+        #: install another one and recurse into the handler.
+        self._fatal_screen_shown = False
+        #: Set by a terminal action on the fatal screen; ``None`` means the
+        #: session ended normally and the process exits with 0.
+        self._fatal_exit_code: int | None = None
 
     def quit(self) -> None:
         """Ask the loop to stop; scenes do not write ``running`` themselves."""
@@ -595,11 +603,90 @@ class Game:
             self.bootstrap()
             self._run_loop()
         except Exception as error:
-            traceback.print_exc()
-            self._handle_fatal_error(error)
-            raise SystemExit(1) from error
+            if not self._enter_fatal_screen(error):
+                # No display/UI yet: the menu screen cannot be built, so use
+                # the asset-free screen and wait for the player's choice.
+                self._handle_fatal_error(error)
+                choice = show_fatal_error(error)
+                if choice == "retry":
+                    try:
+                        self.bootstrap()
+                        self.running = True
+                        self._accumulator = 0.0
+                        self._run_loop()
+                    except Exception as retry_error:  # noqa: BLE001
+                        logger.critical(
+                            "Fatal error; the game cannot continue", exc_info=retry_error
+                        )
+                        choice = show_fatal_error(retry_error)
+                    else:
+                        self._fatal_exit_code = 0
+                raise SystemExit(self._fatal_exit_code or 1) from error
+            # The loop unwinds from an arbitrary frame. Clear its debts before
+            # asking the error screen to drive frames of its own.
+            self.running = True
+            self._accumulator = 0.0
+            self.scene_manager.clear_transition()
+            self._run_loop()
+            if self._fatal_exit_code is not None:
+                raise SystemExit(self._fatal_exit_code) from error
         finally:
             self.shutdown()
+
+    def _enter_fatal_screen(self, error: Exception) -> bool:
+        """Install the interactive traceback screen; ``False`` means use the static one.
+
+        The log stays the artifact: it is written with the traceback before any
+        UI is touched. Nothing here may raise, and a second crash while the
+        screen is already up goes straight to the static fallback.
+        """
+        if self._fatal_screen_shown or self.presentation is None:
+            return False
+        self._fatal_screen_shown = True
+        logger.critical("Fatal error; the game cannot continue", exc_info=error)
+
+        def quit_from_error() -> None:
+            self._fatal_exit_code = 1
+            self.running = False
+
+        def menu_from_error() -> None:
+            try:
+                self.scene_manager.switch(MenuScene(self))
+            except Exception:  # noqa: BLE001 - the crashed state may be broken
+                logger.exception("Could not return to the main menu after a fatal error")
+                self.notice("Could not open the main menu.", "The error screen stays up.")
+                return
+            self._fatal_exit_code = None
+            self.running = True
+            self._accumulator = 0.0
+            self.scene_manager.clear_transition()
+
+        try:
+            text = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+            # The menu does not build the world overlay; a crash before the
+            # first level would otherwise have no panel chain to draw with.
+            if self.ui is None:
+                self.world_overlay(self.presentation.surface)
+            # The event that caused the crash is still queued. Without clearing
+            # it, its repeat can press the default "quit" row a frame later and
+            # close the very screen meant to explain the failure.
+            pygame.event.clear()
+            self.scene_manager.push(
+                FatalErrorScene(
+                    self,
+                    text,
+                    on_quit=quit_from_error,
+                    on_menu=menu_from_error,
+                    grace=0.35,
+                )
+            )
+            self.scene_manager.clear_transition()
+            self.scene_manager.draw(self.presentation.surface)
+            self.presentation.present()
+        except Exception:  # noqa: BLE001 - this is the last line of defence
+            logger.exception("Could not show the interactive fatal error screen")
+            return False
+        return True
 
     def shutdown(self) -> None:
         """Persist what changed and release Pygame, whether or not the loop ran."""
