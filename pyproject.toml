@@ -15,6 +15,10 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+# A hung test gets a thread dump and stops the run instead of burning the
+# whole CI job budget on a silent wait (pytest 9.1+, faulthandler built in).
+faulthandler_timeout = 60
+faulthandler_exit_on_timeout = true
 
 [tool.ruff]
 target-version = "py314"
