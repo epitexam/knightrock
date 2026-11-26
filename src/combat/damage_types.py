@@ -1,26 +1,3 @@
-"""
-Defines the types of damage that can be dealt in the combat system.
+"""Backward-compatible path for :mod:`src.shared.damage_types`."""
 
-Damage types are used to calculate resistance multipliers and determine
-visual/audio feedback (sparks, blood, impact sounds).
-"""
-
-from enum import Enum
-
-
-class DamageType(Enum):
-    """Enumeration of possible damage types.
-
-    Attributes
-    ----------
-    SLASH : str
-        Cutting damage — swords, claws, blades.
-    BLUNT : str
-        Impact damage — hammers, fists, body slams.
-    PIERCE : str
-        Penetrating damage — spears, arrows, thrusts.
-    """
-
-    SLASH = "slash"
-    BLUNT = "blunt"
-    PIERCE = "pierce"
+from src.shared.damage_types import *  # noqa: F403

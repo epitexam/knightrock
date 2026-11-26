@@ -64,6 +64,21 @@ type = "forbidden"
 source_modules = ["src.core"]
 forbidden_modules = ["src.ui", "src.application"]
 
+[[tool.importlinter.contracts]]
+name = "the shared kernel depends on no other package"
+type = "forbidden"
+source_modules = ["src.shared"]
+forbidden_modules = [
+    "src.application",
+    "src.combat",
+    "src.core",
+    "src.data",
+    "src.entities",
+    "src.physics",
+    "src.states",
+    "src.ui",
+]
+
 [dependency-groups]
 dev = [
     "import-linter>=2.9",
