@@ -7,6 +7,7 @@ without editing its snapshot dataclass.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -54,11 +55,16 @@ print("headless-ok")
 
 
 def test_a_level_ticks_and_draws_without_importing_presentation() -> None:
+    env = dict(os.environ)
+    # CI also runs the suite with DEBUG=1; the debug spawn bench then reads the
+    # keyboard, which a headless subprocess does not have.
+    env["DEBUG"] = "0"
     result = subprocess.run(
         [sys.executable, "-c", _HEADLESS],
         capture_output=True,
         text=True,
         timeout=60,
+        env=env,
     )
     assert result.returncode == 0, result.stderr
     assert "headless-ok" in result.stdout
