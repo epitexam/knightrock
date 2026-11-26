@@ -12,12 +12,12 @@ from unittest.mock import patch
 
 import pygame
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import LocalInputProvider
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.core.sprites import Sprite
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import LocalInputProvider
+from src.shared.input_actions import InputAction
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from src.simulation.sprites import Sprite
 from tests.headless.arena import DATA, DT, PLAYER_X, foe
 
 

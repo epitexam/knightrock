@@ -7,19 +7,19 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.core.colors import BG_COLORS, Color, Colors
-from src.core.ecs.presentation import PresentationSprite
-from src.core.level.level_data import LevelConfig
-from src.core.settings import Afterimage, HitFlash, Interpolation, ParryFlash
-from src.core.sprite_groups import SpriteGroups
 from src.presentation.rendering.camera import Camera
 from src.presentation.rendering.overlay import NullOverlay, WorldOverlay
 from src.presentation.rendering.static_layer import BakedStaticLayer
 from src.presentation.rendering.strike_trails import StrikeTrails
 from src.presentation.rendering.tile_chunk_index import TileChunkIndex
+from src.shared.colors import BG_COLORS, Color, Colors
+from src.simulation.ecs.presentation import PresentationSprite
+from src.simulation.level.level_data import LevelConfig
+from src.simulation.settings import Afterimage, HitFlash, Interpolation, ParryFlash
+from src.simulation.sprite_groups import SpriteGroups
 
 if TYPE_CHECKING:
-    from src.entities.entity import Entity
+    from src.simulation.entities.entity import Entity
 
 from src.presentation.rendering.afterimages import (
     _ghost_alpha as _ghost_alpha,
@@ -100,7 +100,7 @@ class Renderer:
         self.surface = surface
         self.camera = camera
         #: The interface drawn over the world, injected rather than built.
-        #: See :mod:`src.core.rendering.overlay` for why the arrow between
+        #: See :mod:`src.presentation.rendering.overlay` for why the arrow between
         #: ``core`` and ``ui`` points this way and not the other. Defaults to
         #: drawing nothing, which is what a renderer built to answer "is this
         #: tile culled" wants.

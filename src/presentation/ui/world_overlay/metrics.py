@@ -21,8 +21,8 @@ value it has, and nothing here is a bare number.
 
 from dataclasses import dataclass
 
-from src.core.colors import Color, Colors
 from src.presentation.ui.styles import TEXT_MUTED
+from src.shared.colors import Color, Colors
 
 __all__ = [
     "ANNOTATION_CHIP_FILL",

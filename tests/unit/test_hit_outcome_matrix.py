@@ -28,15 +28,15 @@ from typing import Any
 import pytest
 from pygame.sprite import Group
 
-from src.combat.frame_data import AttackDefinition, Height, MoveId
-from src.core.input.input_manager import InputManager
-from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
-from src.core.settings import Fury, Rush
-from src.data.provider import GameplayData, load_gameplay_data
-from src.entities.enemies.enemy import Enemy
-from src.entities.entity import Entity
-from src.entities.player import Player
-from src.states.player_states import PlayerState
+from src.platform.input.input_manager import InputManager
+from src.simulation.combat.frame_data import AttackDefinition, Height, MoveId
+from src.simulation.data.provider import GameplayData, load_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.player import Player
+from src.simulation.level.systems.contact_system import ContactSystem, OffensiveBox
+from src.simulation.settings import Fury, Rush
+from src.simulation.states.player_states import PlayerState
 
 GOLDEN = Path(__file__).resolve().parents[1] / "golden" / "hit_outcomes.json"
 

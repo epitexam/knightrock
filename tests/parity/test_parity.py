@@ -67,4 +67,4 @@ def test_migrated_modules_resolve_to_the_candidate(monkeypatch: pytest.MonkeyPat
     for logical, candidate in NEW_PATHS.items():
         assert module_name(logical) == candidate
     monkeypatch.setenv("KNIGHTROCK_ARCH", "legacy")
-    assert module_name("physics.gravity") == "src.physics.gravity"
+    assert module_name("physics.gravity") == "src.simulation.physics.gravity"

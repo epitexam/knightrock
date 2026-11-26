@@ -9,11 +9,11 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.core.settings import Turn
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.schema import EnemyConfig
-from src.states.enemy_states import EnemyChaseState, EnemyState
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.schema import EnemyConfig
+from src.simulation.settings import Turn
+from src.simulation.states.enemy_states import EnemyChaseState, EnemyState
 from tests.unit.helpers import make_entity
 
 

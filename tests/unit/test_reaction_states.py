@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pygame
 
-from src.states.reaction_states import HurtState, KnockbackState, StaggerState
+from src.simulation.states.reaction_states import HurtState, KnockbackState, StaggerState
 
 
 def make_entity(*, is_hurt: bool = False, stagger: float = 0.0) -> SimpleNamespace:

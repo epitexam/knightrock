@@ -18,10 +18,10 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.victory_scene import VictoryScene
-from src.core.display.viewport import Viewport
-from src.core.input.input_actions import InputAction
-from src.core.level.level import Level
-from src.core.settings import Gameplay
+from src.presentation.display.viewport import Viewport
+from src.shared.input_actions import InputAction
+from src.simulation.level.level import Level
+from src.simulation.settings import Gameplay
 from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
@@ -370,8 +370,8 @@ def test_the_camera_viewport_ignores_the_window(manager: SceneManager):
     world is *drawn*, at whatever density the window implies, and never how much
     of it is shown.
     """
-    from src.core.display.framing import DEFAULT_FRAMING
-    from src.core.display.letterbox import picture
+    from src.presentation.display.framing import DEFAULT_FRAMING
+    from src.presentation.display.letterbox import picture
 
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
@@ -406,7 +406,7 @@ def test_a_surface_that_is_not_the_framing_is_refused(manager: SceneManager) -> 
     The window itself is not refused because it *is* one: ``set_surface`` is
     handed the window's letterbox rectangle, which is the whole design.
     """
-    from src.core.display.framing import DEFAULT_FRAMING
+    from src.presentation.display.framing import DEFAULT_FRAMING
 
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
@@ -477,7 +477,7 @@ def test_game_over_retry_restarts_the_level(manager: SceneManager):
 
 def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
     """LevelCompleted → unlock level_unlock + JSON write (Phase 2 #6)."""
-    from src.core.events import LevelCompleted
+    from src.shared.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
 
@@ -489,7 +489,7 @@ def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
 
 
 def test_completed_level_without_unlock_value_still_persists_last_level(game_runtime):
-    from src.core.events import LevelCompleted
+    from src.shared.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0))
 
@@ -499,7 +499,7 @@ def test_completed_level_without_unlock_value_still_persists_last_level(game_run
 
 def test_menu_offers_continue_when_progress_exists(game_runtime):
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.core.events import LevelCompleted
+    from src.shared.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
     game_runtime.scene_manager.switch(MenuScene(game_runtime))
@@ -518,7 +518,7 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
 
 def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.core.events import LevelCompleted
+    from src.shared.events import LevelCompleted
     from tests.headless.conftest import make_programmatic_level_data
 
     # Level 1 has no TMX yet: stub the manager loading.
@@ -761,7 +761,7 @@ def test_the_back_row_leaves_the_level_select_with_the_pointer(manager: SceneMan
     The point of a row is that it is somewhere you can see, so the test uses the
     rectangle the panel published -- the same one a player's cursor is over.
     """
-    from src.core.input.event_router import InputDevice, RoutedInput
+    from src.platform.input.event_router import InputDevice, RoutedInput
 
     scene = _level_select(manager)
     scene.draw(pygame.display.get_surface())
@@ -907,10 +907,10 @@ def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
     because a view that grew a new signature would otherwise be discovered by
     the scene stack skipping it.
     """
-    from src.ui.controls_view import ControlsView
-    from src.ui.grid_view import GridView
-    from src.ui.menu_view import MenuView
-    from src.ui.scale import ScaledView
+    from src.presentation.ui.controls_view import ControlsView
+    from src.presentation.ui.grid_view import GridView
+    from src.presentation.ui.menu_view import MenuView
+    from src.presentation.ui.scale import ScaledView
 
     for view_type in (MenuView, ControlsView, GridView):
         assert isinstance(view_type.set_surface, type(MenuView.set_surface))
@@ -927,7 +927,7 @@ def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
 @pytest.mark.parametrize("away", [pygame.WINDOWFOCUSLOST, pygame.WINDOWMINIMIZED])
 def test_leaving_the_window_pauses_the_level(manager: SceneManager, monkeypatch, away: int):
     """A level left running behind another window is one the player returns to dead."""
-    from src.core.settings import Debug
+    from src.simulation.settings import Debug
 
     monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: False))
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
@@ -940,7 +940,7 @@ def test_leaving_the_window_pauses_the_level(manager: SceneManager, monkeypatch,
 
 def test_leaving_the_window_twice_stacks_one_pause(manager: SceneManager, monkeypatch):
     """Minimising sends both events; the second reaches the pause page, not the level."""
-    from src.core.settings import Debug
+    from src.simulation.settings import Debug
 
     monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: False))
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
@@ -955,7 +955,7 @@ def test_leaving_the_window_twice_stacks_one_pause(manager: SceneManager, monkey
 
 def test_leaving_the_window_in_debug_mode_changes_nothing(manager: SceneManager, monkeypatch):
     """Looking away at a log is half of a debug session."""
-    from src.core.settings import Debug
+    from src.simulation.settings import Debug
 
     monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: True))
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))

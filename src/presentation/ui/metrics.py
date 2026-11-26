@@ -36,7 +36,7 @@ DESIGN_ROW = 30
 #: row at a time from further away than a mapping table, and its rows are the
 #: only things a player has to aim at. Same scale, different design sizes.
 #: Neither family carries text sizes: ``GridView`` takes its three from
-#: ``src.ui.menu_view`` at a text scale it chose.
+#: ``src.presentation.ui.menu_view`` at a text scale it chose.
 DESIGN_PANEL_PADDING = 28
 DESIGN_PANEL_TITLE_GAP = 16
 DESIGN_PANEL_ROW = 40

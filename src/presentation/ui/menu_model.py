@@ -4,7 +4,7 @@ from enum import StrEnum
 
 import pygame
 
-from src.core.input.input_actions import InputAction
+from src.shared.input_actions import InputAction
 
 
 @dataclass(frozen=True)

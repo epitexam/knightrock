@@ -29,8 +29,9 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import (
+from src.platform.input.input_manager import InputManager
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import (
     FitPolicy,
     already_a_whole_multiple,
     density_for,
@@ -38,14 +39,13 @@ from src.core.display.letterbox import (
     fits_whole_pixel,
     picture,
 )
-from src.core.display.presentation import Presentation
-from src.core.display.viewport import Viewport
-from src.core.input.input_manager import InputManager
-from src.core.level.level import Level
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.core.settings import Simulation
+from src.presentation.display.presentation import Presentation
+from src.presentation.display.viewport import Viewport
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.simulation.level.level import Level
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
+from src.simulation.settings import Simulation
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets

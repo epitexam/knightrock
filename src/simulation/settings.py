@@ -12,10 +12,10 @@ class Display:
 
     The starting window size used to live here too, as ``WIDTH``/``HEIGHT``. It
     does not any more: it is derived from the desktop at launch -- as large as
-    the first panel allows (:func:`src.core.display.monitors.opening_size`), and
+    the first panel allows (:func:`src.presentation.display.monitors.opening_size`), and
     the window manager owns the geometry from then on -- there is no size left
     for the game to hold an opinion about. What the game draws into is a
-    separate question again, answered by ``src.core.display.framing``.
+    separate question again, answered by ``src.presentation.display.framing``.
 
     ``FPS`` is the refresh rate this build is written against, and nothing more.
     It is **not** the default frame limit: that is
@@ -546,7 +546,7 @@ class Turn:
     reason is the loop's order: the player reads input in ``_pre_update``,
     which runs before the state machine, so the mirror has already happened by
     the time any state runs. The freeze is therefore installed from the input
-    side -- :func:`src.states.turn_state.request_turn` is asked *instead of*
+    side -- :func:`src.simulation.states.turn_state.request_turn` is asked *instead of*
     ``face_movement`` -- and the state keeps it with the ``facing_locked`` tag.
 
     :data:`DELAY_S` at 0 is not "legacy": the state is simply never entered,
@@ -557,7 +557,7 @@ class Turn:
     """The state name every fighter's machine registers the pivot under.
 
     One shared string rather than a member of each enum, because
-    :func:`src.states.turn_state.request_turn` has to name a state in a machine
+    :func:`src.simulation.states.turn_state.request_turn` has to name a state in a machine
     it knows nothing about. ``PlayerState.TURN`` and ``EnemyState.TURN`` are
     both this value and a test holds them to it -- the alternative is a state
     name that quietly differs between fighters, which is exactly the kind of

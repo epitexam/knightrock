@@ -25,12 +25,12 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
-from src.ui.styles import TEXT_TITLE
-from src.ui.text import DEVICE_KEYS, t
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.ui.menu_model import MenuAction, MenuItem, MenuModel
+from src.presentation.ui.menu_view import MenuView
+from src.presentation.ui.styles import TEXT_TITLE
+from src.presentation.ui.text import DEVICE_KEYS, t
+from src.shared.input_actions import InputAction
 
 if TYPE_CHECKING:
     from src.application.scene_context import SceneContext
@@ -50,7 +50,7 @@ class MenuPage(Scene):
     TITLE_COLOR: tuple[int, int, int] = TEXT_TITLE
     #: A colour the page fills the target with before drawing, or ``None``.
     BACKGROUND: tuple[int, int, int] | None = None
-    #: The help line under the rows: a key of :mod:`src.ui.text`, filled with
+    #: The help line under the rows: a key of :mod:`src.presentation.ui.text`, filled with
     #: the keys of the device the player last used, or ``""`` for none.
     FOOTER = "footer.page"
     #: Whether a list taller than the window scrolls rather than running off it.

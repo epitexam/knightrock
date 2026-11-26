@@ -36,13 +36,13 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((320, 240))
 
-from src.core.display.framing import Framing  # noqa: E402
-from src.core.display.letterbox import (  # noqa: E402
+from src.presentation.display.framing import Framing  # noqa: E402
+from src.presentation.display.letterbox import (  # noqa: E402
     DENSITY_TOLERANCE_PX,
     FitPolicy,
     density_for,
 )
-from src.core.display.monitors import (  # noqa: E402
+from src.presentation.display.monitors import (  # noqa: E402
     FALLBACK_WINDOW,
     MIN_WINDOW,
     Monitor,
@@ -52,7 +52,7 @@ from src.core.display.monitors import (  # noqa: E402
     opening_size,
     sits_within,
 )
-from src.core.display.presentation import Presentation  # noqa: E402
+from src.presentation.display.presentation import Presentation  # noqa: E402
 
 SHIPPED = Framing(1152.0, 648.0)
 

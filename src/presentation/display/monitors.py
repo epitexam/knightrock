@@ -1,6 +1,6 @@
 """What the machine's displays are: their bounds, usable area and rate.
 
-Pure: the queries live in :mod:`src.core.display.detection`, and everything
+Pure: the queries live in :mod:`src.presentation.display.detection`, and everything
 here is a function of a :class:`Topology`, so it is tested from tables.
 """
 

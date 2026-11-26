@@ -32,13 +32,13 @@ import pytest
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
-from src.core.display import letterbox
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, density_for, picture
-from src.core.display.monitors import Monitor, Topology
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.text import t
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.display import letterbox
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy, density_for, picture
+from src.presentation.display.monitors import Monitor, Topology
+from src.presentation.ui.text import t
+from src.shared.input_actions import InputAction
 
 #: Rows that do something of their own rather than cycling a value.
 ACTION_ROWS = frozenset({"reset", "back"})

@@ -10,13 +10,13 @@ import os
 import pygame
 import pytest
 
-from src.combat.shapes import ShapeKind, ShapePose
-from src.core.colors import Colors
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay.shapes import ShapeLayer, dashed_edges
-from src.ui.world_ui import WorldUI
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.world_overlay.shapes import ShapeLayer, dashed_edges
+from src.presentation.ui.world_ui import WorldUI
+from src.shared.colors import Colors
+from src.simulation.combat.shapes import ShapeKind, ShapePose
 
 SIZE = (1024, 768)
 

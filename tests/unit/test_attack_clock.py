@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from src.combat.attack_state import AttackStateMachine
-from src.combat.frame_data import PhaseState, move_id
+from src.simulation.combat.attack_state import AttackStateMachine
+from src.simulation.combat.frame_data import PhaseState, move_id
 from tests.unit.helpers import make_attack, make_phase
 
 DT = 1 / 60

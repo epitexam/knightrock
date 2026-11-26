@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.paths import PROJECT_ROOT, resource_path
+from src.shared.paths import PROJECT_ROOT, resource_path
 from tests.conftest import requires_assets
 
 MANIFEST = Path(resource_path("data/levels_manifest.json"))

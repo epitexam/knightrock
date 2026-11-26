@@ -23,16 +23,16 @@ pygame.init()
 pygame.display.set_mode((320, 240))
 
 from src.application.settings_store import UI_SCALES  # noqa: E402
-from src.core.display.framing import Framing  # noqa: E402
-from src.core.display.letterbox import density_for, picture  # noqa: E402
-from src.core.display.monitors import MIN_WINDOW  # noqa: E402
-from src.core.display.presentation import (  # noqa: E402
+from src.presentation.display.framing import Framing  # noqa: E402
+from src.presentation.display.letterbox import density_for, picture  # noqa: E402
+from src.presentation.display.monitors import MIN_WINDOW  # noqa: E402
+from src.presentation.display.presentation import (  # noqa: E402
     BAR_COLOR,
     MIN_DENSITY_FOR_UI,
     Presentation,
     render_scale_is_usable,
 )
-from src.ui.scale import MIN_UI_SCALE, checked_ui_scale  # noqa: E402
+from src.presentation.ui.scale import MIN_UI_SCALE, checked_ui_scale  # noqa: E402
 
 FRAMING = Framing(1152.0, 648.0)
 

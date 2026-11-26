@@ -2,10 +2,15 @@
 
 import pytest
 
-from src.combat.frame_data import HitProperties
-from src.combat.hit_resolver import HitResolver, _finisher_damage, _juggle_scale, _otg_blocked
-from src.combat.knockback import KnockbackConfig
-from src.core.settings import Combat as CombatSettings
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.hit_resolver import (
+    HitResolver,
+    _finisher_damage,
+    _juggle_scale,
+    _otg_blocked,
+)
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.settings import Combat as CombatSettings
 from tests.unit.helpers import make_entity
 
 
@@ -61,7 +66,7 @@ def test_zero_damage_applies_nothing() -> None:
 def test_guarded_hit_records_no_combo_no_stagger() -> None:
     from pygame.sprite import Group
 
-    from src.entities.player import Player
+    from src.simulation.entities.player import Player
     from tests.unit.helpers import InputStub
 
     player = Player(

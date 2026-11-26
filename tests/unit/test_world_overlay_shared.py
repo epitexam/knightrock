@@ -17,8 +17,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.colors import Colors
-from src.ui.world_overlay.shared import (
+from src.presentation.ui.world_overlay.shared import (
     clamp_annotation,
     debug_reference,
     display_name,
@@ -27,6 +26,7 @@ from src.ui.world_overlay.shared import (
     hitbox_color,
     label_color,
 )
+from src.shared.colors import Colors
 
 TIER_GAP = 4
 SCREEN_WIDTH = 400

@@ -21,9 +21,9 @@ while quietly re-creating the coupling the components removed.
 import pygame
 import pytest
 
-from src.entities.components.movement import MovementComponent
-from src.entities.entity import Entity
-from src.entities.vitals import Vitals
+from src.simulation.entities.components.movement import MovementComponent
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.vitals import Vitals
 from tests.unit.helpers import make_entity
 
 pytestmark = pytest.mark.usefixtures("_entity_display")

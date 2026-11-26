@@ -21,7 +21,6 @@ from typing import Any, Protocol
 import pygame
 from pygame.math import Vector2
 
-from src.core.colors import Color, Colors, FXColors
 from src.presentation.fx.particles import (
     CorpseParticle,
     DashDustParticle,
@@ -52,6 +51,7 @@ from src.presentation.fx.tuning import (
     FxGuard,
     Sweat,
 )
+from src.shared.colors import Color, Colors, FXColors
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one

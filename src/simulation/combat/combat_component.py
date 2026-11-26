@@ -6,7 +6,7 @@ API for starting attacks, charging, and responding to damage.
 
 ``NullCombatComponent`` is a no-op stand-in for entities without combat
 capabilities, implementing the same public interface. It lives in
-:mod:`src.combat.null_combat` and is re-exported here so existing imports keep
+:mod:`src.simulation.combat.null_combat` and is re-exported here so existing imports keep
 working.
 """
 
@@ -292,7 +292,7 @@ class CombatComponent:
             ``Refusal.NONE`` when the attack started. The value is truthy only
             in that case, so ``if combat.start_attack(x):`` still reads as
             "did it start" -- but a caller that needs to know *why* a press was
-            dropped can act on it. See :class:`~src.combat.refusal.Refusal` for
+            dropped can act on it. See :class:`~src.simulation.combat.refusal.Refusal` for
             which refusals are worth retrying.
         """
         if self.is_hurt:

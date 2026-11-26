@@ -17,12 +17,12 @@ import os
 import pygame
 import pytest
 
-from src.core.input.input_manager import InputManager
-from src.core.level.level import Level
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.core.rendering.camera import Camera
-from src.core.rendering.tile_chunk_index import CHUNK_TILES, TileChunkIndex
-from src.core.settings import World
+from src.platform.input.input_manager import InputManager
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.tile_chunk_index import CHUNK_TILES, TileChunkIndex
+from src.simulation.level.level import Level
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
+from src.simulation.settings import World
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets

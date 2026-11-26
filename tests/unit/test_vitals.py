@@ -5,8 +5,8 @@ from unittest.mock import Mock
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.entities.entity import Entity
-from src.entities.vitals import Vitals
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.vitals import Vitals
 
 
 def make_vitals(**kwargs) -> Vitals:

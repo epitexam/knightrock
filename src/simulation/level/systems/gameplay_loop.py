@@ -1,9 +1,9 @@
 """Orchestration of the fixed-tick systems of a level.
 
 ``GameplayLoop`` owns the *order* in which a level's systems run; the systems
-themselves are assembled by :class:`~src.core.level.level.Level` and injected
+themselves are assembled by :class:`~src.simulation.level.level.Level` and injected
 here, so each one stays independently testable.  The level is
-then a strict facade: :meth:`~src.core.level.level.Level.update` delegates
+then a strict facade: :meth:`~src.simulation.level.level.Level.update` delegates
 its whole tick — debug spawner, simulation, camera, notifications and
 rollback bookkeeping — to :meth:`update` below.
 """

@@ -8,16 +8,16 @@ contact pipeline resolving it -- is on the path.
 
 from __future__ import annotations
 
-from src.combat.frame_data import Height
-from src.core.input.bindings_codec import bindings_from_dict, bindings_to_dict
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import XBOX_B, InputBindings
-from src.core.level.level import Level
-from src.core.settings import Battery
-from src.core.settings import Input as InputSettings
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.schema import EnemyMove
-from src.entities.projectile import Projectile
+from src.platform.input.bindings_codec import bindings_from_dict, bindings_to_dict
+from src.platform.input.input_bindings import XBOX_B, InputBindings
+from src.shared.input_actions import InputAction
+from src.simulation.combat.frame_data import Height
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.schema import EnemyMove
+from src.simulation.entities.projectile import Projectile
+from src.simulation.level.level import Level
+from src.simulation.settings import Battery
+from src.simulation.settings import Input as InputSettings
 from tests.headless.arena import (
     BEAT,
     DT,

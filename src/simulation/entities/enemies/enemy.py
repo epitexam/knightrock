@@ -153,7 +153,7 @@ class Enemy(Entity):
             debug label card. ``None`` when built without the factory.
         spatial_hash : SpatialHash | None
             Shared collision grid covering ``collision_sprites``; see
-            :class:`~src.entities.entity.Entity`.
+            :class:`~src.simulation.entities.entity.Entity`.
         """
         max_health = config.max_health if config.max_health is not None else config.health
 

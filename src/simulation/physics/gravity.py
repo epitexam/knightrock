@@ -33,7 +33,7 @@ def apply_entity_gravity(entity: GravityEntity, delta_time: float) -> None:
     ``fall_drag_coefficient``); adjust them to modify the fall curve.
     ``gravity_scale`` mods the whole acceleration (juggle softening).
 
-    Game-feel modifiers (src.core.settings.GameFeel):
+    Game-feel modifiers (src.simulation.settings.GameFeel):
     - around the apex (|velocity.y| below ``APEX_VELOCITY_THRESHOLD_PX_S``)
       gravity is divided by ``APEX_GRAVITY_DIVISOR`` for a longer hang;
     - while ``entity.fast_fall`` is set (down action held) the falling

@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core.display.framing import DEFAULT_FRAMING, Framing
-from src.core.paths import resource_path
+from src.presentation.display.framing import DEFAULT_FRAMING, Framing
+from src.shared.paths import resource_path
 
 MANIFEST = Path(resource_path("data/levels_manifest.json"))
 
@@ -75,7 +75,7 @@ def test_the_framing_names_no_pixels() -> None:
     is how a world-unit answer and a pixel answer ended up in the same class, and
     how a window could decide how much world was visible. The pixel size of the
     picture belongs to the window now
-    (:func:`src.core.display.letterbox.letterbox`), and the framing must not be
+    (:func:`src.presentation.display.letterbox.letterbox`), and the framing must not be
     able to answer it.
     """
     assert not hasattr(DEFAULT_FRAMING, "viewport_size")

@@ -17,11 +17,11 @@ import math
 
 import pygame
 
-from src.combat.shapes import ShapeKind, ShapePose
-from src.core.colors import Color, Colors
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.panel_renderer import PanelRenderer
 from src.presentation.ui.world_overlay.metrics import SWEEP_GHOST_WIDTH
+from src.shared.colors import Color, Colors
+from src.simulation.combat.shapes import ShapeKind, ShapePose
 
 __all__ = ["ShapeLayer", "dashed_edges"]
 

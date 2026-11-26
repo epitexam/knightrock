@@ -9,13 +9,13 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.settings import Battery as BatterySettings
-from src.entities.player import Player
-from src.entities.player_config import PlayerConfig
-from src.states.player_states import PlayerAttackState
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
+from src.simulation.entities.player import Player
+from src.simulation.entities.player_config import PlayerConfig
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.settings import Battery as BatterySettings
+from src.simulation.states.player_states import PlayerAttackState
 from tests.unit.helpers import InputStub, make_active_attacker, make_entity
 
 

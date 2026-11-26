@@ -1,6 +1,6 @@
 """Cached frame ladders shared by the FX particles.
 
-The shard ladder used to live inside :mod:`src.core.fx.particles` even though
+The shard ladder used to live inside :mod:`src.presentation.fx.particles` even though
 it depends on no particle class: a paint cache keyed on a finite layout grid.
 Keeping it here lets a ladder grow without reopening the sprites that consume
 it. ``particles`` re-exports the two public names for existing callers.
@@ -12,9 +12,9 @@ import random
 
 import pygame
 
-from src.core.colors import Color, FXColors
 from src.presentation.fx.draw import draw_arc_stroke, snap
 from src.presentation.fx.tuning import FxGuard
+from src.shared.colors import Color, FXColors
 
 _shard_cache: dict[tuple[int, int], list[pygame.Surface]] = {}
 """The break geometry, keyed on ``(side, layout)``.

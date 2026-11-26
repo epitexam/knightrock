@@ -16,7 +16,7 @@ import math
 import pygame
 import pytest
 
-from src.combat.shapes import (
+from src.simulation.combat.shapes import (
     ShapeKind,
     ShapePose,
     broadphase_aabb,
@@ -24,12 +24,12 @@ from src.combat.shapes import (
     swept_intersects_aabb,
     swept_shape_shape_intersects,
 )
-from src.combat.sweep import swept_box
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.settings import Combat as CombatSettings
-from src.core.settings import Physics as PhysicsSettings
-from src.core.settings import Simulation as SimulationSettings
-from src.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid
+from src.simulation.combat.sweep import swept_box
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.settings import Physics as PhysicsSettings
+from src.simulation.settings import Simulation as SimulationSettings
 from tests.unit.helpers import entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -450,7 +450,7 @@ def test_case_e_p0_goldens_and_census_revalidate() -> None:
     still hold: any data edit that fails this is a wanted change to
     re-sign off in the report, not a silent regression.
     """
-    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.simulation.combat.attack_data import PLAYER_ATTACKS
     from tests.unit.helpers import SHOWCASE
     from tests.unit.test_hitbox_pipeline import _drive, _lethal_jumps
 
@@ -476,7 +476,7 @@ def test_the_sweep_catches_a_target_between_two_poses_of_a_turning_blade() -> No
     """The blade turns tens of degrees a frame: near its tip, consecutive poses
     leave a gap. A small target in that gap is touched by neither pose and is
     still hit, because the sweep turns the blade through the frame."""
-    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.simulation.combat.attack_data import PLAYER_ATTACKS
 
     phase = PLAYER_ATTACKS["slash_high_1"].phases[0]
     first = phase.startup_frames + 1
@@ -500,7 +500,7 @@ def test_the_sweep_catches_a_target_between_two_poses_of_a_turning_blade() -> No
 
 def test_the_cheap_rect_union_misses_what_the_sampled_narrowphase_hits() -> None:
     """The two sweep layers are deliberately not interchangeable."""
-    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.simulation.combat.attack_data import PLAYER_ATTACKS
 
     phase = PLAYER_ATTACKS["slash_high_1"].phases[0]
     first = phase.startup_frames + 1

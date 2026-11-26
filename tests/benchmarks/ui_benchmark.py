@@ -40,10 +40,10 @@ from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.victory_scene import VictoryScene
 from src.application.scenes.video_scene import VideoScene
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.ui.ui_manager import UIManager
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.presentation.ui.ui_manager import UIManager
 from tests.fakes import player_shape
 
 

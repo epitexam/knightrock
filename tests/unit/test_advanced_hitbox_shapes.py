@@ -8,17 +8,17 @@ from pathlib import Path
 import pygame
 import pytest
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.determinism import geometry_checksum
-from src.combat.frame_data import HitProperties, PhaseDefinition
-from src.combat.shapes import AnchorKind, EasingKind, ShapeKind, ShapePose
-from src.core.level.systems.combat_system import CombatSystem
-from src.data.attacks import (
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.determinism import geometry_checksum
+from src.simulation.combat.frame_data import HitProperties, PhaseDefinition
+from src.simulation.combat.shapes import AnchorKind, EasingKind, ShapeKind, ShapePose
+from src.simulation.data.attacks import (
     attack_definition_to_dict,
     read_attack_definition,
     read_attacks_file,
     write_attacks_file,
 )
+from src.simulation.level.systems.combat_system import CombatSystem
 from tests.unit.helpers import activate, entity_at
 from tests.unit.helpers import make_attack as attack
 

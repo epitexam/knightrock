@@ -3,7 +3,7 @@
 A phase that names a shot (``launches`` in ``attacks.json``) throws it as it
 turns active, from the hand at ``muzzle`` (forward, up from the body's
 centre), at ``speed`` forward and ``rise`` upward (negative is up, as on
-screen). The flight itself is a pooled :class:`~src.entities.projectile.Projectile`.
+screen). The flight itself is a pooled :class:`~src.simulation.entities.projectile.Projectile`.
 
 The shots live here rather than in the JSON because they are few, and each
 is as much a look (``ProjectileConfig.look``) as a balance: the bolt the

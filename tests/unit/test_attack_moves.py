@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.frame_data import AttackButton, Height, Stance, move_id
-from src.core.input.input_actions import InputAction
-from src.entities.attack_moves import (
+from src.shared.input_actions import InputAction
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.frame_data import AttackButton, Height, Stance, move_id
+from src.simulation.entities.attack_moves import (
     AIR_STARTERS,
     GROUND_STARTERS,
     SLASHES,
@@ -16,7 +16,7 @@ from src.entities.attack_moves import (
     press_for,
     resolve_move,
 )
-from src.entities.player_input import ATTACK_BUTTONS
+from src.simulation.entities.player_input import ATTACK_BUTTONS
 
 
 def test_two_buttons_each_thrown_high_or_low() -> None:

@@ -8,9 +8,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 from pygame.sprite import Group
 
-from src.entities.entity import Entity
-from src.entities.id_factory import IdFactory
-from src.entities.projectile import Projectile
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.id_factory import IdFactory
+from src.simulation.entities.projectile import Projectile
 
 
 def _entity(factory: IdFactory) -> Entity:
@@ -49,9 +49,9 @@ def test_an_explicit_id_still_wins_over_the_factory() -> None:
 
 
 def test_two_levels_own_independent_id_sequences() -> None:
-    from src.core.input.input_manager import InputManager
-    from src.core.level.level import Level
-    from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+    from src.platform.input.input_manager import InputManager
+    from src.simulation.level.level import Level
+    from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 
     pygame.init()
     pygame.display.set_mode((320, 240))

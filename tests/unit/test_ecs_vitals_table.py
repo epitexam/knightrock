@@ -5,7 +5,7 @@ import os
 import pygame
 import pytest
 
-from src.entities.vitals import Vitals
+from src.simulation.entities.vitals import Vitals
 from tests.headless.arena import arena, settle
 
 

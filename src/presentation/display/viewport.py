@@ -15,7 +15,7 @@ class Viewport:
     """The pixel surface every draw call targets.
 
     ``size`` should be a letterbox rectangle for ``framing``; its only producer
-    is :class:`~src.core.display.presentation.Presentation`.
+    is :class:`~src.presentation.display.presentation.Presentation`.
     """
 
     def __init__(

@@ -12,13 +12,13 @@ from src.application.scene_manager import SceneManager
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_options import window_size_options
 from src.application.scenes.video_scene import VideoScene
-from src.core.display.letterbox import FitPolicy
-from src.core.display.monitors import Monitor
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuItem, MenuModel
-from src.ui.menu_view import MenuView
-from src.ui.text import t
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.display.letterbox import FitPolicy
+from src.presentation.display.monitors import Monitor
+from src.presentation.ui.menu_model import MenuItem, MenuModel
+from src.presentation.ui.menu_view import MenuView
+from src.presentation.ui.text import t
+from src.shared.input_actions import InputAction
 from tests.unit.test_video_scene import _game
 
 
@@ -181,7 +181,7 @@ def test_every_video_row_is_declared_once() -> None:
 
 
 def test_auto_takes_whole_pixels_when_they_keep_most_of_the_picture() -> None:
-    from src.core.display.letterbox import picture
+    from src.presentation.display.letterbox import picture
 
     # 2400x1350 holds a 2x picture (2304x1296): 92% of the bars picture, exact pixels.
     auto = picture((2400, 1350), policy=FitPolicy.AUTO)
@@ -189,7 +189,7 @@ def test_auto_takes_whole_pixels_when_they_keep_most_of_the_picture() -> None:
 
 
 def test_auto_takes_bars_when_whole_pixels_would_leave_a_small_box() -> None:
-    from src.core.display.letterbox import picture
+    from src.presentation.display.letterbox import picture
 
     # 2200x1238 only holds 1x (1152x648): a quarter of the window.
     auto = picture((2200, 1238), policy=FitPolicy.AUTO)
@@ -198,7 +198,7 @@ def test_auto_takes_bars_when_whole_pixels_would_leave_a_small_box() -> None:
 
 def test_auto_is_the_default_and_an_old_whole_pixel_flag_still_wins() -> None:
     from src.application.settings_store import UserSettings
-    from src.core.display.letterbox import effective_fit
+    from src.presentation.display.letterbox import effective_fit
 
     assert UserSettings().fit is FitPolicy.AUTO
     assert effective_fit(FitPolicy.AUTO, pixel_perfect=True) is FitPolicy.INTEGER
@@ -206,7 +206,7 @@ def test_auto_is_the_default_and_an_old_whole_pixel_flag_still_wins() -> None:
 
 
 def test_a_translation_is_a_table_and_a_missing_key_falls_back(monkeypatch) -> None:
-    from src.ui import text
+    from src.presentation.ui import text
 
     monkeypatch.setitem(text.LANGUAGES, "fr", {"row.back": "Retour"})
     text.set_language("fr")
@@ -246,8 +246,8 @@ def test_every_character_the_menus_say_is_in_the_menu_font() -> None:
     metrics answered for the missing characters too.
     """
     from src.application.scenes.option_screen import SELECTED_MARK
-    from src.ui import text
-    from src.ui.fonts import menu_font
+    from src.presentation.ui import text
+    from src.presentation.ui.fonts import menu_font
 
     font = menu_font(16)
     missing = pygame.image.tobytes(font.render("\U0010ffff", False, (255, 255, 255)), "RGB")
@@ -270,8 +270,8 @@ def test_every_character_the_menus_say_is_in_the_menu_font() -> None:
 
 def test_the_layout_paints_nothing_and_the_paint_decides_nothing() -> None:
     """``layout`` leaves the target untouched; ``paint`` of it is ``draw``."""
-    from src.ui.menu_model import MenuItem, MenuModel
-    from src.ui.menu_view import MenuView
+    from src.presentation.ui.menu_model import MenuItem, MenuModel
+    from src.presentation.ui.menu_view import MenuView
 
     pygame.font.init()
     model = MenuModel(
@@ -320,7 +320,7 @@ def test_a_page_change_fades_the_last_frame_out(tmp_path) -> None:
 
 
 def test_the_title_backdrop_is_the_same_picture_at_the_same_time() -> None:
-    from src.ui.title_backdrop import TitleBackdrop
+    from src.presentation.ui.title_backdrop import TitleBackdrop
 
     def frame(time: float) -> bytes:
         backdrop = TitleBackdrop()

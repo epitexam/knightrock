@@ -3,13 +3,13 @@
 import pygame
 from pygame.sprite import Group
 
-from src.combat.frame_data import HitProperties
-from src.combat.knockback import KnockbackConfig
-from src.core.level.systems.projectile_system import ProjectileSystem
-from src.core.sprite_groups import SpriteGroups
-from src.entities.projectile import ProjectileConfig
-from src.physics.entity_grid import EntityGrid
-from src.physics.spatial_hash import SpatialHash
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.entities.projectile import ProjectileConfig
+from src.simulation.level.systems.projectile_system import ProjectileSystem
+from src.simulation.physics.entity_grid import EntityGrid
+from src.simulation.physics.spatial_hash import SpatialHash
+from src.simulation.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
 
 

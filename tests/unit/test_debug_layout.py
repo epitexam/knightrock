@@ -8,12 +8,12 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.combat.frame_data import Stance
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelLayout, PanelRenderer
-from src.ui.styles import TEXT_MUTED
-from src.ui.ui_manager import UIManager
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.panel_renderer import PanelLayout, PanelRenderer
+from src.presentation.ui.styles import TEXT_MUTED
+from src.presentation.ui.ui_manager import UIManager
+from src.simulation.combat.frame_data import Stance
 from tests.fakes import player_shape
 from tests.unit.helpers import make_overlay
 
@@ -243,9 +243,9 @@ def test_full_debug_panel_stack_never_overlaps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """End to end: every debug panel lands on its own rect, none stacks."""
-    from src.core.rendering.camera import Camera as _Camera
-    from src.core.rendering.renderer import Renderer
-    from src.ui.panel_renderer import set_compact_panels
+    from src.presentation.rendering.camera import Camera as _Camera
+    from src.presentation.rendering.renderer import Renderer
+    from src.presentation.ui.panel_renderer import set_compact_panels
 
     surface = pygame.Surface((1440, 900))
     renderer = Renderer(
@@ -300,8 +300,8 @@ def test_full_debug_panel_stack_never_overlaps(
 
 
 def test_compact_display_uses_focus_selector_without_overlap() -> None:
-    from src.core.rendering.camera import Camera as _Camera
-    from src.core.rendering.renderer import Renderer
+    from src.presentation.rendering.camera import Camera as _Camera
+    from src.presentation.rendering.renderer import Renderer
 
     surface = pygame.Surface((640, 480))
     renderer = Renderer(
@@ -387,7 +387,7 @@ def test_a_bar_that_moved_still_dodges_the_card_next_frame(
 
 def _rows(stance, cooldowns=None):
     """The panel's live rows, for a player standing in ``stance``."""
-    from src.ui.ui_manager import UIManager
+    from src.presentation.ui.ui_manager import UIManager
 
     player = SimpleNamespace(stance=stance, combat=SimpleNamespace(cooldowns=cooldowns or {}))
     return UIManager._attack_button_rows(player)
@@ -400,8 +400,8 @@ def test_the_block_names_the_posture_the_fighter_is_in() -> None:
 
 def test_each_button_gets_a_row_with_its_high_and_low_move() -> None:
     """The gate, rendered -- so it has to agree with :func:`resolve_move`."""
-    from src.combat.frame_data import AttackButton
-    from src.entities.attack_moves import MoveContext, resolve_move
+    from src.simulation.combat.frame_data import AttackButton
+    from src.simulation.entities.attack_moves import MoveContext, resolve_move
 
     for stance in Stance:
         rows = [text for text, _ in _rows(stance)[1:]]
@@ -428,7 +428,7 @@ def test_a_press_with_no_move_shows_a_dash() -> None:
 
 
 def test_a_move_on_cooldown_shows_its_timer_and_is_the_only_warned_row() -> None:
-    from src.ui.styles import TEXT_OK, TEXT_WARN
+    from src.presentation.ui.styles import TEXT_OK, TEXT_WARN
 
     rows = _rows(Stance.GROUND, {"punch_1": 1.25})
     warned = [(text, color) for text, color in rows if color == TEXT_WARN]
@@ -447,7 +447,7 @@ def test_the_bench_legend_names_the_air_keys() -> None:
     Nothing asserted it: the panel's *text* had no test anywhere, which is how a
     stale legend can sit in a file for a release.
     """
-    from src.core.level.systems.spawn_system import DEBUG_ATTACKS
+    from src.simulation.level.systems.spawn_system import DEBUG_ATTACKS
 
     rows = _keys_legend()
     text = "\n".join(rows)
@@ -551,8 +551,8 @@ def test_the_whole_stack_fits_a_small_display_at_a_low_panel_scale() -> None:
     """
     import warnings
 
-    from src.combat.frame_data import Stance
-    from src.ui.panel_renderer import set_compact_panels
+    from src.presentation.ui.panel_renderer import set_compact_panels
+    from src.simulation.combat.frame_data import Stance
 
     surface = pygame.Surface((640, 480))
     overlay = make_overlay(surface)
@@ -616,8 +616,8 @@ def test_the_setting_does_not_pretend_the_default_layout_fits() -> None:
     """
     import warnings
 
-    from src.combat.frame_data import Stance
-    from src.ui.panel_renderer import set_compact_panels
+    from src.presentation.ui.panel_renderer import set_compact_panels
+    from src.simulation.combat.frame_data import Stance
 
     surface = pygame.Surface((640, 480))
     overlay = make_overlay(surface)

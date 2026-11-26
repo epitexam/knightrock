@@ -1,9 +1,9 @@
 from typing import Any
 
-from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.entities.player import Player
 from src.presentation.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.presentation.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
+from src.simulation.entities.player import Player
 
 
 def _yes(flag: object) -> str:

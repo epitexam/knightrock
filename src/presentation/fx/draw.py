@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterable
 
 import pygame
 
-from src.core.colors import Color, ColorRGBA
+from src.shared.colors import Color, ColorRGBA
 
 __all__ = [
     "ALPHA_STEPS",

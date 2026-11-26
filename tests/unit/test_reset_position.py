@@ -3,12 +3,12 @@
 import pygame
 from pygame.sprite import Group
 
-from src.core.input.input_manager import InputManager
-from src.core.settings import Battery as BatterySettings
-from src.entities.enemies.factory import create_enemy
-from src.entities.entity import Entity
-from src.entities.player import Player
-from src.entities.player_kit import PromptKind
+from src.platform.input.input_manager import InputManager
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.player import Player
+from src.simulation.entities.player_kit import PromptKind
+from src.simulation.settings import Battery as BatterySettings
 
 
 class MockPlayer:
@@ -104,7 +104,7 @@ class TestResetPosition:
 
     def test_entity_reset_position_calls_state_machine_change(self):
         """Test that Entity.reset_position changes state machine to idle."""
-        from src.states.null_state_machine import NullStateMachine
+        from src.simulation.states.null_state_machine import NullStateMachine
 
         groups = Group()
         collision_sprites = Group()

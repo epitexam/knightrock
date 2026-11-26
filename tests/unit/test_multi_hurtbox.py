@@ -12,12 +12,12 @@ from dataclasses import replace
 
 import pytest
 
-from src.combat.frame_data import HitProperties
-from src.combat.hit_resolver import HitResolver
-from src.combat.knockback import KnockbackConfig
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.contact_system import _zone_vulnerable
-from src.entities.hurtbox_zones import HurtboxZoneDef
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.hit_resolver import HitResolver
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.entities.hurtbox_zones import HurtboxZoneDef
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.level.systems.contact_system import _zone_vulnerable
 from tests.unit.helpers import AttackerStub, activate, entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -207,8 +207,8 @@ def test_the_zones_stack_head_over_body_over_legs() -> None:
     """``offset_y`` places a zone up or down the body; without it every zone shared its centre."""
     from pygame.sprite import Group
 
-    from src.data.provider import shipped_gameplay_data
-    from src.entities.enemies.enemy import Enemy
+    from src.simulation.data.provider import shipped_gameplay_data
+    from src.simulation.entities.enemies.enemy import Enemy
 
     for name in ("goblin", "tooth", "shell"):
         config = shipped_gameplay_data().enemies[name]
@@ -222,7 +222,7 @@ def test_the_zones_stack_head_over_body_over_legs() -> None:
 
 
 def test_a_zone_offset_survives_a_round_trip() -> None:
-    from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
+    from src.simulation.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 
     zones = read_hurtbox_zones([{"name": "head", "inflate": [0, -20], "offset_y": -10}], "t")
     assert zones is not None

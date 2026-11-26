@@ -21,10 +21,10 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
-from src.core.display.framing import Framing  # noqa: E402
-from src.core.rendering.camera import Camera  # noqa: E402
-from src.ui.panel_renderer import PanelRenderer  # noqa: E402
-from src.ui.world_ui import WorldUI  # noqa: E402
+from src.presentation.display.framing import Framing  # noqa: E402
+from src.presentation.rendering.camera import Camera  # noqa: E402
+from src.presentation.ui.panel_renderer import PanelRenderer  # noqa: E402
+from src.presentation.ui.world_ui import WorldUI  # noqa: E402
 from tests.headless.arena import DT, SLASH, arena, foe  # noqa: E402
 
 SIZE = (1152, 648)

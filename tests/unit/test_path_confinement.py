@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core.paths import PROJECT_ROOT, confined_resource_path, resource_path
-from src.data.enemies import read_enemies_file
+from src.shared.paths import PROJECT_ROOT, confined_resource_path, resource_path
+from src.simulation.data.enemies import read_enemies_file
 
 
 def test_relative_data_path_resolves_inside_the_project_root() -> None:

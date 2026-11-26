@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pygame
 
-from src.core.paths import resource_path
+from src.shared.paths import resource_path
 
 _FONTS_DIR = Path(resource_path("assets/fonts"))
 

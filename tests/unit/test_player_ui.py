@@ -7,13 +7,13 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import Fury
-from src.entities.player_config import PlayerConfig
-from src.entities.player_controllers import DashController
-from src.entities.player_kit import FuryGauge, PromptController, PromptKind
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.player_ui import PlayerUI
-from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.player_ui import PlayerUI
+from src.presentation.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.simulation.entities.player_config import PlayerConfig
+from src.simulation.entities.player_controllers import DashController
+from src.simulation.entities.player_kit import FuryGauge, PromptController, PromptKind
+from src.simulation.settings import Fury
 from tests.fakes import combat_shape, player_shape
 
 
@@ -36,7 +36,7 @@ def _mock_state():
 
 def _make_player(**overrides) -> SimpleNamespace:
     """Build a SimpleNamespace with all attributes PlayerUI draws."""
-    from src.states.state_machine import StateMachine
+    from src.simulation.states.state_machine import StateMachine
 
     sm = StateMachine(SimpleNamespace())
     sm.add_state("idle", _mock_state())

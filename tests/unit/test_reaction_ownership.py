@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pygame
 from pygame.math import Vector2
 
-from src.combat.knockback import KnockbackConfig
-from src.core.rendering.render_hints import RenderHints
-from src.entities.components.reaction import (
+from src.presentation.rendering.render_hints import RenderHints
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.entities.components.reaction import (
     ReactionComponent,
     ReactionOwner,
 )

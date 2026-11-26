@@ -1,19 +1,10 @@
 """The dependency direction between the layers, enforced.
 
-`core` is the simulation and its drawing; `ui` is the interface; `application`
-is the composition root that wires them together. The rules below are the ones
-that hold today and are worth keeping, each with the reason it exists -- an
-allowlist rather than a growing list of exceptions, because a rule with
-exceptions is a rule nobody reads.
-
-The concrete cost of not having them: `core/rendering/renderer.py` used to
-construct a `UIManager`, so the renderer could not be built without a font
-cache and a panel layout, and a test that wanted to know whether a tile was
-culled had to stand up the whole interface to ask. The interface is now
-injected through :mod:`src.core.rendering.overlay`.
-
-These are checks rather than docstrings on purpose. A docstring is a claim; a
-test is the thing that notices the next convenient import.
+After the cutover (ADR 0001) the five layers are ``application``,
+``presentation``, ``platform``, ``shared`` and ``simulation``. ``application``
+is the composition root; the other four never reach it. import-linter checks
+the same rules across the whole graph, including indirect imports; these AST
+tests keep the specific, historically expensive inversions named in code.
 """
 
 import ast
@@ -23,49 +14,19 @@ import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 
-#: The layers this file reasons about.
-LAYERS = (
-    "application",
-    "combat",
-    "core",
-    "data",
-    "entities",
-    "physics",
-    "presentation",
-    "states",
-    "ui",
-)
+LAYERS = ("application", "platform", "presentation", "shared", "simulation")
 
-#: What a layer may reach outside itself, per layer and per module. Everything
-#: absent is a violation, so widening a rule is a deliberate edit here.
-#:
-#: Only `core` has a rule: it is the simulation and its drawing, and the two
-#: layers above it -- the interface and the application -- reach it by
-#: injection and by subscription, never the other way round. The other layers
-#: are not a strict hierarchy (`physics` reads `core.settings`, `states` reads
-#: `core`), and a rule about an architecture the project does not have would be
-#: noise.
+#: Only rules that are true today. Every absent target is a violation.
 ALLOWED_MODULES: dict[str, dict[str, frozenset[str]]] = {
-    "core": {
-        # The interface reaches `core` through src.core.rendering.overlay.
-        "ui": frozenset(),
-        # The simulation publishes facts on src.core.events and holds no
-        # reference to the application.
-        "application": frozenset(),
-    },
+    "simulation": {"application": frozenset()},
+    "presentation": {"application": frozenset()},
+    "platform": {"application": frozenset()},
+    "shared": {name: frozenset() for name in LAYERS if name != "shared"},
 }
 
 
-def _layer_of(path: Path) -> str:
-    return path.relative_to(SRC).parts[0]
-
-
 def _imported_layers(path: Path) -> set[str]:
-    """The layers this module imports from, by AST rather than by grep.
-
-    A text search would match a layer name inside a docstring or a string --
-    and this file's own docstring is full of them.
-    """
+    """Layers this module imports, by AST rather than by grep."""
     found: set[str] = set()
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
@@ -76,7 +37,6 @@ def _imported_layers(path: Path) -> set[str]:
             modules = [node.module]
         for module in modules:
             parts = module.split(".")
-            # `src.<layer>...` and a bare `<layer>` both count.
             if parts[0] == "src" and len(parts) >= 2:
                 found.add(parts[1])
             elif parts[0] in LAYERS:
@@ -85,7 +45,6 @@ def _imported_layers(path: Path) -> set[str]:
 
 
 def _imports(path: Path) -> set[str]:
-    """Every dotted module name this file imports, as `src.x.y` or `x`."""
     names: set[str] = set()
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
@@ -97,67 +56,40 @@ def _imports(path: Path) -> set[str]:
 
 
 def _violations(layer: str) -> list[str]:
-    """Every import in this layer that its own rule does not allow."""
-    allowed = ALLOWED_MODULES.get(layer)
-    if allowed is None:
-        return []
+    allowed = ALLOWED_MODULES.get(layer, {})
     offenders: list[str] = []
     for path in sorted((SRC / layer).rglob("*.py")):
         relative = str(path.relative_to(SRC))
         for target in sorted(_imported_layers(path) - {layer}):
-            permitted_modules = ALLOWED_MODULES.get(layer, {}).get(target)
-            if permitted_modules is not None:
-                for name in sorted(_imports(path)):
-                    normalised = name.removeprefix("src.")
-                    if not normalised.startswith(f"{target}."):
-                        continue
-                    module = normalised[len(target) + 1 :]
-                    if module not in permitted_modules:
-                        offenders.append(
-                            f"{relative} -> {normalised} (only "
-                            f"{', '.join(sorted(permitted_modules))} of {target} is allowed)"
-                        )
-            else:
+            permitted = allowed.get(target)
+            if permitted is None:
                 offenders.append(f"{relative} -> {target} (not permitted)")
+                continue
+            for name in sorted(_imports(path)):
+                normalised = name.removeprefix("src.")
+                if not normalised.startswith(f"{target}."):
+                    continue
+                module = normalised[len(target) + 1 :]
+                if module not in permitted:
+                    offenders.append(f"{relative} -> {normalised}")
     return offenders
 
 
-def test_core_does_not_import_the_interface_layer() -> None:
-    """The rule this branch was opened for."""
-    offenders = [line for line in _violations("core") if "-> ui" in line]
-    assert offenders == [], (
-        "core must not import ui: the interface is injected through "
-        "src.core.rendering.overlay.WorldOverlay, never constructed by core"
-    )
-
-
-def test_the_simulation_does_not_import_the_application() -> None:
-    """The simulation talks to the application through src.core.events only.
-
-    The level publishes facts on the bus and holds no reference to the
-    application. Notification latches are restored by rollback, so a rewind can
-    re-emit a fact; subscribers must tolerate a repeated identical payload.
-    """
-    offenders = [line for line in _violations("core") if "-> application" in line]
-    assert offenders == [], "core must not import application: publish on src.core.events"
+@pytest.mark.parametrize("layer", ("simulation", "presentation", "platform", "shared"))
+def test_no_layer_imports_the_composition_root(layer: str) -> None:
+    offenders = [line for line in _violations(layer) if "-> application" in line]
+    assert offenders == [], f"{layer} must not import application: {offenders}"
 
 
 def test_the_renderer_names_no_ui_module() -> None:
-    """The specific inversion, named so a revert is obvious in the diff."""
     source = (SRC / "presentation/rendering/renderer.py").read_text(encoding="utf-8")
-    assert "src.ui" not in source
+    assert "src.presentation.ui" not in source
     assert "UIManager" not in source
 
 
 def test_the_interface_satisfies_the_overlay_port() -> None:
-    """`UIManager` is the implementation; the port is checked against it here.
-
-    Structural, at test time, because a Protocol nothing satisfies is a
-    comment. `NullOverlay` is the other implementation and is the default, so
-    both are checked.
-    """
-    from src.core.rendering.overlay import NullOverlay, WorldOverlay
-    from src.ui.ui_manager import UIManager
+    from src.presentation.rendering.overlay import NullOverlay, WorldOverlay
+    from src.presentation.ui.ui_manager import UIManager
 
     for implementation in (UIManager, NullOverlay):
         for method in WorldOverlay.__protocol_attrs__:
@@ -167,20 +99,12 @@ def test_the_interface_satisfies_the_overlay_port() -> None:
 
 
 def test_the_composition_root_lives_in_the_application() -> None:
-    """`Game` wires every layer together, so it sits at the top: no exemption needed.
-
-    It used to live in `core` and be exempted from `core`'s rule, which made the
-    rule false for the module everything starts from.
-    """
-    assert not (SRC / "core/game.py").exists()
-    assert {"core", "ui"} <= _imported_layers(SRC / "application/game.py")
+    assert {"presentation", "simulation"} <= _imported_layers(SRC / "application/game.py")
 
 
 def test_the_layer_walk_actually_finds_the_modules() -> None:
-    """Guard the guard: an empty walk would make every rule above vacuous."""
-    assert len(list((SRC / "core").rglob("*.py"))) > 40
-    assert "core" in _imported_layers(SRC / "presentation/ui/ui_manager.py")
-    assert "presentation" in _imported_layers(SRC / "ui/ui_manager.py")
+    assert len(list((SRC / "simulation").rglob("*.py"))) > 40
+    assert "simulation" in _imported_layers(SRC / "presentation/ui/ui_manager.py")
 
 
 @pytest.mark.parametrize("layer", LAYERS)

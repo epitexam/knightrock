@@ -14,9 +14,9 @@ others, and the next one costs nothing here.
 import pygame
 
 from src.application.scene import Scene
-from src.core.events import EventBus, UiEffect, UiFeedback
-from src.core.input.event_router import EventRouter, RoutedInput
-from src.ui.menu_model import MenuAction
+from src.platform.input.event_router import EventRouter, RoutedInput
+from src.presentation.ui.menu_model import MenuAction
+from src.shared.events import EventBus, UiEffect, UiFeedback
 
 #: The report values that mean *the focus moved* rather than *an item fired*.
 _NAVIGATION = frozenset({MenuAction.MOVE_UP, MenuAction.MOVE_DOWN, MenuAction.HOVER})

@@ -5,14 +5,14 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.fx import OrbitParticle
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.feedback_system import _spawn_guard_fx
-from src.core.settings import Combat, Stun
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.enemy import Enemy
-from src.entities.player import Player
-from src.states.reaction_states import DIZZY_STATE
+from src.presentation.fx import OrbitParticle
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.player import Player
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.level.systems.feedback_system import _spawn_guard_fx
+from src.simulation.settings import Combat, Stun
+from src.simulation.states.reaction_states import DIZZY_STATE
 from tests.unit.helpers import InputStub
 
 GOBLIN_CONFIG = shipped_gameplay_data().enemies["goblin"]
@@ -140,9 +140,9 @@ def test_the_gauge_holds_then_drains() -> None:
 
 
 def _strike(enemy: Enemy, **hit: object):
-    from src.combat.frame_data import HitProperties
-    from src.combat.hit_resolver import HitResolver
-    from src.combat.knockback import KnockbackConfig
+    from src.simulation.combat.frame_data import HitProperties
+    from src.simulation.combat.hit_resolver import HitResolver
+    from src.simulation.combat.knockback import KnockbackConfig
     from tests.unit.helpers import AttackerStub
 
     hit.setdefault("knockback", KnockbackConfig(power=(100.0, 0.0)))
@@ -215,7 +215,7 @@ def test_an_executing_blow_is_an_ordinary_one_on_a_fighter_not_stunned() -> None
 
 
 def test_dizzy_state_exits_after_duration() -> None:
-    from src.states.enemy_states import EnemyDizzyState
+    from src.simulation.states.enemy_states import EnemyDizzyState
 
     enemy = _enemy()
     enemy.state_machine.current_state_name = DIZZY_STATE
@@ -236,7 +236,7 @@ def test_dizzy_state_exits_after_duration() -> None:
 
 
 def test_player_dizzy_state_exits_via_ground_return() -> None:
-    from src.states.player_states import PlayerDizzyState
+    from src.simulation.states.player_states import PlayerDizzyState
 
     player = _player()
     player.state_machine.current_state_name = DIZZY_STATE
@@ -259,9 +259,9 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     than as the state the block earned. Emitted on a cadence they fade in with
     the dizzy state and are gone shortly after it ends.
     """
-    from src.core.fx.tuning import FxDizzy
-    from src.core.level.systems.feedback_system import FeedbackSystem
-    from src.core.sprite_groups import SpriteGroups
+    from src.presentation.fx.tuning import FxDizzy
+    from src.simulation.level.systems.feedback_system import FeedbackSystem
+    from src.simulation.sprite_groups import SpriteGroups
     from tests.unit.helpers import make_entity
 
     entity = make_entity(pos=(100.0, 100.0))
@@ -294,7 +294,7 @@ def test_a_parry_that_stuns_spawns_no_stars_of_its_own() -> None:
     """The stun event carries the camera shake, and nothing else."""
     from pygame.sprite import Group
 
-    from src.core.level.systems.contact_system import GuardEvent
+    from src.simulation.level.systems.contact_system import GuardEvent
 
     entity = SimpleNamespace(
         hitbox=pygame.FRect(100, 100, 40, 48),

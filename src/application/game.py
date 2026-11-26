@@ -20,27 +20,27 @@ from src.application.settings_store import (
     SettingsStore,
     UserSettings,
 )
-from src.core import fx
-from src.core.asset_library import shared_library
-from src.core.audio import AudioBus
-from src.core.display import letterbox
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, density_for
-from src.core.display.monitors import Monitor, Topology
-from src.core.display.presentation import Presentation
-from src.core.display.stage import Stage
-from src.core.display.window_watch import DisplayChange, WindowWatch
-from src.core.events import AppExitRequested, EventBus, LevelCompleted, LevelStarted, PlayerDied
-from src.core.input.event_router import EventRouter
-from src.core.input.input_bindings import InputBindings
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import LocalInputProvider
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.core.rendering.renderer import clear_shear_cache
-from src.core.resource_coordinator import ResourceCoordinator
-from src.core.settings import Display, Simulation
-from src.data.provider import GameplayData, load_gameplay_data
-from src.ui.ui_manager import UIManager
+from src.platform.assets import shared_library
+from src.platform.audio import AudioBus
+from src.platform.input.event_router import EventRouter
+from src.platform.input.input_bindings import InputBindings
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import LocalInputProvider
+from src.platform.resource_coordinator import ResourceCoordinator
+from src.presentation import fx
+from src.presentation.display import letterbox
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy, density_for
+from src.presentation.display.monitors import Monitor, Topology
+from src.presentation.display.presentation import Presentation
+from src.presentation.display.stage import Stage
+from src.presentation.display.window_watch import DisplayChange, WindowWatch
+from src.presentation.rendering.renderer import clear_shear_cache
+from src.presentation.ui.ui_manager import UIManager
+from src.shared.events import AppExitRequested, EventBus, LevelCompleted, LevelStarted, PlayerDied
+from src.simulation.data.provider import GameplayData, load_gameplay_data
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
+from src.simulation.settings import Display, Simulation
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +267,7 @@ class Game:
         Owned here rather than by the renderer, for two reasons. The layering
         one: the application layer is where ``core`` and ``ui`` meet, and
         ``core`` importing ``ui`` is the dependency
-        :mod:`src.core.rendering.overlay` exists to remove. The practical one:
+        :mod:`src.presentation.rendering.overlay` exists to remove. The practical one:
         a level transition used to build a second interface and throw the
         first one away, which threw away every font it had cached, and font
         scanning is what those caches are for.
@@ -315,7 +315,7 @@ class Game:
     def effective_fit(self) -> FitPolicy:
         """The fit in force, as the presentation draws it and the menu reports it.
 
-        Not ``settings.fit`` alone: see :func:`src.core.display.letterbox.effective_fit`.
+        Not ``settings.fit`` alone: see :func:`src.presentation.display.letterbox.effective_fit`.
         """
         return letterbox.effective_fit(self.settings.fit, self.settings.pixel_perfect)
 

@@ -828,7 +828,7 @@ class Entity:
     def on_hit_evaded(self) -> bool:
         """A hit passed through this fighter while invincible, or its ghost. Nothing by default.
 
-        :class:`~src.entities.player.Player` makes a perfect dodge of it.
+        :class:`~src.simulation.entities.player.Player` makes a perfect dodge of it.
         """
         return False
 
@@ -837,7 +837,7 @@ class Entity:
     ) -> None:
         """One of this fighter's hits took health off ``target``. Nothing by default.
 
-        :class:`~src.entities.player.Player` is paid for it.
+        :class:`~src.simulation.entities.player.Player` is paid for it.
         """
         del target, combo_advanced, result
 
@@ -1166,7 +1166,7 @@ class Entity:
         it, and the next entity allocated can be handed the recycled address --
         at which point ``add`` would see a key it already has and skip the
         insertion, and the new entity would pass through everything. See
-        :meth:`src.physics.spatial_hash.SpatialHash.add`.
+        :meth:`src.simulation.physics.spatial_hash.SpatialHash.add`.
         """
         spatial_hash = self.spatial_hash
         if spatial_hash is not None:

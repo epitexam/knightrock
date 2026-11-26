@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pygame
 
-from src.core.sprites import Sprite
+from src.simulation.sprites import Sprite
 from tests.headless.test_combat_dynamism import _arena
 
 

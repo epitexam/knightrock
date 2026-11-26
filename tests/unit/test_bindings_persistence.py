@@ -5,9 +5,9 @@ from types import MappingProxyType
 import pygame
 
 from src.application.settings_store import SettingsStore
-from src.core.input.bindings_codec import bindings_to_dict
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings, MenuBindings
+from src.platform.input.bindings_codec import bindings_to_dict
+from src.platform.input.input_bindings import InputBindings, MenuBindings
+from src.shared.input_actions import InputAction
 
 
 class _Bindings:

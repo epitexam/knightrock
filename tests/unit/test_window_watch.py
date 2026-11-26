@@ -1,7 +1,7 @@
 """The window rules, from tables: no window and no display needed."""
 
-from src.core.display.monitors import Monitor, Topology
-from src.core.display.window_watch import DisplayChange, WindowWatch, monitor_at
+from src.presentation.display.monitors import Monitor, Topology
+from src.presentation.display.window_watch import DisplayChange, WindowWatch, monitor_at
 
 LEFT = Monitor(0, "DP-1", (0, 0, 2560, 1440), (0, 0, 2560, 1400), 180)
 RIGHT = Monitor(1, "DP-2", (2560, 0, 1920, 1080), (2560, 0, 1920, 1040), 60)
@@ -229,7 +229,7 @@ def test_a_screen_is_found_by_its_name() -> None:
 
 
 def test_a_desk_known_by_size_alone_has_no_names_to_match() -> None:
-    from src.core.display.monitors import degraded
+    from src.presentation.display.monitors import degraded
 
     assert degraded(((1920, 1080), (1280, 720))).called("") is None
 
@@ -239,8 +239,8 @@ def _opened_on(monkeypatch, screen_name: str | None) -> int:
     import pygame
 
     from src.application.screen import Screen
-    from src.core.display.letterbox import FitPolicy
-    from src.core.display.stage import Stage, WindowSpec
+    from src.presentation.display.letterbox import FitPolicy
+    from src.presentation.display.stage import Stage, WindowSpec
 
     asked: list[int] = []
 
@@ -277,7 +277,7 @@ def test_the_screen_name_is_only_given_when_the_platform_names_screens(monkeypat
     import pygame
 
     from src.application.screen import Screen
-    from src.core.display.monitors import degraded
+    from src.presentation.display.monitors import degraded
 
     monkeypatch.setattr(pygame.display, "get_window_position", lambda: (3000, 100))
     screen = Screen()

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.combat.combatant_protocol import DamageResult
-from src.core.input.input_actions import InputAction
-from src.core.settings import Input as InputSettings
+from src.shared.input_actions import InputAction
+from src.simulation.combat.combatant_protocol import DamageResult
+from src.simulation.settings import Input as InputSettings
 from tests.headless.test_feel_latency import DT, _scene
 
 

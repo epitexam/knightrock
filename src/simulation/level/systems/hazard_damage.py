@@ -16,7 +16,7 @@ from src.simulation.physics.entity_grid import EntityGrid
 class Hazard(Protocol):
     """What the hazard pipeline reads of a hazard sprite.
 
-    Every hazard is a :class:`~src.core.sprites.Sprite`, which gives it the
+    Every hazard is a :class:`~src.simulation.sprites.Sprite`, which gives it the
     contact geometry; the hazard classes add ``damage`` and ``knockback``.
     """
 

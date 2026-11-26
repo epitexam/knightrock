@@ -13,13 +13,13 @@ from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
-from src.core.display import letterbox
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import picture
-from src.core.display.monitors import Monitor, Topology, degraded
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.settings import Debug
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.display import letterbox
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import picture
+from src.presentation.display.monitors import Monitor, Topology, degraded
+from src.shared.input_actions import InputAction
+from src.simulation.settings import Debug
 
 
 def _game(topology=None) -> SimpleNamespace:

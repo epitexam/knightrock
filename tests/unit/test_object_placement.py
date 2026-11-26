@@ -15,11 +15,11 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.level.level_data import DATA_LAYER_NAME, LevelDataError
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.core.level.world_builder import WorldBuilder
-from src.core.sprite_groups import SpriteGroups
-from src.core.sprites import LevelExit
+from src.simulation.level.level_data import DATA_LAYER_NAME, LevelDataError
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
+from src.simulation.level.world_builder import WorldBuilder
+from src.simulation.sprite_groups import SpriteGroups
+from src.simulation.sprites import LevelExit
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets
@@ -68,7 +68,7 @@ def test_an_empty_object_does_not_produce_a_zero_sized_trigger() -> None:
 
 
 def test_a_map_tiled_at_another_size_is_refused() -> None:
-    from src.core.level.level_data import LevelData
+    from src.simulation.level.level_data import LevelData
 
     stub = SimpleNamespace(
         width=4,

@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pygame
 from pygame.math import Vector2
 
-from src.core.level.systems.camera_system import CameraSystem
-from src.core.rendering.camera import Camera
-from src.core.settings import Respawn
+from src.presentation.rendering.camera import Camera
+from src.simulation.level.systems.camera_system import CameraSystem
+from src.simulation.settings import Respawn
 
 
 def _player(alive: bool, hitbox: pygame.FRect | None = None):

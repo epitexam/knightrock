@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import pygame
 
-from src.core.colors import Color, Colors
-from src.core.settings import Debug
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.panel_renderer import PanelRenderer
 from src.presentation.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_WARN
@@ -27,6 +25,8 @@ from src.presentation.ui.world_overlay.metrics import (
     MetricsCache,
     WorldOverlayMetrics,
 )
+from src.shared.colors import Color, Colors
+from src.simulation.settings import Debug
 
 __all__ = ["PanelLayer"]
 

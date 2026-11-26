@@ -23,7 +23,7 @@ class SpriteGroups:
     - ``static_sprites`` and ``fg_sprites`` hold the tile layers. They are
       built once when the level loads and never move, so the renderer culls
       them through a spatial index
-      (:class:`~src.core.rendering.tile_chunk_index.TileChunkIndex`) instead
+      (:class:`~src.presentation.rendering.tile_chunk_index.TileChunkIndex`) instead
       of testing every tile against the camera sixty times a second. ``fg``
       is separate from the rest because it draws *last*, on top of
       everything else.

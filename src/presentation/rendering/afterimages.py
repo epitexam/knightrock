@@ -1,15 +1,15 @@
 """Afterimage plate colours and opacities, kept out of the renderer.
 
 The owning state machine and the blit loop stay in
-:mod:`src.core.rendering.renderer`; only the pure ladder arithmetic lives here.
+:mod:`src.presentation.rendering.renderer`; only the pure ladder arithmetic lives here.
 """
 
 from __future__ import annotations
 
 import pygame
 
-from src.core.colors import Color, FXColors
-from src.core.settings import Afterimage
+from src.shared.colors import Color, FXColors
+from src.simulation.settings import Afterimage
 
 
 def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:

@@ -9,9 +9,9 @@ separation, and combat (every candidate list came back empty).
 import pygame
 import pytest
 
-from src.core.level.systems.contact_damage import ContactDamageSystem
-from src.core.level.systems.separation_system import SeparationSystem
-from src.core.settings import Combat as CombatSettings
+from src.simulation.level.systems.contact_damage import ContactDamageSystem
+from src.simulation.level.systems.separation_system import SeparationSystem
+from src.simulation.settings import Combat as CombatSettings
 from tests.fakes import BodyStub
 
 

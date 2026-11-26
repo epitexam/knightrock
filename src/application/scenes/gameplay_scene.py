@@ -8,15 +8,15 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
-from src.core.colors import Colors
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.level.level import Level
-from src.core.rendering.camera import Camera
-from src.core.settings import Debug, Gameplay
-from src.ui.menu_model import MenuAction
-from src.ui.panel_renderer import compact_panels, set_compact_panels
-from src.ui.ui_manager import UIManager
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.menu_model import MenuAction
+from src.presentation.ui.panel_renderer import compact_panels, set_compact_panels
+from src.presentation.ui.ui_manager import UIManager
+from src.shared.colors import Colors
+from src.shared.input_actions import InputAction
+from src.simulation.level.level import Level
+from src.simulation.settings import Debug, Gameplay
 
 logger = logging.getLogger(__name__)
 

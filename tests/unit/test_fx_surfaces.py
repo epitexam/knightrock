@@ -13,7 +13,6 @@ from collections.abc import Iterator
 import pygame
 import pytest
 
-from src.core.fx.tuning import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
 from src.presentation.fx import (
     DashDustParticle,
     DizzyVortexParticle,
@@ -32,6 +31,7 @@ from src.presentation.fx import (
     vortex_frames,
 )
 from src.presentation.fx import particles as particles
+from src.presentation.fx.tuning import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
 
 
 @pytest.fixture(scope="module", autouse=True)

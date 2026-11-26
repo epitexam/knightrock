@@ -15,8 +15,10 @@ from typing import TYPE_CHECKING, Any
 import pygame
 from pygame.sprite import Group
 
-from src.combat.combatant_protocol import Finish
-from src.combat.frame_data import (
+from src.presentation.ui.world_overlay.cards import CardLayer
+from src.shared.input_state import InputState
+from src.simulation.combat.combatant_protocol import Finish
+from src.simulation.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
     HitboxKeyframe,
@@ -24,15 +26,13 @@ from src.combat.frame_data import (
     HitProperties,
     PhaseDefinition,
 )
-from src.combat.knockback import KnockbackConfig
-from src.core.input.input_state import InputState
-from src.data.attacks import read_attacks_file
-from src.entities.entity import Entity
-from src.entities.hurtbox_zones import HurtboxZoneDef
-from src.ui.world_overlay.cards import CardLayer
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.data.attacks import read_attacks_file
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.hurtbox_zones import HurtboxZoneDef
 
 if TYPE_CHECKING:
-    from src.ui.ui_manager import UIManager
+    from src.presentation.ui.ui_manager import UIManager
 
 
 def make_phase(
@@ -315,7 +315,7 @@ def make_overlay(surface: pygame.Surface, density: float = 1.0) -> UIManager:
     the HUD or a debug panel has to say it wants the interface rather than
     getting it as a side effect of constructing a renderer.
     """
-    from src.ui.ui_manager import UIManager
+    from src.presentation.ui.ui_manager import UIManager
 
     return UIManager(surface, density)
 
@@ -394,10 +394,10 @@ def make_card_layer() -> CardLayer:
     ``label_segments`` and ``entity_segments`` are instance methods, so a test
     that only wants to read a card's text still has to stand one up.
     """
-    from src.ui.panel_renderer import PanelRenderer
-    from src.ui.world_overlay.cards import CardLayer
-    from src.ui.world_overlay.metrics import OVERLAY_LAYERS, MetricsCache
-    from src.ui.world_overlay.shared import AnnotationSink
+    from src.presentation.ui.panel_renderer import PanelRenderer
+    from src.presentation.ui.world_overlay.cards import CardLayer
+    from src.presentation.ui.world_overlay.metrics import OVERLAY_LAYERS, MetricsCache
+    from src.presentation.ui.world_overlay.shared import AnnotationSink
 
     surface = pygame.display.get_surface() or pygame.Surface((64, 64))
     renderer = PanelRenderer(surface)

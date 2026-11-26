@@ -14,15 +14,15 @@ from __future__ import annotations
 
 import pygame
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import InputProvider
-from src.core.input.input_state import InputState
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.core.settings import Combat as CombatSettings
-from src.core.sprites import Sprite
-from src.data.provider import shipped_gameplay_data
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import InputProvider
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.sprites import Sprite
 from tests.headless.arena import DT, FLOOR_Y, PLAYER_X, foe
 
 

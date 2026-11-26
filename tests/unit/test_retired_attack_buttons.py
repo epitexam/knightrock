@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pygame
 
-from src.core.input.bindings_codec import bindings_from_dict, bindings_to_dict
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings
+from src.platform.input.bindings_codec import bindings_from_dict, bindings_to_dict
+from src.platform.input.input_bindings import InputBindings
+from src.shared.input_actions import InputAction
 
 
 def _old_file() -> dict:

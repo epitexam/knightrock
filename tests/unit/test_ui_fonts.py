@@ -15,8 +15,8 @@ import os
 import pygame
 import pytest
 
-from src.core.paths import PROJECT_ROOT
-from src.ui.fonts import menu_font
+from src.presentation.ui.fonts import menu_font
+from src.shared.paths import PROJECT_ROOT
 
 FONTS_DIR = PROJECT_ROOT / "assets" / "fonts"
 
@@ -46,6 +46,6 @@ def test_the_interface_does_not_resolve_a_font_by_system_name() -> None:
             continue
         source = path.read_text(encoding="utf-8")
         assert "SysFont(" not in source, (
-            f"{path.name} resolves a font by system name; use src.ui.fonts.menu_font, "
+            f"{path.name} resolves a font by system name; use src.presentation.ui.fonts.menu_font, "
             "which answers from the bundled file"
         )

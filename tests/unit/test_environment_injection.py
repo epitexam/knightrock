@@ -10,9 +10,9 @@ from pathlib import Path
 from src.application.attack_authoring import export_attack
 from src.application.save_game import default_save_path
 from src.application.settings_store import default_settings_path
-from src.core.level.systems.combat_trace import CombatTrace
-from src.core.settings import Debug
-from src.data.roots import gameplay_data_root
+from src.simulation.data.roots import gameplay_data_root
+from src.simulation.level.systems.combat_trace import CombatTrace
+from src.simulation.settings import Debug
 from tests.unit.helpers import make_attack, make_phase
 
 

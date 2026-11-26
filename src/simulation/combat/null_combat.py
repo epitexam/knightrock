@@ -1,4 +1,4 @@
-"""No-op combat stand-in, split from :mod:`src.combat.combat_component`.
+"""No-op combat stand-in, split from :mod:`src.simulation.combat.combat_component`.
 
 ``NullCombatComponent`` mirrors the public surface of ``CombatComponent`` for
 entities without combat capabilities. It lives here so the null-object layer

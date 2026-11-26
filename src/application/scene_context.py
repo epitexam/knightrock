@@ -18,17 +18,17 @@ if TYPE_CHECKING:
     from src.application.save_game import SaveGame
     from src.application.scene_manager import SceneManager
     from src.application.settings_store import UserSettings
-    from src.core.display.letterbox import FitPolicy
-    from src.core.display.monitors import Monitor
-    from src.core.display.presentation import Presentation
-    from src.core.display.stage import Stage
-    from src.core.events import EventBus
-    from src.core.input.event_router import EventRouter
-    from src.core.input.input_bindings import InputBindings
-    from src.core.input.input_manager import InputManager
-    from src.core.level.level_manager import LevelManager
-    from src.data.provider import GameplayData
-    from src.ui.ui_manager import UIManager
+    from src.platform.input.event_router import EventRouter
+    from src.platform.input.input_bindings import InputBindings
+    from src.platform.input.input_manager import InputManager
+    from src.presentation.display.letterbox import FitPolicy
+    from src.presentation.display.monitors import Monitor
+    from src.presentation.display.presentation import Presentation
+    from src.presentation.display.stage import Stage
+    from src.presentation.ui.ui_manager import UIManager
+    from src.shared.events import EventBus
+    from src.simulation.data.provider import GameplayData
+    from src.simulation.level.level_manager import LevelManager
 
 
 class SceneContext(Protocol):

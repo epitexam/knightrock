@@ -21,13 +21,13 @@ from src.application.scenes import video_options
 from src.application.scenes.menu_page import MenuPage
 from src.application.scenes.option_screen import Option, OptionScreen
 from src.application.settings_store import UserSettings
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, density_for, picture
-from src.core.input.event_router import RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.settings import Debug
-from src.ui.menu_model import MenuAction, MenuItem
-from src.ui.text import t
+from src.platform.input.event_router import RoutedInput
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy, density_for, picture
+from src.presentation.ui.menu_model import MenuAction, MenuItem
+from src.presentation.ui.text import t
+from src.shared.input_actions import InputAction
+from src.simulation.settings import Debug
 
 logger = logging.getLogger(__name__)
 

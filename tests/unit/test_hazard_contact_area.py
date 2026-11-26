@@ -14,15 +14,15 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.combat.frame_data import HitProperties
-from src.combat.shapes import ShapeKind, ShapePose, SweptShape
-from src.core.hazards import SpanHazard, art_bounds
-from src.core.level.level_data import ObjectData, _gid_flips
-from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
-from src.core.level.systems.hazard_damage import HazardDamageSystem
-from src.core.level.world_builder import _build_static_hazard
-from src.core.paths import PROJECT_ROOT
-from src.core.sprite_groups import SpriteGroups
+from src.shared.paths import PROJECT_ROOT
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.shapes import ShapeKind, ShapePose, SweptShape
+from src.simulation.hazards import SpanHazard, art_bounds
+from src.simulation.level.level_data import ObjectData, _gid_flips
+from src.simulation.level.systems.contact_system import ContactSystem, OffensiveBox
+from src.simulation.level.systems.hazard_damage import HazardDamageSystem
+from src.simulation.level.world_builder import _build_static_hazard
+from src.simulation.sprite_groups import SpriteGroups
 from tests.conftest import requires_assets
 from tests.fakes import BodyStub
 
@@ -157,8 +157,8 @@ def test_a_round_box_is_judged_on_its_shape_and_not_its_rectangle() -> None:
     reason="needs the untracked assets/graphics tree",
 )
 def test_the_shipped_floor_spikes_hurt_through_their_bottom_half_only() -> None:
-    from src.core.asset_library import shared_library
-    from src.core.level.world_builder import FLOOR_SPIKES_ART
+    from src.platform.assets import shared_library
+    from src.simulation.level.world_builder import FLOOR_SPIKES_ART
 
     frames = shared_library().frames(FLOOR_SPIKES_ART)
 

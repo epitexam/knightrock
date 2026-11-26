@@ -4,7 +4,7 @@
 turn from the void, hold a short beat, then hand control back through
 ``exit_resolver``. Only the enemy AI enters it (the player keeps control);
 the parameterization (``exit_resolver``, hold, friction, tags) follows the
-shared reaction states in :mod:`src.states.reaction_states`.
+shared reaction states in :mod:`src.simulation.states.reaction_states`.
 """
 
 from collections.abc import Callable

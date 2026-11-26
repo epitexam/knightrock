@@ -12,13 +12,13 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.core.level.level_data import LevelConfig, LevelData
-from src.core.level.systems.hazard_system import HazardSystem
-from src.core.level.systems.physics_system import PhysicsSystem
-from src.core.level.systems.platform_system import PlatformSystem
-from src.core.level.systems.progression_system import ProgressionSystem
-from src.core.level.systems.respawn_system import PlayerRespawnSystem
-from src.core.settings import Respawn
+from src.simulation.level.level_data import LevelConfig, LevelData
+from src.simulation.level.systems.hazard_system import HazardSystem
+from src.simulation.level.systems.physics_system import PhysicsSystem
+from src.simulation.level.systems.platform_system import PlatformSystem
+from src.simulation.level.systems.progression_system import ProgressionSystem
+from src.simulation.level.systems.respawn_system import PlayerRespawnSystem
+from src.simulation.settings import Respawn
 from tests.fakes import FighterSprite
 
 

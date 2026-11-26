@@ -26,7 +26,7 @@ Two properties make the result *exactly* the old one, not merely close:
   chunk the viewport touches. A sprite visible in the viewport therefore
   always overlaps at least one chunk the viewport overlaps, so it is always
   a candidate. The caller still runs the precise
-  :meth:`~src.core.rendering.camera.Camera.is_visible` test on the
+  :meth:`~src.presentation.rendering.camera.Camera.is_visible` test on the
   candidates; the index only decides which sprites are worth asking about.
   A sprite straddling several chunks appears in several chunk lists, so the
   lookup deduplicates.
@@ -49,7 +49,7 @@ from collections.abc import Iterable
 
 import pygame
 
-from src.core.settings import World
+from src.simulation.settings import World
 
 CHUNK_TILES = 4
 """Tiles per chunk side.

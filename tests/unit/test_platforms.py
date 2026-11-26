@@ -6,11 +6,11 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.core.level.systems.platform_system import PlatformSystem
-from src.core.sprite_groups import SpriteGroups
-from src.core.sprites import MovingPlatform, Sprite
-from src.physics.platforms import update_moving_platform
-from src.physics.spatial_hash import SpatialHash
+from src.simulation.level.systems.platform_system import PlatformSystem
+from src.simulation.physics.platforms import update_moving_platform
+from src.simulation.physics.spatial_hash import SpatialHash
+from src.simulation.sprite_groups import SpriteGroups
+from src.simulation.sprites import MovingPlatform, Sprite
 
 
 @pytest.fixture()

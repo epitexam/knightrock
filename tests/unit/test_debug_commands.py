@@ -6,23 +6,23 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.frame_data import move_id
-from src.core.colors import Colors
-from src.core.display.framing import Framing
-from src.core.level.systems.projectile_system import ProjectileSystem
-from src.core.level.systems.spawn_system import (
+from src.presentation.display.framing import Framing
+from src.presentation.ui.world_overlay.geo import GeoLayer
+from src.presentation.ui.world_overlay.panels import PanelLayer
+from src.shared.colors import Colors
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.frame_data import move_id
+from src.simulation.data.attacks import attack_definition_to_dict, read_attack_definition
+from src.simulation.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
+from src.simulation.level.systems.projectile_system import ProjectileSystem
+from src.simulation.level.systems.spawn_system import (
     DEBUG_ATTACKS,
     DEBUG_JUGGLE_KEY,
     DEBUG_SHOTS,
     SpawnSystem,
 )
-from src.core.sprite_groups import SpriteGroups
-from src.data.attacks import attack_definition_to_dict, read_attack_definition
-from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
-from src.physics.spatial_hash import SpatialHash
-from src.ui.world_overlay.geo import GeoLayer
-from src.ui.world_overlay.panels import PanelLayer
+from src.simulation.physics.spatial_hash import SpatialHash
+from src.simulation.sprite_groups import SpriteGroups
 from tests.unit.helpers import SHOWCASE, make_entity
 
 
@@ -36,15 +36,15 @@ def _headless_display() -> None:
 
 @pytest.fixture()
 def world_ui():
-    from src.ui.panel_renderer import PanelRenderer
-    from src.ui.world_ui import WorldUI
+    from src.presentation.ui.panel_renderer import PanelRenderer
+    from src.presentation.ui.world_ui import WorldUI
 
     return WorldUI(PanelRenderer(pygame.display.get_surface()))
 
 
 @pytest.fixture()
 def camera():
-    from src.core.rendering.camera import Camera as _Camera
+    from src.presentation.rendering.camera import Camera as _Camera
 
     return _Camera(Framing(float(1024), float(768)))
 
@@ -97,7 +97,7 @@ def test_trigger_test_attack_starts_showcase_move() -> None:
 
 def test_a_wrong_posture_bench_key_does_not_crash_the_live_tick(monkeypatch) -> None:
     """The direct API still raises; a key held during a tick is only reported."""
-    from src.core.settings import Debug
+    from src.simulation.settings import Debug
 
     monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: True))
     key = next(k for k, name in DEBUG_ATTACKS.items() if name == move_id("slash_high_4"))
@@ -411,7 +411,7 @@ def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
 
 
 def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
-    from src.ui.world_overlay.metrics import CLASH_MARKER_LIFETIME, CLASH_TICK_S
+    from src.presentation.ui.world_overlay.metrics import CLASH_MARKER_LIFETIME, CLASH_TICK_S
 
     surface = world_ui.surface
     surface.fill((0, 0, 0))

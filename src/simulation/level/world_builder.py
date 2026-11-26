@@ -9,7 +9,6 @@ from collections.abc import Sequence
 import pygame
 from pygame.sprite import Group
 
-from src.core.level import properties as props
 from src.platform.assets import shared_library
 from src.platform.input.input_manager import InputManager
 from src.shared.colors import Colors
@@ -24,6 +23,7 @@ from src.simulation.hazards import (
     build_hazard_animator,
     mirrored,
 )
+from src.simulation.level import properties as props
 from src.simulation.level.level_data import DATA_LAYER_NAME, LevelData, ObjectData, ObjectLayerData
 from src.simulation.level.level_registry import Registry
 from src.simulation.level.systems.hazard_damage import HazardDamageSystem
@@ -46,7 +46,7 @@ def _build_terrain(tiles: TileList, groups: SpriteGroups) -> None:
 
     Terrain goes in ``static_sprites`` (the frozen draw plane) and
     ``collision_sprites`` (the physics plane), and deliberately not in
-    ``all_sprites``: see :class:`~src.core.sprite_groups.SpriteGroups` for why
+    ``all_sprites``: see :class:`~src.simulation.sprite_groups.SpriteGroups` for why
     the draw planes are split.
     """
     for x, y, surf in tiles:

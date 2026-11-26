@@ -13,13 +13,13 @@ import pygame
 import pytest
 
 from src.application.game import Game
-from src.core.level.level import Level
-from src.core.sprite_groups import SpriteGroups
 from src.presentation.display.framing import DEFAULT_FRAMING
 from src.presentation.display.viewport import Viewport
 from src.presentation.fx import particles
 from src.presentation.rendering.camera import Camera
 from src.presentation.rendering.renderer import Renderer
+from src.simulation.level.level import Level
+from src.simulation.sprite_groups import SpriteGroups
 from tests.conftest import requires_assets
 from tests.fakes import FighterSprite
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
@@ -170,7 +170,7 @@ def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     There is no display mode to change any more, so the *window size* is what
     rebuilds the window, and this is the path that has to carry it.
     """
-    from src.core.asset_library import shared_library
+    from src.platform.assets import shared_library
 
     game = game_runtime
     game.initialize_display()
@@ -190,7 +190,7 @@ def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
 
 def test_a_ui_scale_change_keeps_the_converted_art(game_runtime) -> None:
     """The caches only go when the display format actually changes."""
-    from src.core.asset_library import shared_library
+    from src.platform.assets import shared_library
 
     game = game_runtime
     game.initialize_display()

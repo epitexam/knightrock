@@ -3,17 +3,17 @@ from types import MappingProxyType
 import pygame
 
 from src.application.input_dispatcher import InputDispatcher
-from src.core.events import EventBus, UiEffect, UiFeedback
-from src.core.input.event_router import (
+from src.platform.input.event_router import (
     REPEATABLE_UI_ACTIONS,
     EventRouter,
     InputDevice,
     RoutedInput,
 )
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings, MenuBindings
-from src.core.settings import Input as InputSettings
-from src.ui.menu_model import MenuAction
+from src.platform.input.input_bindings import InputBindings, MenuBindings
+from src.presentation.ui.menu_model import MenuAction
+from src.shared.events import EventBus, UiEffect, UiFeedback
+from src.shared.input_actions import InputAction
+from src.simulation.settings import Input as InputSettings
 
 
 def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:

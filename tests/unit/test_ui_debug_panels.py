@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.level.level import Level
-from src.ui.ui_manager import UIManager
+from src.presentation.ui.ui_manager import UIManager
+from src.simulation.level.level import Level
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -130,7 +130,7 @@ def test_the_scene_host_port_is_what_the_panel_actually_needs() -> None:
     describing a seam that does not exist here; a Protocol that
     under-describes its subject is `Any` with better manners.
     """
-    from src.core.level.scene_host import SceneHost, SceneStack
+    from src.simulation.level.scene_host import SceneHost, SceneStack
 
     assert set(SceneHost.__protocol_attrs__) == {"scene_manager"}
     assert set(SceneStack.__protocol_attrs__) == {"current"}
@@ -144,7 +144,7 @@ def test_the_game_satisfies_the_scene_host_port(tmp_path: Path) -> None:
     much there.
     """
     from src.application.game import Game
-    from src.core.level.scene_host import SceneHost
+    from src.simulation.level.scene_host import SceneHost
 
     game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
     for member in SceneHost.__protocol_attrs__:
@@ -154,7 +154,7 @@ def test_the_game_satisfies_the_scene_host_port(tmp_path: Path) -> None:
 def test_a_level_can_be_drawn_with_no_application_at_all() -> None:
     """`Level.draw` used to take `game: Any`; the point of the port is that a
     level no longer needs one to produce a frame."""
-    from src.core.level.scene_host import SceneHost
+    from src.simulation.level.scene_host import SceneHost
 
     signature = inspect.signature(Level.draw)
     annotation = signature.parameters["scene_host"].annotation

@@ -20,7 +20,6 @@ from pathlib import Path
 import pygame
 import pytest
 
-from src.core.colors import Colors
 from src.presentation.ui import world_ui
 from src.presentation.ui.world_overlay import bars as bars_module
 from src.presentation.ui.world_overlay.bars import (
@@ -30,6 +29,7 @@ from src.presentation.ui.world_overlay.bars import (
     health_colour,
 )
 from src.presentation.ui.world_overlay.metrics import HEALTH_BAR_HEIGHT
+from src.shared.colors import Colors
 
 BARS_MODULE = Path(bars_module.__file__)
 SRC = BARS_MODULE.parents[3]
@@ -177,7 +177,7 @@ def test_the_health_colour_thresholds(ratio: float, colour: tuple) -> None:
 
 def test_drawing_returns_the_rects_it_painted() -> None:
     """A caller reasoning about what the bars covered needs them back."""
-    from src.core.rendering.camera import Camera
+    from src.presentation.rendering.camera import Camera
 
     surface = pygame.Surface((320, 240))
     camera = Camera()
@@ -190,7 +190,7 @@ def test_drawing_returns_the_rects_it_painted() -> None:
 
 
 def test_an_offscreen_entity_is_not_drawn() -> None:
-    from src.core.rendering.camera import Camera
+    from src.presentation.rendering.camera import Camera
 
     surface = pygame.Surface((320, 240))
     camera = Camera()

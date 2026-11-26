@@ -10,8 +10,8 @@ identical snapshots (positions, health) for the whole run.
 
 import random
 
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from tests.conftest import requires_assets
 from tests.headless.conftest import make_viewport
 

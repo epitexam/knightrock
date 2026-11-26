@@ -151,7 +151,7 @@ class WorldUI:
             #
             # There used to be an exact-type test above this one, skipped on
             # the theory that it would catch the tiles for free. It never
-            # matched anything: the tiles are `src.core.sprites.Sprite`, a
+            # matched anything: the tiles are `src.simulation.sprites.Sprite`, a
             # *subclass* of `pygame.sprite.Sprite`, so `type(sprite) is
             # pygame.sprite.Sprite` was false for every one of them and each
             # tile paid for a check that bought nothing. `is_static` is the

@@ -22,8 +22,6 @@ from typing import Any
 import pygame
 import pygame.sprite
 
-from src.core.colors import Color, Colors
-from src.entities.components.reaction import ReactionStatus
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.panel_renderer import PanelRenderer
 from src.presentation.ui.pixel import font_unit, pixel_frame
@@ -45,6 +43,8 @@ from src.presentation.ui.world_overlay.shared import (
     label_color,
     reaction_age,
 )
+from src.shared.colors import Color, Colors
+from src.simulation.entities.components.reaction import ReactionStatus
 
 #: One label row: ``(text, color)`` tokens laid out left to right.
 Segments = list[list[tuple[str, Color]]]

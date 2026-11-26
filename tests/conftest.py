@@ -4,8 +4,8 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.core.input.input_manager import InputManager
-from src.core.paths import PROJECT_ROOT
+from src.platform.input.input_manager import InputManager
+from src.shared.paths import PROJECT_ROOT
 
 #: `assets/` is git-ignored: a fresh checkout (and therefore CI) has fonts and
 #: sounds but no TMX maps or sprite art. Tests that build a real Player/Level

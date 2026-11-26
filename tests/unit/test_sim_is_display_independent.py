@@ -25,13 +25,13 @@ import os
 import pygame
 import pytest
 
-from src.core.display.detection import desktop_size
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import picture
-from src.core.display.viewport import Viewport
-from src.core.input.input_manager import InputManager
-from src.core.level.level import Level
-from src.core.settings import Simulation
+from src.platform.input.input_manager import InputManager
+from src.presentation.display.detection import desktop_size
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import picture
+from src.presentation.display.viewport import Viewport
+from src.simulation.level.level import Level
+from src.simulation.settings import Simulation
 from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data
 

@@ -6,12 +6,12 @@ from __future__ import annotations
 import pygame
 import pytest
 
-from src.core.settings import Debug
 from src.presentation.ui import panel_renderer
-from src.ui.fonts import menu_font, menu_font_size
-from src.ui.panel_renderer import PanelLayout, PanelRenderer
-from src.ui.styles import SELECTION_BG
-from src.ui.ui_manager import PANEL_KEYS, PANEL_PERFORMANCE, UIManager
+from src.presentation.ui.fonts import menu_font, menu_font_size
+from src.presentation.ui.panel_renderer import PanelLayout, PanelRenderer
+from src.presentation.ui.styles import SELECTION_BG
+from src.presentation.ui.ui_manager import PANEL_KEYS, PANEL_PERFORMANCE, UIManager
+from src.simulation.settings import Debug
 
 
 @pytest.fixture(autouse=True)

@@ -12,8 +12,8 @@ import os
 import pygame
 import pytest
 
-from src.core.display.framing import Framing
-from src.core.display.letterbox import FitPolicy, picture
+from src.presentation.display.framing import Framing
+from src.presentation.display.letterbox import FitPolicy, picture
 from tests.unit.helpers import make_overlay
 from tests.unit.test_hud import _player
 

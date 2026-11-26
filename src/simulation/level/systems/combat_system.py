@@ -1,7 +1,7 @@
 """Hit detection, hit-vs-hit priority/clash, and global hit-stop timing.
 
 Detection itself is delegated to the unified
-:class:`~src.core.level.systems.contact_system.ContactSystem`: this
+:class:`~src.simulation.level.systems.contact_system.ContactSystem`: this
 class owns the melee *producer* half (attacker eligibility, hit-vs-hit
 priority/clash) and the global hit-stop timer.
 """

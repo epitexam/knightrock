@@ -19,14 +19,14 @@ import pygame
 import pytest
 
 from src.application.scenes.gameplay_scene import GameplayScene
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import InputProvider
-from src.core.input.input_state import InputState
-from src.core.level.level import Level
-from src.core.level.systems.contact_damage import ContactDamageSystem
-from src.core.level.systems.hazard_damage import HazardDamageSystem
-from src.core.settings import Combat as CombatSettings
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import InputProvider
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.level.level import Level
+from src.simulation.level.systems.contact_damage import ContactDamageSystem
+from src.simulation.level.systems.hazard_damage import HazardDamageSystem
+from src.simulation.settings import Combat as CombatSettings
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
 from tests.unit.helpers import make_entity
 from tests.unit.test_hazard_damage import FakeHazard

@@ -9,11 +9,11 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.core.settings import Ledge, Turn
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.schema import EnemyConfig
-from src.states.enemy_states import EnemyChaseState, EnemyPatrolState, EnemyState
-from src.states.ledge_state import LedgeState
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.schema import EnemyConfig
+from src.simulation.settings import Ledge, Turn
+from src.simulation.states.enemy_states import EnemyChaseState, EnemyPatrolState, EnemyState
+from src.simulation.states.ledge_state import LedgeState
 from tests.unit.helpers import card_rows, make_card_layer, make_entity
 
 

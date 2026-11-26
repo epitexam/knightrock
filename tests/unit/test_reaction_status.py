@@ -9,17 +9,17 @@ render-only: decayed in ``Entity.update``, excluded from snapshots.
 import pytest
 from pygame.math import Vector2
 
-from src.combat.knockback import KnockbackConfig
-from src.core.settings import ReactionMark
-from src.entities.components.reaction import (
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.entities.components.reaction import (
     VELOCITY_KINDS,
     ReactionComponent,
     ReactionKind,
     ReactionStatus,
 )
-from src.states.enemy_states import EnemyState
-from src.states.player_states import PlayerState
-from src.states.reaction_states import KNOCKBACK_STATE, STAGGER_STATE
+from src.simulation.settings import ReactionMark
+from src.simulation.states.enemy_states import EnemyState
+from src.simulation.states.player_states import PlayerState
+from src.simulation.states.reaction_states import KNOCKBACK_STATE, STAGGER_STATE
 from tests.unit.helpers import make_entity
 from tests.unit.test_reaction_ownership import _narrow_owner
 

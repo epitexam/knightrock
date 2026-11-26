@@ -136,9 +136,9 @@ class Presentation:
     def recompute(self, *, force: bool = False) -> bool:
         """Fit the window again; return whether the target surface is new.
 
-        A window under :data:`~src.core.display.monitors.MIN_WINDOW` is refused
+        A window under :data:`~src.presentation.display.monitors.MIN_WINDOW` is refused
         and the last target kept: below it the interface scale is one
-        :func:`~src.ui.scale.checked_ui_scale` rejects, so a window dragged that
+        :func:`~src.presentation.ui.scale.checked_ui_scale` rejects, so a window dragged that
         small is clipped for the drag rather than crashing. The first fit has
         nothing to keep and fits anyway.
         """

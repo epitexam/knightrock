@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.core.fx import (
+from src.presentation.fx import (
     spawn_corpse,
     spawn_dash_dust,
     spawn_dash_grains,

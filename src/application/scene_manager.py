@@ -16,8 +16,8 @@ import pygame
 from src.application.input_dispatcher import InputDispatcher
 from src.application.scene import Scene
 from src.application.scene_navigator import SceneNavigator
-from src.core.colors import Colors
-from src.core.events import AppExitRequested
+from src.shared.colors import Colors
+from src.shared.events import AppExitRequested
 
 if TYPE_CHECKING:
     from src.application.game import Game

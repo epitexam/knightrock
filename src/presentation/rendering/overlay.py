@@ -94,7 +94,7 @@ class NullOverlay:
     """A :class:`WorldOverlay` that draws nothing.
 
     The Null Object the codebase already uses elsewhere
-    (:class:`~src.states.null_state_machine.NullStateMachine`,
+    (:class:`~src.simulation.states.null_state_machine.NullStateMachine`,
     ``NullCombatComponent``): the alternative is an ``if overlay is not None``
     at every call site in the draw path, which is the thing a port is supposed
     to replace. It is also what makes the default honest -- a renderer with no

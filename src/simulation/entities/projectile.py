@@ -2,7 +2,7 @@
 
 A projectile is a pooled sprite with its own ``hitbox`` (the offensive box),
 ``hurtbox`` (so it can be intercepted later), ``faction`` and lifetime. It
-reuses :class:`~src.combat.hit_resolver.HitResolver` for damage so melee and
+reuses :class:`~src.simulation.combat.hit_resolver.HitResolver` for damage so melee and
 ranged hits share armor, stagger and finisher rules.
 """
 
@@ -116,7 +116,7 @@ class Projectile(Sprite):
     def _surface_for(self, size: tuple[float, float]) -> pygame.Surface:
         """The flight surface for ``size``, rebuilt only when the size changes.
 
-        This instance comes from an :class:`~src.core.object_pool.ObjectPool`,
+        This instance comes from an :class:`~src.simulation.object_pool.ObjectPool`,
         and the pool's whole premise is that a recycled projectile costs an
         arming rather than a construction. Allocating a surface here gave
         that back on every launch: a pooled object whose largest field was

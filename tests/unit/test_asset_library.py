@@ -6,7 +6,7 @@ from pathlib import Path
 import pygame
 import pytest
 
-from src.core.asset_library import AssetLibrary
+from src.platform.assets import AssetLibrary
 
 
 @pytest.fixture(scope="module", autouse=True)

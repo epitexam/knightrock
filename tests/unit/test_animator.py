@@ -6,8 +6,8 @@ from pathlib import Path
 import pygame
 import pytest
 
-from src.core.animation.animator import AnimationSpec, Animator
-from src.core.asset_library import AssetLibrary
+from src.platform.assets import AssetLibrary
+from src.simulation.animation.animator import AnimationSpec, Animator
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -12,7 +12,7 @@ import os
 import pygame
 import pytest
 
-from src.core.fx import draw
+from src.presentation.fx import draw
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -12,10 +12,10 @@ from types import SimpleNamespace
 
 import pygame
 
-from src.combat.frame_data import PhaseState
-from src.data.provider import shipped_gameplay_data
-from src.entities.components.animation_publisher import AnimationPublisher, _attack_frame
-from src.entities.player_animation import PLAYER_ANIMATIONS
+from src.simulation.combat.frame_data import PhaseState
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.components.animation_publisher import AnimationPublisher, _attack_frame
+from src.simulation.entities.player_animation import PLAYER_ANIMATIONS
 
 
 class _RecordingAnimator:

@@ -2,11 +2,11 @@
 
 import pytest
 
-from src.states import state_names
-from src.states.enemy_states import EnemyState
-from src.states.null_state_machine import NullStateMachine
-from src.states.player_states import PlayerState
-from src.states.state_names import StateName
+from src.shared.state_names import StateName
+from src.simulation.states import state_names
+from src.simulation.states.enemy_states import EnemyState
+from src.simulation.states.null_state_machine import NullStateMachine
+from src.simulation.states.player_states import PlayerState
 
 
 def test_both_fighter_enums_are_generated_from_the_canonical_vocabulary() -> None:

@@ -3,8 +3,8 @@
 import inspect
 from types import SimpleNamespace
 
-from src.states.null_state_machine import NullStateMachine
-from src.states.state_machine import StateMachine
+from src.simulation.states.null_state_machine import NullStateMachine
+from src.simulation.states.state_machine import StateMachine
 
 
 def _public_methods(cls: type) -> dict[str, list[str]]:

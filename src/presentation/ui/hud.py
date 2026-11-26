@@ -24,9 +24,6 @@ from typing import Any
 
 import pygame
 
-from src.core.colors import Color, Colors
-from src.core.settings import Clash, Combat
-from src.entities.player_kit import SYMBOLS, Direction, PromptKind
 from src.presentation.ui.metrics import Metrics
 from src.presentation.ui.panel_renderer import PanelRenderer
 from src.presentation.ui.styles import (
@@ -37,6 +34,9 @@ from src.presentation.ui.styles import (
     TEXT_OK,
     TEXT_WARN,
 )
+from src.shared.colors import Color, Colors
+from src.simulation.entities.player_kit import SYMBOLS, Direction, PromptKind
+from src.simulation.settings import Clash, Combat
 
 #: HUD geometry (px), at a scale of 1. The bar is a fixed width: the target is
 #: a constant size, so a bar that grew with the display would be the same bar

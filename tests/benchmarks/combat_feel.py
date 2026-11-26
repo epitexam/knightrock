@@ -41,25 +41,25 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
-from src.combat.frame_data import PhaseState  # noqa: E402
-from src.combat.refusal import Refusal  # noqa: E402
-from src.core.input.input_actions import InputAction  # noqa: E402
-from src.core.input.input_manager import InputManager  # noqa: E402
-from src.core.input.input_provider import InputProvider  # noqa: E402
-from src.core.input.input_state import InputState  # noqa: E402
-from src.core.level.level import Level  # noqa: E402
-from src.core.level.level_data import (  # noqa: E402
+from src.platform.input.input_manager import InputManager  # noqa: E402
+from src.platform.input.input_provider import InputProvider  # noqa: E402
+from src.shared.input_actions import InputAction  # noqa: E402
+from src.shared.input_state import InputState  # noqa: E402
+from src.simulation.combat.frame_data import PhaseState  # noqa: E402
+from src.simulation.combat.refusal import Refusal  # noqa: E402
+from src.simulation.data.provider import shipped_gameplay_data  # noqa: E402
+from src.simulation.entities.enemies.enemy import Enemy  # noqa: E402
+from src.simulation.entities.enemies.factory import create_enemy  # noqa: E402
+from src.simulation.entities.player import Player  # noqa: E402
+from src.simulation.entities.player_kit import Direction  # noqa: E402
+from src.simulation.level.level import Level  # noqa: E402
+from src.simulation.level.level_data import (  # noqa: E402
     LevelConfig,
     LevelData,
     ObjectData,
     ObjectLayerData,
 )
-from src.core.sprites import Sprite  # noqa: E402
-from src.data.provider import shipped_gameplay_data  # noqa: E402
-from src.entities.enemies.enemy import Enemy  # noqa: E402
-from src.entities.enemies.factory import create_enemy  # noqa: E402
-from src.entities.player import Player  # noqa: E402
-from src.entities.player_kit import Direction  # noqa: E402
+from src.simulation.sprites import Sprite  # noqa: E402
 
 DT = 1 / 60
 #: Every fighter's RNG is seeded before the warm-up, so two processes produce

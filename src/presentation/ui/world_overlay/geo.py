@@ -23,9 +23,6 @@ import pygame
 import pygame.gfxdraw
 from pygame.math import Vector2
 
-from src.combat.shapes import ShapeKind, ShapePose, SweptShape
-from src.core.colors import Color, Colors
-from src.core.sprites import Sprite as WorldSprite
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.panel_renderer import PanelRenderer
 from src.presentation.ui.styles import PANEL_BORDER
@@ -49,9 +46,12 @@ from src.presentation.ui.world_overlay.metrics import (
 from src.presentation.ui.world_overlay.shapes import ShapeLayer
 from src.presentation.ui.world_overlay.shared import AnnotationSink, dodge_annotation, hitbox_color
 from src.presentation.ui.world_overlay.velocity import VelocityLayer
+from src.shared.colors import Color, Colors
+from src.simulation.combat.shapes import ShapeKind, ShapePose, SweptShape
+from src.simulation.sprites import Sprite as WorldSprite
 
 if TYPE_CHECKING:
-    from src.combat.frame_data import PhaseDefinition
+    from src.simulation.combat.frame_data import PhaseDefinition
 
 __all__ = ["GeoLayer"]
 

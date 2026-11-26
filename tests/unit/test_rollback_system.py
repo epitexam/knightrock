@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.core.rollback import LevelSnapshot, RollbackSystem
+from src.simulation.rollback import LevelSnapshot, RollbackSystem
 
 
 def _fake_level(tick: int = 0) -> SimpleNamespace:
@@ -38,7 +38,7 @@ def _fake_level(tick: int = 0) -> SimpleNamespace:
 
 
 def test_default_capacity_matches_max_prediction_frames() -> None:
-    from src.core.settings import Simulation
+    from src.simulation.settings import Simulation
 
     assert RollbackSystem().capacity == Simulation.MAX_PREDICTION_FRAMES
 

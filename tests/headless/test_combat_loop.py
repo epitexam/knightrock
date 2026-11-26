@@ -12,17 +12,17 @@ import random
 
 import pytest
 
-from src.combat.combatant_protocol import Finish
-from src.combat.frame_data import Height, PhaseState
-from src.core.input.input_actions import InputAction
-from src.core.level.level import Level
-from src.core.settings import Battery, Clash, Finisher, Fury, Rush, Slot, Throw
-from src.core.settings import Guard as GuardSettings
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.schema import EnemyMove
-from src.entities.player import Player
-from src.entities.player_kit import Direction, Power, PromptKind
-from src.states.player_states import PlayerState
+from src.shared.input_actions import InputAction
+from src.simulation.combat.combatant_protocol import Finish
+from src.simulation.combat.frame_data import Height, PhaseState
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.schema import EnemyMove
+from src.simulation.entities.player import Player
+from src.simulation.entities.player_kit import Direction, Power, PromptKind
+from src.simulation.level.level import Level
+from src.simulation.settings import Battery, Clash, Finisher, Fury, Rush, Slot, Throw
+from src.simulation.settings import Guard as GuardSettings
+from src.simulation.states.player_states import PlayerState
 from tests.headless.arena import (
     BEAT,
     DARK_SIDE,
@@ -587,7 +587,7 @@ def test_cleave_makes_the_slashes_harder() -> None:
 
 
 def test_three_of_a_kind_comes_only_from_the_jackpot_draw() -> None:
-    from src.entities.player_kit import SlotMachine
+    from src.simulation.entities.player_kit import SlotMachine
 
     rng = random.Random(7)
     jackpots = 0

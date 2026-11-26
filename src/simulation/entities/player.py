@@ -118,7 +118,7 @@ class Player(Entity):
             given, never a copy kept in code (audit C4).
         spatial_hash : SpatialHash | None
             Shared collision grid covering ``collision_sprites``; see
-            :class:`~src.entities.entity.Entity`.
+            :class:`~src.simulation.entities.entity.Entity`.
         """
         if config is None:
             # Local: the data layer imports the player config from this package.

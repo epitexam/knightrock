@@ -21,7 +21,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((320, 240))
 
-from src.core.display import detection, monitors  # noqa: E402
+from src.presentation.display import detection, monitors  # noqa: E402
 
 #: Desktops worth caring about: 16:9, 16:10, 21:9, 32:9, a laptop, a netbook.
 DESKTOPS = [
@@ -150,7 +150,7 @@ def test_the_window_size_never_names_a_resolution_the_game_invented(desktop) -> 
     the player chose a size, and it is honoured, or there is none and the panel
     decides.
     """
-    from src.core.display.stage import Stage, WindowSpec
+    from src.presentation.display.stage import Stage, WindowSpec
 
     monitor = _monitor(desktop)
     assert Stage._window_size(WindowSpec(size=None), monitor) == monitors.opening_size(monitor)
@@ -237,7 +237,7 @@ def test_two_screens_known_by_size_alone_cannot_place_a_point() -> None:
     primary, instead of reporting the first screen's rate for a window sitting
     on the second.
     """
-    from src.core.display.window_watch import monitor_at
+    from src.presentation.display.window_watch import monitor_at
 
     desk = monitors.degraded(((2560, 1440), (1920, 1080)))
 
@@ -246,7 +246,7 @@ def test_two_screens_known_by_size_alone_cannot_place_a_point() -> None:
 
 
 def test_one_screen_known_by_size_alone_is_still_the_screen() -> None:
-    from src.core.display.window_watch import monitor_at
+    from src.presentation.display.window_watch import monitor_at
 
     desk = monitors.degraded(((1920, 1080),))
 

@@ -2,9 +2,9 @@
 
 from unittest.mock import Mock
 
-from src.core.input.device_registry import DeviceRegistry
-from src.core.input.event_router import EventRouter
-from src.core.input.input_provider import LocalInputProvider
+from src.platform.input.device_registry import DeviceRegistry
+from src.platform.input.event_router import EventRouter
+from src.platform.input.input_provider import LocalInputProvider
 
 
 def _pad(instance_id: int) -> Mock:

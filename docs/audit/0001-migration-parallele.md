@@ -82,11 +82,15 @@ dans le périmètre d'une tranche.
   ui (53 modules) ; les quatre anciens paquets sont des shims contrôlés. Les
   tests qui lisaient le code source par chemin dur ou qui patchaient un module
   ont été déplacés vers le nouveau chemin.
-- **Phase 4, lot 1** (fait) : entities, states, data, ecs, level, rollback,
+- **Phase 4** (faite) : entities, states, data, ecs, level, rollback,
   animation, sprites, sprite_groups, hazards, object_pool, settings,
   atomic_json et les adaptateurs assets/resource coordinator ont rejoint
-  `src/simulation` ou `src/platform`. Les anciens chemins sont des shims
+  `src/simulation` ou `src/platform`. Les anciens chemins ont été des shims
   vérifiés par AST. Cinquième contrat import-linter : la simulation ne dépend
   pas de l'application. Dette transitoire : `simulation.level` importe encore
-  `presentation.rendering` et `presentation.fx` — les ports de rendu et de
-  caméra sont créés mais pas encore injectés.
+  `presentation.rendering` et `presentation.fx`.
+- **Phase 5** (faite) : tous les imports de production, tests, outils et
+  scripts pointent vers les cinq paquets cibles ; les shims et les anciens
+  paquets ont été supprimés. `KNIGHTROCK_ARCH` accepte `legacy` et `new`, qui
+  résolvent désormais vers la même implémentation. Les contrats import-linter
+  sont réécrits sur les paquets cibles.

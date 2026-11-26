@@ -3,7 +3,6 @@ from collections import OrderedDict
 
 import pygame
 
-from src.core.settings import Debug
 from src.presentation.ui.fonts import menu_font, menu_font_size
 from src.presentation.ui.pixel import font_unit, pixel_frame
 from src.presentation.ui.scale import screen_scale, world_scale
@@ -16,6 +15,7 @@ from src.presentation.ui.styles import (
     TEXT_WARN,
 )
 from src.presentation.ui.text_cache import TextCache
+from src.simulation.settings import Debug
 
 #: A panel title's colour: the menus' section headings.
 PANEL_TITLE_COLOR = TEXT_WARN
@@ -458,13 +458,13 @@ class PanelRenderer:
     pixel density -- governs what annotates the world: the label cards pinned
     above a sprite, the panel widths a hitbox outline has to sit inside. The
     **screen** scale governs the panels themselves, and is capped
-    (:func:`src.ui.scale.screen_scale`) because a panel is furniture: at 4K,
+    (:func:`src.presentation.ui.scale.screen_scale`) because a panel is furniture: at 4K,
     scaling it by the density would spend a quarter of the display saying the
     same thing three times larger.
 
     Both are read from the render target, never configured, so a window resize
     or a whole-pixel change re-derives them with everything else. The numbers in
-    :class:`src.core.settings.Debug` are *design* pixels -- the ones that were
+    :class:`src.simulation.settings.Debug` are *design* pixels -- the ones that were
     right when a world unit was one target pixel -- and they are scaled from
     here.
     """

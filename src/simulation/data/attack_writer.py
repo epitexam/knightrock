@@ -1,9 +1,9 @@
 """Serialization of attack frame data back to its JSON shape.
 
-The loader lives in :mod:`src.data.attacks`; this module owns the inverse
+The loader lives in :mod:`src.simulation.data.attacks`; this module owns the inverse
 direction. Keeping them apart means the strict JSON readers do not carry the
 round-trip writer, and the writer's byte-exact output has a single home.
-``src.data.attacks`` re-exports these names for existing callers.
+``src.simulation.data.attacks`` re-exports these names for existing callers.
 """
 
 from __future__ import annotations

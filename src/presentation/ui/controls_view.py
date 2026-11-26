@@ -1,6 +1,6 @@
 """Two-column keyboard/mouse and gamepad bindings view.
 
-The panel itself belongs to :class:`~src.ui.grid_view.GridView`; what stays here is this screen's own vocabulary: its
+The panel itself belongs to :class:`~src.presentation.ui.grid_view.GridView`; what stays here is this screen's own vocabulary: its
 two columns, its row kinds and its binding cells.
 """
 
@@ -78,12 +78,12 @@ class BindingRow:
 class ControlsView:
     """The bindings panel: a label gutter and one cell per input device.
 
-    Built on :class:`~src.ui.grid_view.GridView` rather than being one: this
+    Built on :class:`~src.presentation.ui.grid_view.GridView` rather than being one: this
     class is the adapter that turns binding rows into grid rows and names the
     two columns.
     """
 
-    #: Keys of :mod:`src.ui.text`, read at draw time so a language switch shows.
+    #: Keys of :mod:`src.presentation.ui.text`, read at draw time so a language switch shows.
     COLUMN_HEADER_KEYS = ("controls.column.keyboard", "controls.column.gamepad")
 
     def __init__(self, scale: float = 1.0) -> None:

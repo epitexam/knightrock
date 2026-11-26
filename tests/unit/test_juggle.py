@@ -1,10 +1,10 @@
 """Juggling and advanced hit-stun (audit Phase 5 #4)."""
 
-from src.combat.frame_data import HitProperties
-from src.combat.hit_resolver import HitResolver
-from src.combat.knockback import KnockbackConfig
-from src.core.settings import Combat as CombatSettings
-from src.data.attacks import attack_definition_to_dict, read_attack_definition
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.hit_resolver import HitResolver
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.data.attacks import attack_definition_to_dict, read_attack_definition
+from src.simulation.settings import Combat as CombatSettings
 from tests.unit.helpers import make_active_attacker, make_entity
 
 

@@ -18,17 +18,17 @@ import pytest
 
 from src.application.game import Game
 from src.application.scenes.video_scene import VideoScene
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, picture
-from src.core.input.event_router import EventRouter, InputDevice
-from src.core.input.input_actions import InputAction
-from src.core.settings import Input as InputSettings
-from src.ui.controls_view import BindingCell, BindingRow, ControlsView
-from src.ui.fonts import menu_font
-from src.ui.grid_view import GridView
-from src.ui.menu_model import MenuItem, MenuModel
-from src.ui.menu_view import MenuView
-from src.ui.styles import GOLD
+from src.platform.input.event_router import EventRouter, InputDevice
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy, picture
+from src.presentation.ui.controls_view import BindingCell, BindingRow, ControlsView
+from src.presentation.ui.fonts import menu_font
+from src.presentation.ui.grid_view import GridView
+from src.presentation.ui.menu_model import MenuItem, MenuModel
+from src.presentation.ui.menu_view import MenuView
+from src.presentation.ui.styles import GOLD
+from src.shared.input_actions import InputAction
+from src.simulation.settings import Input as InputSettings
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -565,6 +565,6 @@ def test_new_game_shortcut_keeps_its_variant() -> None:
 
 def test_the_flash_colour_differs_from_the_selected_row() -> None:
     """Both are amber in the same panel, so the flash would be invisible."""
-    from src.ui.styles import TEXT_WARN
+    from src.presentation.ui.styles import TEXT_WARN
 
     assert GOLD != TEXT_WARN

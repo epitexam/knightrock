@@ -6,7 +6,7 @@ import pygame
 
 from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
-from src.core.events import AppExitRequested, EventBus
+from src.shared.events import AppExitRequested, EventBus
 
 
 class _GameStub:

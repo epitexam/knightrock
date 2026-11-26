@@ -35,11 +35,11 @@ from typing import Any
 
 import pygame
 
-from src.combat.frame_data import Height, PhaseState
-from src.combat.shapes import ShapeKind, ShapePose
-from src.core.colors import Color
 from src.presentation.rendering.camera import Camera
-from src.states import state_names
+from src.shared.colors import Color
+from src.simulation.combat.frame_data import Height, PhaseState
+from src.simulation.combat.shapes import ShapeKind, ShapePose
+from src.simulation.states import state_names
 
 #: A sample is taken only if the tip moved at least this far (world px).
 MIN_STEP = 1.0

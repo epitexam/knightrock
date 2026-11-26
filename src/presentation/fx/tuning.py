@@ -7,7 +7,7 @@ nothing here changes the simulation.
 
 from typing import NamedTuple
 
-from src.core.settings import Turn
+from src.simulation.settings import Turn
 
 
 class Dust:

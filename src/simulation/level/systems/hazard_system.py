@@ -3,7 +3,7 @@
 Extracted from ``Level.update``.
 
 Damage application is deliberately *not* part of this stage:
-:class:`~src.core.level.systems.hazard_damage.HazardDamageSystem` runs later
+:class:`~src.simulation.level.systems.hazard_damage.HazardDamageSystem` runs later
 in the pipeline, once the entities have moved.
 """
 

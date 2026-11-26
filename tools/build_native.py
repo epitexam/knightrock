@@ -9,7 +9,7 @@ ignored by git, and never required to run or test the game. Compilation happens
 in a throwaway copy of ``src/`` because mypyc derives the extension's module
 name from the path it is given; building ``src/physics/velocity.py`` from the
 project root produces a module called ``physics.velocity`` instead of
-``src.physics.velocity``, which fails to import. The finished extensions are
+``src.simulation.physics.velocity``, which fails to import. The finished extensions are
 copied back to their real package paths with a manifest so ``--clean`` cannot
 delete a file this script did not write.
 

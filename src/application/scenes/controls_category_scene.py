@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.menu_page import MenuPage
-from src.ui.menu_model import MenuItem
-from src.ui.text import t
+from src.presentation.ui.menu_model import MenuItem
+from src.presentation.ui.text import t
 
 if TYPE_CHECKING:
     from src.application.scene_context import SceneContext

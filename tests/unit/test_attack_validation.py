@@ -11,16 +11,20 @@ from dataclasses import replace
 
 import pytest
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.attack_loading import (
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.attack_loading import (
     ENVELOPE_MARGIN,
     SPRITE_SIZE,
     load_attacks,
     validate_attacks,
 )
-from src.combat.frame_data import HitboxKeyframe, Stance, move_id
-from src.data.attacks import attack_definition_to_dict, read_attack_definition, read_attacks_file
-from src.data.errors import GameplayDataError
+from src.simulation.combat.frame_data import HitboxKeyframe, Stance, move_id
+from src.simulation.data.attacks import (
+    attack_definition_to_dict,
+    read_attack_definition,
+    read_attacks_file,
+)
+from src.simulation.data.errors import GameplayDataError
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
@@ -258,7 +262,7 @@ def test_the_shipped_tables_satisfy_every_cancel_rule() -> None:
     Otherwise the rules above could be wrong in a way that only shows up on a
     table nobody validates -- which is exactly what happened to the air chain.
     """
-    from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
+    from src.simulation.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 
     validate_attacks(PLAYER_ATTACKS)
     validate_attacks(GOBLIN_ATTACKS)
@@ -551,8 +555,8 @@ def test_the_shipped_aerials_carry_the_impulses_they_need() -> None:
     A table where both had the same sign would satisfy the validation and lose
     the dive.
     """
-    from src.combat.frame_data import AttackButton
-    from src.entities.attack_moves import MoveContext, resolve_move
+    from src.simulation.combat.frame_data import AttackButton
+    from src.simulation.entities.attack_moves import MoveContext, resolve_move
 
     player = PLAYER_ATTACKS
     slash = resolve_move(AttackButton.SLASH_HIGH, MoveContext(Stance.AIR))

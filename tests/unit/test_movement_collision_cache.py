@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pygame
 from pygame.math import Vector2
 
-from src.physics.movement import move_entity
+from src.simulation.physics.movement import move_entity
 
 
 def make_entity() -> SimpleNamespace:

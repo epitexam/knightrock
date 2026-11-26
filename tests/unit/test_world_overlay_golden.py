@@ -22,11 +22,11 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.ui.ui_manager import UIManager
-from src.ui.world_overlay.shared import debug_reference
-from src.ui.world_ui import WorldUI
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.ui_manager import UIManager
+from src.presentation.ui.world_overlay.shared import debug_reference
+from src.presentation.ui.world_ui import WorldUI
 
 # 1024x768 at zoom 1.0. The golden asserts world-space geometry, so the render
 # scale must not drift underneath it.
@@ -125,12 +125,12 @@ MANIFEST = {
 # exist yet is still sitting on the facade, which is the one state allowed to
 # be transient.
 MODULES = {
-    "shared": ("src.ui.world_overlay.shared", None),
-    "shapes": ("src.ui.world_overlay.shapes", "ShapeLayer"),
-    "velocity": ("src.ui.world_overlay.velocity", "VelocityLayer"),
-    "geo": ("src.ui.world_overlay.geo", "GeoLayer"),
-    "cards": ("src.ui.world_overlay.cards", "CardLayer"),
-    "panels": ("src.ui.world_overlay.panels", "PanelLayer"),
+    "shared": ("src.presentation.ui.world_overlay.shared", None),
+    "shapes": ("src.presentation.ui.world_overlay.shapes", "ShapeLayer"),
+    "velocity": ("src.presentation.ui.world_overlay.velocity", "VelocityLayer"),
+    "geo": ("src.presentation.ui.world_overlay.geo", "GeoLayer"),
+    "cards": ("src.presentation.ui.world_overlay.cards", "CardLayer"),
+    "panels": ("src.presentation.ui.world_overlay.panels", "PanelLayer"),
 }
 
 

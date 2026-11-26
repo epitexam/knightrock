@@ -582,7 +582,7 @@ class PlayerState(str, Enum):
 
     Values are literals because mypy types ``.value`` as ``str`` only for
     literal enum values. ``test_state_names`` checks every one against
-    :class:`~src.states.state_names.StateName`, so they cannot drift.
+    :class:`~src.shared.state_names.StateName`, so they cannot drift.
     """
 
     IDLE = "idle"

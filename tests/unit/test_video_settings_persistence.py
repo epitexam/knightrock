@@ -40,8 +40,8 @@ from src.application.settings_store import (
     SettingsStore,
     UserSettings,
 )
-from src.core.display.letterbox import FitPolicy
-from src.core.input.input_actions import InputAction
+from src.presentation.display.letterbox import FitPolicy
+from src.shared.input_actions import InputAction
 
 
 @pytest.fixture(autouse=True)
@@ -180,7 +180,7 @@ def _rebound_bindings(game: Game):
     """
     from dataclasses import replace
 
-    from src.core.input.input_bindings import InputBindings
+    from src.platform.input.input_bindings import InputBindings
 
     gameplay = replace(game.settings.bindings.gameplay, gamepad_axes={InputAction.DASH: 3})
     return InputBindings(gameplay=gameplay, menu=game.settings.bindings.menu)
@@ -669,7 +669,7 @@ def test_a_panel_scale_that_is_not_positive_is_refused_at_construction_too(
     it is a setting that works on the first run and fails on the second, which is
     harder to read than either behaviour alone.
     """
-    from src.ui.panel_renderer import PanelRenderer
+    from src.presentation.ui.panel_renderer import PanelRenderer
 
     with pytest.raises(ValueError, match="panel scale must be positive"):
         PanelRenderer(pygame.Surface((640, 480)), panel_scale=0.0)

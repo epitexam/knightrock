@@ -14,29 +14,29 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.combat.combatant_protocol import DamageResult
-from src.combat.frame_data import HitProperties, PhaseState
-from src.combat.knockback import KnockbackConfig
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import InputProvider
-from src.core.input.input_state import InputState
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.settings import AI, CameraShake
-from src.core.settings import Combat as CombatSettings
-from src.core.sprite_groups import SpriteGroups
-from src.core.sprites import Sprite
-from src.data.enemies import read_enemy_config
-from src.data.errors import GameplayDataError
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.factory import create_enemy
-from src.entities.enemies.schema import EnemyMove
-from src.entities.player import Player
-from src.states.enemy_states import EnemyState
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import InputProvider
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.combat.combatant_protocol import DamageResult
+from src.simulation.combat.frame_data import HitProperties, PhaseState
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.data.enemies import read_enemy_config
+from src.simulation.data.errors import GameplayDataError
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.enemies.schema import EnemyMove
+from src.simulation.entities.player import Player
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.level.systems.feedback_system import FeedbackSystem
+from src.simulation.settings import AI, CameraShake
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.sprite_groups import SpriteGroups
+from src.simulation.sprites import Sprite
+from src.simulation.states.enemy_states import EnemyState
 from tests.unit.helpers import make_active_attacker, make_entity
 
 DT = 1 / 60

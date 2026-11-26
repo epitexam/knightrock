@@ -1,7 +1,7 @@
 # ui/styles.py
-"""Debug/HUD theme. Values mirror src.core.colors.Colors."""
+"""Debug/HUD theme. Values mirror src.shared.colors.Colors."""
 
-from src.core.colors import Colors
+from src.shared.colors import Colors
 
 PANEL_BG = Colors.panel_bg
 PANEL_BORDER = Colors.panel_border

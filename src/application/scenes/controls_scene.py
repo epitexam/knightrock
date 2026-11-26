@@ -9,15 +9,14 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 import pygame
 
 from src.application.scene import Scene
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import (
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.platform.input.input_bindings import (
     GameplayBindings,
     InputBindings,
     MenuBindings,
     PadBinding,
 )
-from src.ui.controls_view import (
+from src.presentation.ui.controls_view import (
     GAMEPAD_COLUMN,
     KEYBOARD_COLUMN,
     BindingCell,
@@ -25,9 +24,10 @@ from src.ui.controls_view import (
     ControlsView,
     RowKind,
 )
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
-from src.ui.text import DEVICE_KEYS, t
+from src.presentation.ui.menu_model import MenuAction, MenuItem, MenuModel
+from src.presentation.ui.menu_view import MenuView
+from src.presentation.ui.text import DEVICE_KEYS, t
+from src.shared.input_actions import InputAction
 
 if TYPE_CHECKING:
     from src.application.scene_context import SceneContext
@@ -37,7 +37,7 @@ T = TypeVar("T")
 
 @dataclass(frozen=True)
 class RebindSpec:
-    #: A key of :mod:`src.ui.text`.
+    #: A key of :mod:`src.presentation.ui.text`.
     label: str
     action: InputAction | None
     pair: bool = False

@@ -13,10 +13,10 @@ from __future__ import annotations
 import pygame
 import pytest
 
-from src.core import asset_library
-from src.core.input.input_manager import InputManager
-from src.entities.player import Player
-from src.physics.movement import apply_horizontal_movement
+from src.platform import assets as asset_library
+from src.platform.input.input_manager import InputManager
+from src.simulation.entities.player import Player
+from src.simulation.physics.movement import apply_horizontal_movement
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def test_a_wall_jump_damps_the_players_run(player: Player) -> None:
 
 
 def test_an_enemy_has_no_lock() -> None:
-    from src.entities.entity import Entity
+    from src.simulation.entities.entity import Entity
 
     entity = Entity((0, 0), (10, 10), (0, 0, 0), pygame.sprite.Group(), pygame.sprite.Group())
     assert entity.wall_jump_lock is None

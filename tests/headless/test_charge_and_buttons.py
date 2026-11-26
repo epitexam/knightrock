@@ -9,11 +9,11 @@ through guards.
 
 from __future__ import annotations
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.frame_data import move_id
-from src.combat.hitbox_manager import charge_reach_scale
-from src.core.settings import Combat
-from src.entities.shots import SHOTS, charged
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.frame_data import move_id
+from src.simulation.combat.hitbox_manager import charge_reach_scale
+from src.simulation.entities.shots import SHOTS, charged
+from src.simulation.settings import Combat
 from tests.headless.arena import DT, PLAYER_X, arena, foe, settle
 
 STILL = {"vision_range": 0.0, "chase_speed": 0.0}

@@ -2,8 +2,8 @@ import math
 
 import pygame
 
-from src.core.settings import CameraFollow, CameraShake
 from src.presentation.display.framing import DEFAULT_FRAMING, Framing
+from src.simulation.settings import CameraFollow, CameraShake
 
 WorldRect = pygame.FRect | pygame.Rect
 """A world-space rectangle, whole-pixel or fractional.

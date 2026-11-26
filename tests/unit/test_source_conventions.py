@@ -34,9 +34,9 @@ def test_game_protocols_are_not_runtime_checkable() -> None:
     player. The behaviour worth pinning is the TypeError, not the absence of a
     decorator string in a file.
     """
-    from src.combat.combatant_protocol import AttackerPort
-    from src.core.level.scene_host import SceneHost
-    from src.physics.collisions import CollisionEntity
+    from src.simulation.combat.combatant_protocol import AttackerPort
+    from src.simulation.level.scene_host import SceneHost
+    from src.simulation.physics.collisions import CollisionEntity
 
     for protocol in (AttackerPort, SceneHost, CollisionEntity):
         with pytest.raises(TypeError):

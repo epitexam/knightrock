@@ -14,12 +14,12 @@ import logging
 import pygame
 
 from src.application.settings_store import UserSettings
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy
-from src.core.display.monitors import Monitor, Topology
-from src.core.display.presentation import Presentation
-from src.core.display.stage import Stage, WindowSpec
-from src.core.display.window_watch import DisplayChange, Resize, WindowWatch, monitor_at
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy
+from src.presentation.display.monitors import Monitor, Topology
+from src.presentation.display.presentation import Presentation
+from src.presentation.display.stage import Stage, WindowSpec
+from src.presentation.display.window_watch import DisplayChange, Resize, WindowWatch, monitor_at
 
 logger = logging.getLogger(__name__)
 

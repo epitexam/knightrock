@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.level.level_manager import LevelLoadError, LevelManager
+from src.simulation.level.level_manager import LevelLoadError, LevelManager
 
 _TRUNCATED = '<?xml version="1.0"?><map><oops>'
 

@@ -14,11 +14,10 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.core import fx
-from src.core.colors import Color, Colors, FXColors
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.viewport import Viewport
-from src.core.fx import (
+from src.presentation import fx
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.viewport import Viewport
+from src.presentation.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DashDustParticle,
@@ -39,13 +38,14 @@ from src.core.fx import (
     spawn_landing_grains,
     spawners,
 )
-from src.core.fx.draw import snap
-from src.core.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, FxGuard
-from src.core.level.systems.feedback_system import _spawn_guard_fx
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.core.sprite_groups import SpriteGroups
-from src.states.player_states import PlayerState
+from src.presentation.fx.draw import snap
+from src.presentation.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, FxGuard
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.shared.colors import Color, Colors, FXColors
+from src.simulation.level.systems.feedback_system import _spawn_guard_fx
+from src.simulation.sprite_groups import SpriteGroups
+from src.simulation.states.player_states import PlayerState
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -1068,7 +1068,7 @@ def test_a_clash_spawns_no_guard_ring() -> None:
     and a clash is what it did not name -- got the block's arc. Unreachable
     while no attack declares clash data, and a wrong mark the day one does.
     """
-    from src.core.level.systems.contact_system import GuardEvent
+    from src.simulation.level.systems.contact_system import GuardEvent
 
     entity = _entity()
     group = Group()

@@ -23,9 +23,9 @@ from typing import Literal
 import pygame
 import pygame.scrap
 
-from src.core.colors import Colors
-from src.core.display.detection import topology
-from src.core.display.monitors import centre_on, fit_size, opening_size
+from src.presentation.display.detection import topology
+from src.presentation.display.monitors import centre_on, fit_size, opening_size
+from src.shared.colors import Colors
 
 # The menu palette (src/ui/styles.py mirrors Colors). No alarm-red dialog:
 # this is the same dark panel, grey border and gold selection as the menus.

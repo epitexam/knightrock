@@ -1,7 +1,7 @@
 """Level-wide snapshots for the local rollback core (audit Phase 3 #3).
 
 These dataclasses group the per-entity ``EntitySnapshot`` s (from
-``src.entities.entity``) together with the level's own transient gameplay
+``src.simulation.entities.entity``) together with the level's own transient gameplay
 state — respawn/death counters, exit flag, the global hit-stop timer, and
 the moving-platform kinematics — so a whole tick can be captured and
 restored bit-exactly.

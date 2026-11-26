@@ -41,5 +41,5 @@ class Framing:
 
 #: The gameplay framing: 16:9, and smaller than every level on both axes. How
 #: many pixels a world unit takes is read off the render target
-#: (:func:`src.core.display.letterbox.density_for`), not decided here.
+#: (:func:`src.presentation.display.letterbox.density_for`), not decided here.
 DEFAULT_FRAMING = Framing(1152.0, 648.0)

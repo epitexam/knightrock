@@ -23,7 +23,7 @@ class EnemyState(str, Enum):
     """Enemy-facing subset of the canonical state vocabulary.
 
     Literals keep ``.value`` typed as ``str`` by mypy; ``test_state_names``
-    checks every one against :class:`~src.states.state_names.StateName`.
+    checks every one against :class:`~src.shared.state_names.StateName`.
     """
 
     IDLE = "idle"

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pygame
 
-from src.ui.world_overlay.geo import GeoLayer
+from src.presentation.ui.world_overlay.geo import GeoLayer
 from tests.unit.helpers import activate, make_attack, make_entity, make_phase
 
 

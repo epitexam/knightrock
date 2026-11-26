@@ -54,7 +54,7 @@ class Stage:
 
     The granted size is read back off the surface, never trusted from the
     request. Placement uses the monitor's real origin from
-    :mod:`src.core.display.sdl_probe`.
+    :mod:`src.presentation.display.sdl_probe`.
     """
 
     def __init__(self, spec: WindowSpec, monitor: Monitor) -> None:

@@ -18,7 +18,7 @@ friends); the current one puts every box in a ``hitboxes`` list, each carrying
 its own shape, angle, easing and anchor. Mixing the two is refused, and the
 refusal names the offending keys rather than just saying they conflict.
 
-The inverse round-trip writer lives in :mod:`src.data.attack_writer` and is
+The inverse round-trip writer lives in :mod:`src.simulation.data.attack_writer` and is
 re-exported here so existing callers keep their import path.
 """
 

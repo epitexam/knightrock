@@ -7,7 +7,7 @@ paid for it -- that is the spawners' half, and keeping the split sharp is
 what makes each half testable on its own.
 
 The two rules that decide whether a shape reads as pixel art are implemented
-in :mod:`src.core.fx.draw` and every particle here rests on them: whole
+in :mod:`src.presentation.fx.draw` and every particle here rests on them: whole
 pixels, dark ink rims, and alpha in discrete steps.
 """
 
@@ -20,7 +20,6 @@ from typing import ClassVar
 import pygame
 from pygame.math import Vector2
 
-from src.core.colors import Color, Colors, FXColors
 from src.presentation.fx.draw import (
     ALPHA_STEPS,
     Shape,
@@ -58,6 +57,7 @@ from src.presentation.fx.tuning import (
     FxGuard,
     Sweat,
 )
+from src.shared.colors import Color, Colors, FXColors
 
 
 class FxParticle(pygame.sprite.Sprite):

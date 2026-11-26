@@ -202,17 +202,16 @@ NEW_PATHS: dict[str, str] = {
 
 
 def current_arch() -> str:
-    arch = os.environ.get("KNIGHTROCK_ARCH", LEGACY)
+    """Both flags resolve to the same tree after the cutover (Phase 5)."""
+    arch = os.environ.get("KNIGHTROCK_ARCH", NEW)
     if arch not in ARCHES:
         raise ValueError(f"unknown KNIGHTROCK_ARCH {arch!r}; expected one of {ARCHES}")
     return arch
 
 
 def module_name(logical: str) -> str:
-    """Resolve ``core.level.level`` to the importable module for this arch."""
-    if current_arch() == NEW and logical in NEW_PATHS:
-        return NEW_PATHS[logical]
-    return f"src.{logical}"
+    """Resolve a legacy logical name to its module in the target tree."""
+    return NEW_PATHS.get(logical, f"src.{logical}")
 
 
 def import_module(logical: str):  # type: ignore[no-untyped-def]

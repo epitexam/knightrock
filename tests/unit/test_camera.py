@@ -22,15 +22,15 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.core.colors import Color, Colors
-from src.core.display.framing import DEFAULT_FRAMING, Framing
-from src.core.display.viewport import Viewport
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.core.settings import CameraFollow, ParryFlash, Simulation
-from src.core.settings import Combat as CombatSettings
-from src.core.settings import Physics as PhysicsSettings
-from src.core.sprite_groups import SpriteGroups
+from src.presentation.display.framing import DEFAULT_FRAMING, Framing
+from src.presentation.display.viewport import Viewport
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.shared.colors import Color, Colors
+from src.simulation.settings import CameraFollow, ParryFlash, Simulation
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.settings import Physics as PhysicsSettings
+from src.simulation.sprite_groups import SpriteGroups
 from tests.fakes import FighterSprite
 
 

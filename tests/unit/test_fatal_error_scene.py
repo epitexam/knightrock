@@ -13,8 +13,8 @@ from unittest.mock import Mock
 import pygame
 
 from src.application.scenes.fatal_error_scene import FatalErrorScene
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.shared.input_actions import InputAction
 
 TRACE = "Traceback (most recent call last):\n" + "\n".join(
     f'  File "src/module_{index}.py", line {index}, in a_very_long_function_name'

@@ -26,7 +26,6 @@ from collections.abc import Iterable, Mapping
 
 import pygame
 
-from src.core.colors import Color
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_OK, TEXT_WARN
 from src.presentation.ui.world_overlay.metrics import (
@@ -34,6 +33,7 @@ from src.presentation.ui.world_overlay.metrics import (
     HEALTH_BAR_HEIGHT,
     STUN_BAR_HEIGHT,
 )
+from src.shared.colors import Color
 
 __all__ = [
     "draw_guard_marks",

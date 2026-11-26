@@ -2,7 +2,7 @@
 
 These are render-only transforms: they stretch, slide and shear a surface for
 the frame being drawn and never touch simulation state. They are imported back
-into :mod:`src.core.rendering.renderer` so existing call sites and tests keep
+into :mod:`src.presentation.rendering.renderer` so existing call sites and tests keep
 their historical paths.
 """
 
@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from src.core.colors import FXColors
-from src.states import state_names
+from src.shared.colors import FXColors
+from src.simulation.states import state_names
 
 if TYPE_CHECKING:
-    from src.entities.entity import Entity
+    from src.simulation.entities.entity import Entity
 
 
 DASH_STRETCH_X = 1.6

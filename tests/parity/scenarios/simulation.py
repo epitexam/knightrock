@@ -139,12 +139,12 @@ def long_fall() -> dict[str, Any]:
     """A fall long enough to reach terminal velocity."""
     import pygame
 
-    from src.core.input.input_manager import InputManager
-    from src.core.input.input_provider import InputProvider, InputState
-    from src.core.level.level import Level
-    from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-    from src.core.sprites import Sprite
-    from src.data.provider import shipped_gameplay_data
+    from src.platform.input.input_manager import InputManager
+    from src.platform.input.input_provider import InputProvider, InputState
+    from src.simulation.data.provider import shipped_gameplay_data
+    from src.simulation.level.level import Level
+    from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+    from src.simulation.sprites import Sprite
 
     class Still(InputProvider):
         def poll(self) -> InputState:

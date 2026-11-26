@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pygame
 
-from src.core.level.systems.hazard_damage import HazardDamageSystem
+from src.simulation.level.systems.hazard_damage import HazardDamageSystem
 from tests.fakes import BodyStub, HazardStub
 
 

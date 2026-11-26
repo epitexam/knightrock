@@ -9,9 +9,9 @@ exist to enforce -- world units, scaled exactly once.
 
 import pytest
 
-from src.ui import world_ui
-from src.ui.world_overlay import metrics as metrics_module
-from src.ui.world_overlay.metrics import WorldOverlayMetrics, scaled_world_px
+from src.presentation.ui import world_ui
+from src.presentation.ui.world_overlay import metrics as metrics_module
+from src.presentation.ui.world_overlay.metrics import WorldOverlayMetrics, scaled_world_px
 
 #: Every name the module is meant to own. Written out rather than derived, so
 #: that moving a constant *out* of it is a test failure and not a silent

@@ -13,18 +13,18 @@ from src.application.settings_store import (
     RENDER_SCALES,
     UI_SCALES,
 )
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import (
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import (
     FitPolicy,
     already_a_whole_multiple,
     fits_whole_pixel,
 )
-from src.core.display.monitors import (
+from src.presentation.display.monitors import (
     MIN_WINDOW,
     Monitor,
     opening_size,
 )
-from src.ui.text import t
+from src.presentation.ui.text import t
 
 #: Text keys of the notes, where a note says something the value does not.
 _FRAME_LIMIT_NOTES: dict[int | None, str] = {

@@ -22,8 +22,8 @@ import math
 
 import pytest
 
-from src.core.settings import Physics, Separation, Simulation
-from src.physics.spatial_hash import QUERY_MARGIN_PX
+from src.simulation.physics.spatial_hash import QUERY_MARGIN_PX
+from src.simulation.settings import Physics, Separation, Simulation
 
 
 def _decay(rate: float, dt: float, ticks: int) -> float:
@@ -52,7 +52,7 @@ def test_the_sub_step_clamp_covers_the_fastest_travel() -> None:
 
 
 def test_the_sweep_ceiling_covers_the_widest_step() -> None:
-    from src.core.settings import Combat
+    from src.simulation.settings import Combat
 
     widest = (
         max(Physics.MAX_FALL_SPEED, Physics.DASH_SPEED, Physics.JUMP_FORCE)

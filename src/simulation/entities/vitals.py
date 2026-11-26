@@ -6,7 +6,7 @@ aggregation layer.  ``Entity`` composes a :class:`Vitals` instance and
 delegates its health/status attributes to it.
 
 When the fighter lives in a level, the nine values live in a dense
-:class:`~src.core.ecs.vitals_table.VitalsTable` row. The behaviour -- clamping,
+:class:`~src.simulation.ecs.vitals_table.VitalsTable` row. The behaviour -- clamping,
 the death hook, timer decay -- stays here: the table holds data, not rules.
 """
 

@@ -6,24 +6,24 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.core import fx
-from src.core.colors import FXColors
-from src.core.fx import (
+from src.presentation import fx
+from src.presentation.fx import (
     ShieldArcParticle,
     spawn_guard_arc,
     spawn_shatter_arc,
 )
-from src.core.fx.tuning import FxGuard
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.contact_system import GuardEvent
-from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
-from src.core.settings import Clash as ClashSettings
-from src.core.settings import Finisher as FinisherSettings
-from src.core.settings import Guard as GuardSettings
-from src.core.settings import Rush as RushSettings
-from src.core.settings import Stun as StunSettings
-from src.entities.player import Player
+from src.presentation.fx.tuning import FxGuard
+from src.shared.colors import FXColors
+from src.simulation.entities.player import Player
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.level.systems.contact_system import GuardEvent
+from src.simulation.level.systems.feedback_system import FeedbackSystem
+from src.simulation.level.systems.gameplay_loop import CombatLoop, GameplayLoop
+from src.simulation.settings import Clash as ClashSettings
+from src.simulation.settings import Finisher as FinisherSettings
+from src.simulation.settings import Guard as GuardSettings
+from src.simulation.settings import Rush as RushSettings
+from src.simulation.settings import Stun as StunSettings
 from tests.unit.helpers import InputStub, make_active_attacker
 
 

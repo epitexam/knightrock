@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import Combat
-from src.physics.collisions import get_nearby_sprites, hitbox_collide, resolve_collisions
+from src.simulation.physics.collisions import get_nearby_sprites, hitbox_collide, resolve_collisions
+from src.simulation.settings import Combat
 
 
 class StubEntity:

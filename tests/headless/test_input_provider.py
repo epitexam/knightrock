@@ -3,12 +3,12 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.core.input.event_router import EventRouter
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import LocalInputProvider, resolve_move_axis
-from src.core.settings import Input as InputSettings
+from src.platform.input.event_router import EventRouter
+from src.platform.input.input_bindings import InputBindings
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import LocalInputProvider, resolve_move_axis
+from src.shared.input_actions import InputAction
+from src.simulation.settings import Input as InputSettings
 
 
 class FakeJoystick:

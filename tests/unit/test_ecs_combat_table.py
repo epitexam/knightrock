@@ -27,7 +27,7 @@ def test_bound_fighters_resolve_combat_from_the_row() -> None:
 
 
 def test_rebinding_the_component_updates_the_row() -> None:
-    from src.combat.null_combat import NullCombatComponent
+    from src.simulation.combat.null_combat import NullCombatComponent
 
     level, _pad, player = arena()
     settle(level)
@@ -47,7 +47,7 @@ def test_a_rewind_keeps_the_combat_row_bound() -> None:
     snapshot = level.save_state()
     slot = player.combat_slot
 
-    from src.combat.null_combat import NullCombatComponent
+    from src.simulation.combat.null_combat import NullCombatComponent
 
     player.combat = NullCombatComponent()
     level.load_state(snapshot)

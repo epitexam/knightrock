@@ -1,6 +1,6 @@
 """One invalidation call drops every display-format-derived cache."""
 
-from src.core.resource_coordinator import ResourceCoordinator
+from src.platform.resource_coordinator import ResourceCoordinator
 
 
 def test_invalidation_reaches_every_cache() -> None:

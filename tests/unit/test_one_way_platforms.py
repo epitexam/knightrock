@@ -12,9 +12,9 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.core.level.world_builder import _build_one_way_platforms
-from src.core.sprite_groups import SpriteGroups
-from src.physics.collisions import resolve_collisions, update_contact_state
+from src.simulation.level.world_builder import _build_one_way_platforms
+from src.simulation.physics.collisions import resolve_collisions, update_contact_state
+from src.simulation.sprite_groups import SpriteGroups
 
 
 @pytest.fixture()

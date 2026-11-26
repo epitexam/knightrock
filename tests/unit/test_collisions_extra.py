@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pygame
 
-from src.physics.collisions import get_nearby_sprites, update_contact_state
-from src.physics.spatial_hash import SpatialHash
+from src.simulation.physics.collisions import get_nearby_sprites, update_contact_state
+from src.simulation.physics.spatial_hash import SpatialHash
 
 
 class _ContactEntity:

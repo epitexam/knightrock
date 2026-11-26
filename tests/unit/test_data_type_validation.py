@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from src.data.errors import GameplayDataError
-from src.data.provider import load_gameplay_data
-from src.data.roots import GAMEPLAY_SUBDIR
+from src.simulation.data.errors import GameplayDataError
+from src.simulation.data.provider import load_gameplay_data
+from src.simulation.data.roots import GAMEPLAY_SUBDIR
 
 SHIPPED = Path(__file__).resolve().parents[2] / "data" / "gameplay"
 FILES = ("attacks.json", "enemies.json", "player.json", "levels.json")

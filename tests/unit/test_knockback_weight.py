@@ -8,17 +8,17 @@ import pytest
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.combat.knockback import KnockbackConfig
-from src.core.fx import FX_FAMILY_BUDGETS, CorpseParticle, spawn_corpse
-from src.core.fx.tuning import Corpse
-from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.level.systems.gameplay_loop import CombatLoop
-from src.core.settings import Combat as CombatSettings
-from src.data.enemies import read_enemy_config
-from src.data.errors import GameplayDataError
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.factory import create_enemy
-from src.states import state_names
+from src.presentation.fx import FX_FAMILY_BUDGETS, CorpseParticle, spawn_corpse
+from src.presentation.fx.tuning import Corpse
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.data.enemies import read_enemy_config
+from src.simulation.data.errors import GameplayDataError
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.level.systems.feedback_system import FeedbackSystem
+from src.simulation.level.systems.gameplay_loop import CombatLoop
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.states import state_names
 from tests.unit.helpers import make_entity
 
 # --- weight -----------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_only_a_launch_bounces() -> None:
 
 def test_the_bounce_cannot_bounce_again() -> None:
     """One rebound by construction: what it keeps is under what it takes to bounce."""
-    from src.core.settings import Physics
+    from src.simulation.settings import Physics
 
     rebound = Physics.MAX_FALL_SPEED * CombatSettings.GROUND_BOUNCE_FACTOR
     assert rebound < CombatSettings.GROUND_BOUNCE_MIN_SPEED

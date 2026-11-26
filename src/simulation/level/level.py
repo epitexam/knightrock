@@ -62,7 +62,7 @@ class Level:
 
     It is a *strict facade* over those systems: :meth:`update`
     is a single delegation to
-    :meth:`~src.core.level.systems.gameplay_loop.GameplayLoop.update` — the
+    :meth:`~src.simulation.level.systems.gameplay_loop.GameplayLoop.update` — the
     debug spawner, every simulation stage, the camera follow, the event-bus
     notifications and the end-of-tick rollback snapshot all run inside the
     pipeline now.

@@ -10,10 +10,10 @@ entity's, so nothing in this package advances state the simulation owns. See
 
 Three modules, split along the line that decides what a change touches:
 
-- :mod:`src.core.fx.draw` -- the whole-pixel arithmetic every shape rests on.
-- :mod:`src.core.fx.particles` -- what a particle looks like and how it moves.
+- :mod:`src.presentation.fx.draw` -- the whole-pixel arithmetic every shape rests on.
+- :mod:`src.presentation.fx.particles` -- what a particle looks like and how it moves.
   It builds its pixels once, at construction.
-- :mod:`src.core.fx.spawners` -- whether a particle is allowed, and where it
+- :mod:`src.presentation.fx.spawners` -- whether a particle is allowed, and where it
   goes. It owns the budgets and the FX RNG.
 
 The look, in one sentence: whole pixels, dark ink rims, and alpha that moves

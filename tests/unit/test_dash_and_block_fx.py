@@ -15,15 +15,15 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.combat.null_combat import NullCombatComponent
-from src.core.display.framing import Framing
-from src.core.fx.particles import ShieldArcParticle
-from src.core.fx.spawners import spawn_guard_arc
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer, _ghost_tint
-from src.core.rendering.strike_trails import DASH_LINGER, StrikeTrails
-from src.core.settings import Afterimage
-from src.core.sprite_groups import SpriteGroups
+from src.presentation.display.framing import Framing
+from src.presentation.fx.particles import ShieldArcParticle
+from src.presentation.fx.spawners import spawn_guard_arc
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer, _ghost_tint
+from src.presentation.rendering.strike_trails import DASH_LINGER, StrikeTrails
+from src.simulation.combat.null_combat import NullCombatComponent
+from src.simulation.settings import Afterimage
+from src.simulation.sprite_groups import SpriteGroups
 from tests.unit.test_juice_effects import DashSprite
 
 

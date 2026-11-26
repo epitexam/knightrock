@@ -2,7 +2,7 @@
 
 Functions taking a ``desktop`` or ``topology`` are pure, so the decisions can be
 tested headless; only the queries need a display. :func:`topology` prefers the
-SDL probe (:mod:`src.core.display.sdl_probe`: origins, usable areas, names) and
+SDL probe (:mod:`src.presentation.display.sdl_probe`: origins, usable areas, names) and
 falls back to pygame's sizes, and ``Topology.named`` says which answered.
 """
 
@@ -62,7 +62,7 @@ def desktop_refresh_rates() -> tuple[int, ...]:
 
     One rate per *display*, not per mode, and it works before a window exists
     (``get_current_refresh_rate`` does not). The rate of the window's own
-    screen is :attr:`src.core.display.monitors.Monitor.refresh_rate`.
+    screen is :attr:`src.presentation.display.monitors.Monitor.refresh_rate`.
     """
     try:
         rates = pygame.display.get_desktop_refresh_rates()

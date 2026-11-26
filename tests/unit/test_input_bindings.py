@@ -1,8 +1,8 @@
 import pygame
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import GameplayBindings, InputBindings
+from src.platform.input.input_bindings import GameplayBindings, InputBindings
+from src.shared.input_actions import InputAction
 
 
 def test_default_bindings_are_separated_by_context() -> None:

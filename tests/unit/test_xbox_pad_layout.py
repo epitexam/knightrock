@@ -16,10 +16,9 @@ import pygame
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.settings_store import SettingsStore
-from src.core.input.bindings_codec import bindings_to_dict
-from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import (
+from src.platform.input.bindings_codec import bindings_to_dict
+from src.platform.input.event_router import EventRouter, InputDevice, RoutedInput
+from src.platform.input.input_bindings import (
     XBOX_A,
     XBOX_B,
     XBOX_START,
@@ -28,6 +27,7 @@ from src.core.input.input_bindings import (
     XBOX_Y,
     InputBindings,
 )
+from src.shared.input_actions import InputAction
 
 
 def test_the_default_layout_is_the_xbox_convention() -> None:

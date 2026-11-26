@@ -17,8 +17,6 @@ import pygame
 import pygame.gfxdraw
 from pygame.math import Vector2
 
-from src.core.colors import Color, Colors
-from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.panel_renderer import PanelRenderer
 from src.presentation.ui.world_overlay.metrics import (
@@ -37,7 +35,9 @@ from src.presentation.ui.world_overlay.metrics import (
     VELOCITY_TAIL_WIDTH,
 )
 from src.presentation.ui.world_overlay.shared import reaction_age
-from src.states.reaction_states import KNOCKBACK_STATE
+from src.shared.colors import Color, Colors
+from src.simulation.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
+from src.simulation.states.reaction_states import KNOCKBACK_STATE
 
 __all__ = [
     "VelocityLayer",

@@ -12,7 +12,7 @@ import hashlib
 import json
 from typing import Any
 
-from src.entities.entity import Entity
+from src.simulation.entities.entity import Entity
 
 __all__ = ["snapshot", "digest", "canonical_json"]
 

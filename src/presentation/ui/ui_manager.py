@@ -4,7 +4,6 @@ from typing import Any
 
 import pygame
 
-from src.core.level.scene_host import SceneHost
 from src.presentation.rendering.camera import Camera
 from src.presentation.ui.hud import HUD
 from src.presentation.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
@@ -12,9 +11,10 @@ from src.presentation.ui.player_ui import PlayerUI
 from src.presentation.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.presentation.ui.world_overlay.metrics import COMBAT_PANEL_TITLE
 from src.presentation.ui.world_ui import WorldUI
+from src.simulation.level.scene_host import SceneHost
 
 #: Stable ids of the interactive debug panels. They name the ``×``/drag state
-#: kept by :class:`~src.ui.panel_renderer.PanelInteraction`, so a panel keeps
+#: kept by :class:`~src.presentation.ui.panel_renderer.PanelInteraction`, so a panel keeps
 #: its closed flag and dropped position even when it moves in the draw order.
 PANEL_PERFORMANCE = "performance"
 PANEL_COMBAT = "combat"
@@ -49,8 +49,8 @@ def _legend_rows(compact: bool) -> list[tuple[str, tuple[int, int, int] | None]]
     hand: a row inserted in one list silently recoloured the wrong line in the
     other. Deriving both from the same ordered rows makes that drift impossible.
     """
-    from src.core.colors import Colors
     from src.presentation.ui.world_overlay.metrics import PHASE_OUTLINE_COLORS
+    from src.shared.colors import Colors
 
     if compact:
         return [
@@ -286,8 +286,8 @@ class UIManager:
         nothing running, as :func:`resolve_move` would. A press with no move in
         this posture shows a dash.
         """
-        from src.combat.frame_data import AttackButton
-        from src.entities.attack_moves import MoveContext, resolve_move
+        from src.simulation.combat.frame_data import AttackButton
+        from src.simulation.entities.attack_moves import MoveContext, resolve_move
 
         # Duck-typed off a real player: a player with no stance draws an empty
         # table instead of taking the frame down.

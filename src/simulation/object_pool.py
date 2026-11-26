@@ -8,7 +8,7 @@ parks instances back.
 
 The pool is deliberately minimal: no threads, no weakrefs, no max-size — the
 gameplay wiring owns its own caps.  :class:`ProjectileSystem
-<src.core.level.systems.projectile_system.ProjectileSystem>` is the current
+<src.simulation.level.systems.projectile_system.ProjectileSystem>` is the current
 user; FX particles are the next candidate.
 """
 

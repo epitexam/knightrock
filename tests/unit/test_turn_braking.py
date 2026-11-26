@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.core.settings import Physics, Turn
-from src.physics.movement import _braking, apply_horizontal_movement
+from src.simulation.physics.movement import _braking, apply_horizontal_movement
+from src.simulation.settings import Physics, Turn
 
 TICK = 1 / 60
 TOP = Physics.PLAYER_SPEED
