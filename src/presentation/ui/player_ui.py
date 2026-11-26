@@ -1,9 +1,9 @@
-from typing import Any
-
 from src.presentation.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.presentation.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
 from src.simulation.entities.player import Player
+from src.simulation.states.null_state_machine import NullStateMachine
+from src.simulation.states.state_machine import StateMachine
 
 
 def _yes(flag: object) -> str:
@@ -38,7 +38,9 @@ class PlayerUI:
         self.renderer = renderer
 
     @staticmethod
-    def _state_lines(player: Player, state_machine: Any, compact: bool) -> list[str]:
+    def _state_lines(
+        player: Player, state_machine: StateMachine | NullStateMachine, compact: bool
+    ) -> list[str]:
         if compact:
             return [
                 f"State  {state_machine.current_state_name or 'None'}",
@@ -46,8 +48,8 @@ class PlayerUI:
                 f"Axis   {player.move_axis:+.2f}",
             ]
         current = state_machine.current_state_name or "None"
-        previous = state_machine.previous_state_name or "-"
-        history = list(state_machine.history)[-6:] if state_machine.history else []
+        previous = str(getattr(state_machine, "previous_state_name", None) or "-")
+        history = list(getattr(state_machine, "history", ()))[-6:]
         return [
             f"State  {current}   (prev {previous})",
             f"Hist   {' > '.join(history)}",

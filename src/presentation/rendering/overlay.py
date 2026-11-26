@@ -28,9 +28,13 @@ when it happens, and a port that stops at "the caller knows" would have left
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import pygame
+
+if TYPE_CHECKING:
+    from src.simulation.entities.player import Player
+    from src.simulation.level.scene_host import SceneHost
 
 from src.presentation.rendering.camera import Camera
 
@@ -67,7 +71,14 @@ class WorldOverlay(Protocol):
     ) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy."""
 
-    def draw_debug_panels(self, *, scene_host: Any = None, **counters: Any) -> None:
+    def draw_debug_panels(
+        self,
+        *,
+        player: Player | None = None,
+        scene_host: SceneHost | None = None,
+        debug_stats: dict[str, float] | None = None,
+        **counters: object,
+    ) -> None:
         """Draw the screen-side debug panels from a bag of counters.
 
         Keyword-only and untyped because the counters are the debug overlay's
@@ -77,16 +88,16 @@ class WorldOverlay(Protocol):
         measures how long this takes; the overlay decides what to draw.
         """
 
-    def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
+    def draw_metrics_panel(self, player: Player, hit_stop: float) -> None:
         """Draw the always-on combat metrics readout."""
 
-    def note_clash(self, clash: Any) -> None:
+    def note_clash(self, clash: object) -> None:
         """Record a clash so the overlay can mark it where it happened."""
 
     def stamp_clash_marker(self, camera: Camera) -> None:
         """Draw the clash marker again, over the debug panels."""
 
-    def update_metrics(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: object) -> None:
         """Feed the contact pipeline's per-tick counters to the overlay."""
 
 
@@ -124,17 +135,24 @@ class NullOverlay:
         """No bars, and therefore no rects."""
         return []
 
-    def draw_debug_panels(self, **counters: Any) -> None:
+    def draw_debug_panels(
+        self,
+        *,
+        player: Player | None = None,
+        scene_host: SceneHost | None = None,
+        debug_stats: dict[str, float] | None = None,
+        **counters: object,
+    ) -> None:
         """No panels."""
 
-    def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
+    def draw_metrics_panel(self, player: Player, hit_stop: float) -> None:
         """No metrics readout."""
 
-    def note_clash(self, clash: Any) -> None:
+    def note_clash(self, clash: object) -> None:
         """No marker to place."""
 
     def stamp_clash_marker(self, camera: Camera) -> None:
         """No marker to stamp."""
 
-    def update_metrics(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: object) -> None:
         """Nothing reads them."""

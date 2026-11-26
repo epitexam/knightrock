@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable
-from typing import Any, Protocol
+from typing import Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -40,6 +40,7 @@ from src.presentation.fx.particles import (
     puff_variant,
 )
 from src.shared.colors import Color, Colors, FXColors
+from src.simulation.entities.entity import Entity
 from src.simulation.fx_tuning import (
     Corpse,
     DashDust,
@@ -796,7 +797,7 @@ def spawn_corpse(fx_group: pygame.sprite.Group, entity: FxSubject) -> CorpsePart
     return corpse
 
 
-def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]]:
+def iter_landing_entities(entities: Iterable[Entity]) -> Iterable[tuple[Entity, float]]:
     """Yield ``(entity, impact)`` for entities that just landed hard.
 
     ``Entity.update`` records the pre-move fall speed into its render hints on
