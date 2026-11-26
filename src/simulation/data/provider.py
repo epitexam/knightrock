@@ -3,12 +3,12 @@
 Source of truth: the JSON files in ``data/gameplay/``, and only them. The
 attacks, the enemies and the player are required; only the level list keeps a
 built-in fallback. They used
-to be shadowed by hand-maintained copies in Python -- ``src/combat/attack_data.py``
+to be shadowed by hand-maintained copies in Python -- ``src/simulation/combat/attack_data.py``
 held all fourteen attacks a second time, with a CI test asserting the two were
 equal. That test's failure mode was a repr rather than a diff, and a field added
 to one side was silently absent from the other.
 
-``src/combat/attack_data.py`` is now a lazy shim that reads ``attacks.json``, so
+``src/simulation/combat/attack_data.py`` is now a lazy shim that reads ``attacks.json``, so
 there is one copy of the balance and it is the one the game loads. ``attacks.json``
 is therefore required: a malformed one raises (:class:`GameplayDataError`), and a
 missing one raises too. Booting on a balance nobody reviewed is a worse outcome
@@ -59,7 +59,7 @@ def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
 
     ``attacks.json`` is required and raises if it is missing or malformed. It
     used to fall back to a second copy of the tables kept in
-    ``src/combat/attack_data.py`` -- which is now a shim that reads this same
+    ``src/simulation/combat/attack_data.py`` -- which is now a shim that reads this same
     file, so there is nothing to fall back to, and a game that booted on
     unreviewed balance would be worse than one that refuses to start.
     """

@@ -415,7 +415,7 @@ def _read_auto_into(raw: Any, where: str) -> MoveId | None:
 
 
 def _read_launch(raw: Any, where: str) -> str | None:
-    """A shot name from ``src/combat/shots.py``, or ``None``."""
+    """A shot name from ``src/simulation/entities/shots.py``, or ``None``."""
     if raw is None:
         return None
     from src.simulation.entities.shots import SHOTS

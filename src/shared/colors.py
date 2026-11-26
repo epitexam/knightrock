@@ -1,7 +1,7 @@
 """
 Shared color constants and palettes.
 
-``src/ui/styles.py`` remains the canonical theme for debug/HUD panels
+``src/presentation/ui/styles.py`` remains the canonical theme for debug/HUD panels
 ; ``Colors`` is the gameplay/rendering palette. To avoid
 two diverging sources of truth, the theme aliases below re-export the
 same values.
@@ -53,7 +53,7 @@ class Colors:
     light_purple: ClassVar[Color] = (210, 160, 255)
     pink: ClassVar[Color] = (255, 120, 200)
 
-    # --- Debug/HUD theme aliases (single source; see src/ui/styles.py) ---
+    # --- Debug/HUD theme aliases (single source; see src/presentation/ui/styles.py) ---
     panel_bg: ClassVar[ColorRGBA] = (20, 22, 26, 220)
     panel_border: ClassVar[Color] = (90, 100, 110)
     text_muted: ClassVar[Color] = (185, 192, 198)

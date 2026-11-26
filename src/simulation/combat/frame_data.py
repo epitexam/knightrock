@@ -457,7 +457,7 @@ class PhaseDefinition:
     only in its recovery: the chain continues on contact, which is what lets a
     string of hits flow without waiting out each swing."""
     launches: str | None = None
-    """The shot (``src/entities/shots.py``) this phase throws as it turns
+    """The shot (``src/simulation/entities/shots.py``) this phase throws as it turns
     active. A launching phase strikes with the shot alone: its box marks the
     hand it leaves from, for the eye and the debug view, and never touches."""
     auto_into: MoveId | None = None

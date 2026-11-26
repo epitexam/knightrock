@@ -593,7 +593,7 @@ def test_load_gameplay_data_refuses_to_boot_without_its_attacks(
     """A missing ``attacks.json`` is an error, not a fallback to a second copy.
 
     There used to be one: fourteen attacks kept twice, in this data file and in
-    ``src/combat/attack_data.py``, with a CI test asserting the two were equal.
+    ``src/simulation/combat/attack_data.py``, with a CI test asserting the two were equal.
     The Python side is now a shim that reads this file, so there is nothing to
     fall back to -- and booting on a balance nobody reviewed would be worse than
     a game that says why it did not start.

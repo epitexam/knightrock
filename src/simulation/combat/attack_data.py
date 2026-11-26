@@ -8,7 +8,7 @@ that missed its JSON twin produced a failing equality assertion whose message
 was a repr, not a diff.
 
 The tables now come from the data file, which is the source the game already
-loaded at runtime -- ``src/data/provider.py`` preferred the JSON and only fell
+loaded at runtime -- ``src/simulation/data/provider.py`` preferred the JSON and only fell
 back here when it was absent, so for every shipped build this module was a
 *copy* of what the game used.
 

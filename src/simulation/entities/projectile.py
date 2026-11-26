@@ -40,7 +40,7 @@ class ProjectileConfig:
     pierce: bool = False
     #: Downward pull in px/s², for a lobbed shot; a bolt flies straight.
     gravity: float = 0.0
-    #: How it is drawn (``src/core/rendering/strike_trails.py``); the sprite's
+    #: How it is drawn (``src/presentation/rendering/strike_trails.py``); the sprite's
     #: own image stays blank so the drawing can glow past the hitbox.
     look: str = "bolt"
 

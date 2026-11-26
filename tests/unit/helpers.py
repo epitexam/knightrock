@@ -313,7 +313,7 @@ def make_overlay(surface: pygame.Surface, density: float = 1.0) -> UIManager:
     """The real interface, for a test that needs one.
 
     `Renderer` takes its overlay by injection and defaults to drawing nothing
-    (`src/core/rendering/overlay.py`), so a test that asserts on health bars,
+    (`src/presentation/rendering/overlay.py`), so a test that asserts on health bars,
     the HUD or a debug panel has to say it wants the interface rather than
     getting it as a side effect of constructing a renderer.
     """

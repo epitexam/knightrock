@@ -190,7 +190,7 @@ class WorldUI:
 
     # -- health bars ----------------------------------------------------------
     #
-    # Delegated to `src/ui/world_overlay/bars.py`, which holds the real
+    # Delegated to `src/presentation/ui/world_overlay/bars.py`, which holds the real
     # implementation. `draw_health_bars` stays on the facade because the
     # renderer reaches the draw pass through the overlay port under that name,
     # and the bars are the one part of this file that is **not** debug-only:

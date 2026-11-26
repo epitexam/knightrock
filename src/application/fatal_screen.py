@@ -27,7 +27,7 @@ from src.presentation.display.detection import topology
 from src.presentation.display.monitors import centre_on, fit_size, opening_size
 from src.shared.colors import Colors
 
-# The menu palette (src/ui/styles.py mirrors Colors). No alarm-red dialog:
+# The menu palette (src/presentation/ui/styles.py mirrors Colors). No alarm-red dialog:
 # this is the same dark panel, grey border and gold selection as the menus.
 BACKGROUND = Colors.dark_grey
 PANEL_BG = (20, 22, 26)
