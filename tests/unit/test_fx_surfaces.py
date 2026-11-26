@@ -13,7 +13,8 @@ from collections.abc import Iterator
 import pygame
 import pytest
 
-from src.core.fx import (
+from src.core.fx.tuning import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
+from src.presentation.fx import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
@@ -30,8 +31,7 @@ from src.core.fx import (
     spawners,
     vortex_frames,
 )
-from src.core.fx import particles as particles
-from src.core.fx.tuning import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
+from src.presentation.fx import particles as particles
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -386,7 +386,7 @@ def test_the_trail_tones_are_spread_across_the_emission_and_not_a_fixed_row() ->
     adjacent tones -- two near-identical clouds -- and leave the top of the
     range unused on the burst, which is the one mark the dash is read from.
     """
-    from src.core.fx import dash_tint
+    from src.presentation.fx import dash_tint
 
     tick = [dash_tint(index, DashDust.TICK_COUNT) for index in range(DashDust.TICK_COUNT)]
     burst = [dash_tint(index, DashDust.BURST_COUNT) for index in range(DashDust.BURST_COUNT)]

@@ -85,7 +85,8 @@ def _count_font_builds(monkeypatch):
     made: list[tuple] = []
     original = menu_font
     monkeypatch.setattr(
-        "src.ui.menu_view.menu_font", lambda *a, **k: made.append(a) or original(*a, **k)
+        "src.presentation.ui.menu_view.menu_font",
+        lambda *a, **k: made.append(a) or original(*a, **k),
     )
     return lambda: len(made)
 

@@ -13,13 +13,13 @@ import pygame
 import pytest
 
 from src.application.game import Game
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.viewport import Viewport
-from src.core.fx import particles
 from src.core.level.level import Level
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.viewport import Viewport
+from src.presentation.fx import particles
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
 from tests.conftest import requires_assets
 from tests.fakes import FighterSprite
 from tests.headless.conftest import make_programmatic_level_data, make_viewport

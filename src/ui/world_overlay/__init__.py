@@ -1,17 +1,5 @@
-"""World-space debug overlay layers.
+"""Backward-compatible path for :mod:`src.presentation.ui.world_overlay`."""
 
-The submodules are imported directly by their callers; this package deliberately
-does not import them at module scope, so a caller still using one of the old flat
-paths cannot close a cycle through the package root.
-"""
-
-__all__ = [
-    "bars",
-    "cards",
-    "geo",
-    "metrics",
-    "panels",
-    "shapes",
-    "shared",
-    "velocity",
-]
+from src.presentation.ui.world_overlay import (
+    __all__ as __all__,
+)

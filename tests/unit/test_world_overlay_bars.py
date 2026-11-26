@@ -21,18 +21,18 @@ import pygame
 import pytest
 
 from src.core.colors import Colors
-from src.ui import world_ui
-from src.ui.world_overlay import bars as bars_module
-from src.ui.world_overlay.bars import (
+from src.presentation.ui import world_ui
+from src.presentation.ui.world_overlay import bars as bars_module
+from src.presentation.ui.world_overlay.bars import (
     draw_health_bars,
     has_health_bar,
     health_bar_rect,
     health_colour,
 )
-from src.ui.world_overlay.metrics import HEALTH_BAR_HEIGHT
+from src.presentation.ui.world_overlay.metrics import HEALTH_BAR_HEIGHT
 
 BARS_MODULE = Path(bars_module.__file__)
-UI_DIR = BARS_MODULE.parent.parent
+SRC = BARS_MODULE.parents[3]
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -67,7 +67,7 @@ def test_level_draws_health_bars_before_it_checks_debug() -> None:
     someone moving the call below the `if not debug_enabled: return`, which
     would look like a tidy-up and would silently delete the bars from the game.
     """
-    source = (UI_DIR.parent / "core/level/level.py").read_text(encoding="utf-8")
+    source = (SRC / "core/level/level.py").read_text(encoding="utf-8")
     body = source[source.index("    def draw(") :]
     bars = body.index("draw_health_bars")
     gate = body.index("if not debug_enabled")

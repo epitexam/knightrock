@@ -25,7 +25,7 @@ import pytest
 from src.core.settings import Locomotion
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FX_PACKAGE = REPO_ROOT / "src" / "core" / "fx"
+FX_PACKAGE = REPO_ROOT / "src" / "presentation" / "fx"
 FX_MODULE = FX_PACKAGE / "__init__.py"
 SPAWNERS_MODULE = FX_PACKAGE / "spawners.py"
 PARTICLES_MODULE = FX_PACKAGE / "particles.py"
@@ -92,15 +92,15 @@ def _fx_reexports() -> set[str]:
     reached: set[str] = set()
     submodules = {path.stem for path in FX_MODULES}
     for path in _python_files():
-        if FX_PACKAGE in path.parents:
+        if FX_PACKAGE in path.parents or ("core" in path.parts and "fx" in path.parts):
             continue
         source = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(source):
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
-            if node.module.endswith("core.fx"):
+            if node.module.endswith(("core.fx", "presentation.fx")):
                 reached.update(alias.name for alias in node.names if alias.name not in submodules)
-            elif node.module == "src.core":
+            elif node.module in ("src.core", "src.presentation"):
                 for alias in node.names:
                     if alias.name == "fx":
                         reached.update(
@@ -263,7 +263,11 @@ def test_the_particle_cap_is_known_to_one_place() -> None:
     exempt = {"spawners.py", "__init__.py"}
     for path in (REPO_ROOT / "src").rglob("*.py"):
         in_package = FX_PACKAGE in path.parents
-        if "__pycache__" in path.parts or (in_package and path.name in exempt):
+        if (
+            "__pycache__" in path.parts
+            or ("core" in path.parts and "fx" in path.parts)
+            or (in_package and path.name in exempt)
+        ):
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if "MAX_FX_SPRITES" in line:

@@ -7,7 +7,7 @@ import pygame
 import pytest
 
 from src.core.settings import Debug
-from src.ui import panel_renderer
+from src.presentation.ui import panel_renderer
 from src.ui.fonts import menu_font, menu_font_size
 from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.styles import SELECTION_BG

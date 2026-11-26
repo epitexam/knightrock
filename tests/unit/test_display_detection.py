@@ -258,7 +258,7 @@ def test_the_probe_refuses_a_pygame_built_on_another_sdl(monkeypatch, caplog) ->
     """SDL 3 renamed the display calls: the SDL 2 bindings must not be tried on it."""
     import logging
 
-    from src.core.display import sdl_probe
+    from src.presentation.display import sdl_probe
 
     monkeypatch.setattr(sdl_probe, "_bindings_searched", False)
     monkeypatch.setattr(sdl_probe, "_bindings_cache", None)
@@ -274,7 +274,7 @@ def test_the_probe_refuses_a_pygame_built_on_another_sdl(monkeypatch, caplog) ->
 
 
 def test_the_topology_falls_back_to_pygame_when_the_probe_is_silent(monkeypatch) -> None:
-    from src.core.display import sdl_probe
+    from src.presentation.display import sdl_probe
 
     monkeypatch.setattr(sdl_probe, "probe", lambda: ())
     monkeypatch.setattr(pygame.display, "get_desktop_sizes", lambda: [(2560, 1440), (1920, 1080)])
@@ -310,7 +310,7 @@ def test_a_display_mode_sdl_refuses_reports_no_refresh_rate() -> None:
     """
     import ctypes
 
-    from src.core.display import sdl_probe
+    from src.presentation.display import sdl_probe
 
     class _Lib:
         def __init__(self, status: int) -> None:

@@ -1,1 +1,1 @@
-"""Rendering: camera and renderer."""
+"""Backward-compatible path for :mod:`src.presentation.rendering`."""

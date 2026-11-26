@@ -78,3 +78,8 @@ dans le périmètre d'une tranche.
   noyau partagé. Dette transitoire assumée : la simulation et les adaptateurs
   lisent encore `src.core.settings` et `src.data.errors` jusqu'à la migration
   de la configuration et des données, qui feront l'objet d'un ADR séparé.
+- **Phase 3** (faite) : `src/presentation` contient display, rendering, fx et
+  ui (53 modules) ; les quatre anciens paquets sont des shims contrôlés. Les
+  tests qui lisaient le code source par chemin dur ou qui patchaient un module
+  ont été déplacés vers le nouveau chemin. Quatrième contrat import-linter :
+  la présentation ne dépend pas de l'application.

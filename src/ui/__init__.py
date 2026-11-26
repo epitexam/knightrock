@@ -1,1 +1,1 @@
-"""User interface: panels, player HUD and world-space overlays."""
+"""Backward-compatible path for :mod:`src.presentation.ui`."""

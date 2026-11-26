@@ -1,20 +1,41 @@
-# ui/styles.py
-"""Debug/HUD theme. Values mirror src.core.colors.Colors."""
+"""Backward-compatible path for :mod:`src.presentation.ui.styles`."""
 
-from src.core.colors import Colors
-
-PANEL_BG = Colors.panel_bg
-PANEL_BORDER = Colors.panel_border
-#: The one selection mark: a bar behind the row a press acts on, whichever
-#: device put it there, and the colour it flashes after a change.
-SELECTION_BG = Colors.gold
-SELECTION_FLASH = (255, 240, 170)
-SELECTION_TEXT = (20, 22, 26)
-TEXT_MUTED = Colors.text_muted
-#: Dimmer than muted: a cell with nothing in it, which should read as a gap.
-TEXT_FAINT = (120, 128, 136)
-TEXT_TITLE = Colors.text_title
-TEXT_WARN = Colors.text_warn
-TEXT_CRIT = Colors.text_crit
-TEXT_OK = Colors.text_ok
-GOLD = Colors.gold
+from src.presentation.ui.styles import (
+    GOLD as GOLD,
+)
+from src.presentation.ui.styles import (
+    PANEL_BG as PANEL_BG,
+)
+from src.presentation.ui.styles import (
+    PANEL_BORDER as PANEL_BORDER,
+)
+from src.presentation.ui.styles import (
+    SELECTION_BG as SELECTION_BG,
+)
+from src.presentation.ui.styles import (
+    SELECTION_FLASH as SELECTION_FLASH,
+)
+from src.presentation.ui.styles import (
+    SELECTION_TEXT as SELECTION_TEXT,
+)
+from src.presentation.ui.styles import (
+    TEXT_CRIT as TEXT_CRIT,
+)
+from src.presentation.ui.styles import (
+    TEXT_FAINT as TEXT_FAINT,
+)
+from src.presentation.ui.styles import (
+    TEXT_MUTED as TEXT_MUTED,
+)
+from src.presentation.ui.styles import (
+    TEXT_OK as TEXT_OK,
+)
+from src.presentation.ui.styles import (
+    TEXT_TITLE as TEXT_TITLE,
+)
+from src.presentation.ui.styles import (
+    TEXT_WARN as TEXT_WARN,
+)
+from src.presentation.ui.styles import (
+    Colors as Colors,
+)

@@ -24,7 +24,17 @@ import pytest
 SRC = Path(__file__).resolve().parents[2] / "src"
 
 #: The layers this file reasons about.
-LAYERS = ("application", "combat", "core", "data", "entities", "physics", "states", "ui")
+LAYERS = (
+    "application",
+    "combat",
+    "core",
+    "data",
+    "entities",
+    "physics",
+    "presentation",
+    "states",
+    "ui",
+)
 
 #: What a layer may reach outside itself, per layer and per module. Everything
 #: absent is a violation, so widening a rule is a deliberate edit here.
@@ -134,7 +144,7 @@ def test_the_simulation_does_not_import_the_application() -> None:
 
 def test_the_renderer_names_no_ui_module() -> None:
     """The specific inversion, named so a revert is obvious in the diff."""
-    source = (SRC / "core/rendering/renderer.py").read_text(encoding="utf-8")
+    source = (SRC / "presentation/rendering/renderer.py").read_text(encoding="utf-8")
     assert "src.ui" not in source
     assert "UIManager" not in source
 
@@ -169,8 +179,8 @@ def test_the_composition_root_lives_in_the_application() -> None:
 def test_the_layer_walk_actually_finds_the_modules() -> None:
     """Guard the guard: an empty walk would make every rule above vacuous."""
     assert len(list((SRC / "core").rglob("*.py"))) > 40
-    assert "ui" in _imported_layers(SRC / "ui/ui_manager.py")
-    assert "core" in _imported_layers(SRC / "ui/ui_manager.py")
+    assert "core" in _imported_layers(SRC / "presentation/ui/ui_manager.py")
+    assert "presentation" in _imported_layers(SRC / "ui/ui_manager.py")
 
 
 @pytest.mark.parametrize("layer", LAYERS)

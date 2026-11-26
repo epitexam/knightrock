@@ -84,7 +84,7 @@ def test_the_dashing_player_is_resolved_once_not_per_sprite(
         groups.all_sprites.add(Tile((32.0, 32.0)))
 
     calls = 0
-    import src.core.rendering.renderer as module
+    import src.presentation.rendering.renderer as module
 
     original = module.is_player_dashing
 
