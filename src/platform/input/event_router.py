@@ -5,10 +5,10 @@ from enum import StrEnum
 
 import pygame
 
-from src.core.settings import Input as InputSettings
 from src.platform.input.device_registry import DeviceRegistry
 from src.platform.input.input_bindings import InputBindings
 from src.shared.input_actions import InputAction
+from src.simulation.settings import Input as InputSettings
 
 
 class InputDevice(StrEnum):

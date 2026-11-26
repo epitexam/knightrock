@@ -1,1 +1,1 @@
-"""State machine and entity states (player, enemy, reactions)."""
+"""Backward-compatible path for :mod:`src.simulation.states.__init__`."""

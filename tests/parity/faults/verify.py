@@ -63,9 +63,11 @@ def main() -> int:
             capture_output=True,
         )
         try:
-            # The parity package may still be untracked; make sure the worktree
-            # runs exactly the suite that is being validated.
-            shutil.copytree(ROOT / "tests/parity", worktree / "tests/parity", dirs_exist_ok=True)
+            # A phase may still be uncommitted: validate the working tree, not
+            # HEAD, by copying the source, tests and tracked data into the
+            # isolated worktree before applying faults.
+            for folder in ("src", "tests/parity", "data"):
+                shutil.copytree(ROOT / folder, worktree / folder, dirs_exist_ok=True)
             for fault in FAULTS:
                 path = worktree / fault.path
                 original = path.read_text(encoding="utf-8")

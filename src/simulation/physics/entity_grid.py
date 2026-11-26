@@ -49,8 +49,8 @@ from typing import Any, cast
 
 import pygame
 
-from src.core.settings import World
 from src.simulation.physics.spatial_hash import SpatialHash, SpatialHashMember
+from src.simulation.settings import World
 
 __all__ = ["MIN_GRID_MEMBERS", "EntityGrid", "overlapping_pairs"]
 

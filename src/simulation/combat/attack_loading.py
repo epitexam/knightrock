@@ -21,7 +21,6 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterator, Mapping
 
-from src.data.errors import GameplayDataError
 from src.simulation.combat.combat_component import CombatComponent
 from src.simulation.combat.frame_data import (
     FRAME_RATE,
@@ -31,6 +30,7 @@ from src.simulation.combat.frame_data import (
     PhaseDefinition,
     Stance,
 )
+from src.simulation.data.errors import GameplayDataError
 
 __all__ = [
     "ENVELOPE_MARGIN",

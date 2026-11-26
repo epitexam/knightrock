@@ -1,34 +1,14 @@
-"""ProgressionSystem: exit detection for the level.
+"""Backward-compatible path for :mod:`src.simulation.level.systems.progression_system`."""
 
-Extracted from ``Level.update``.
-
-The system owns the mutable ``exit_reached`` flag that used to live on
-``Level``; the level re-exposes it as a property so the scene layer, the
-rollback snapshots and the tests keep their access path.
-"""
-
-import pygame
-
-from src.entities.player import Player
-
-__all__ = ["ProgressionSystem"]
-
-
-class ProgressionSystem:
-    """Flag the level as completed when a living player touches the exit.
-
-    ``pygame.sprite.spritecollide`` is resolved through the ``pygame.sprite``
-    module at call time — never imported directly — so tests can monkeypatch
-    it and observe the exit probe.
-    """
-
-    def __init__(self, exit_sprites: pygame.sprite.Group) -> None:
-        self.exit_sprites = exit_sprites
-        self.exit_reached = False
-
-    def process(self, player: Player) -> None:
-        """Set ``exit_reached`` for every tick a living player touches the exit."""
-        if player.is_dead:
-            return
-        if pygame.sprite.spritecollide(player, self.exit_sprites, False):
-            self.exit_reached = True
+from src.simulation.level.systems.progression_system import (
+    Player as Player,
+)
+from src.simulation.level.systems.progression_system import (
+    ProgressionSystem as ProgressionSystem,
+)
+from src.simulation.level.systems.progression_system import (
+    __all__ as __all__,
+)
+from src.simulation.level.systems.progression_system import (
+    pygame as pygame,
+)

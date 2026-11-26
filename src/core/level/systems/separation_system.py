@@ -1,115 +1,23 @@
-from collections.abc import Iterable
-from typing import Any
+"""Backward-compatible path for :mod:`src.simulation.level.systems.separation_system`."""
 
-from src.core.settings import Separation as Sep
-from src.entities.entity import Entity
-from src.physics.entity_grid import EntityGrid, overlapping_pairs
-
-
-class SeparationSystem:
-    def process(
-        self,
-        entity_sprites: Iterable[Entity],
-        entity_grid: EntityGrid | None = None,
-    ) -> list[Entity]:
-        """Push overlapping entities apart on the dominant overlap axis.
-
-        Pair candidates come from the per-tick :class:`EntityGrid` when one
-        is provided (O(n · k) instead of the legacy exhaustive O(n²)); pair
-        order is preserved, so behaviour is unchanged (see
-        :func:`overlapping_pairs`).  Without a grid the pairs are tested
-        exhaustively — still correct, just slower.
-
-        Returns the entities whose hitbox this call actually displaced, so the
-        caller can repair whatever it derived from that position.  Attack boxes
-        are positioned from the hitbox, and :meth:`Entity.sync_rects` does not
-        know about them -- so a fighter pushed apart here used to need its
-        attack box re-synced afterwards, which is why the loop did it for
-        *every* combatant every tick to cover the handful that moved.
-
-        The list is usually empty.  Overlapping is the rare case, and the
-        alternative -- re-syncing all of them unconditionally -- charged every
-        fighter for the ones that happened to be standing near someone.
-        """
-        entities = list(entity_sprites)
-        moved: list[Entity] = []
-
-        if entity_grid is not None:
-            pairs = overlapping_pairs(entities, entity_grid)
-        else:
-            pairs = (
-                (ent_a, entities[j])
-                for i, ent_a in enumerate(entities)
-                for j in range(i + 1, len(entities))
-            )
-
-        for ent_a, ent_b in pairs:
-            # Skip separation if either entity is invincible (e.g., dashing) - allows phasing through
-            if ent_a.is_invincible or ent_b.is_invincible:
-                continue
-            if not (ent_a.pushable or ent_b.pushable):
-                continue
-
-            overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
-                ent_a.hitbox.left, ent_b.hitbox.left
-            )
-            overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
-                ent_a.hitbox.top, ent_b.hitbox.top
-            )
-
-            if overlap_x <= 0 or overlap_y <= 0:
-                continue
-
-            a_grounded = ent_a.on_surface.get("floor", False)
-            b_grounded = ent_b.on_surface.get("floor", False)
-            both_airborne = not a_grounded and not b_grounded
-            clearly_stacked = overlap_y < overlap_x * Sep.VERTICAL_STACK_RATIO
-
-            before = ((ent_a.hitbox.x, ent_a.hitbox.y), (ent_b.hitbox.x, ent_b.hitbox.y))
-
-            if clearly_stacked and both_airborne:
-                push = overlap_y * Sep.STRENGTH
-                dir_a = -1.0 if ent_a.hitbox.centery <= ent_b.hitbox.centery else 1.0
-                self._push(ent_a, ent_b, push * dir_a, push * -dir_a, axis="y")
-            else:
-                push = overlap_x * Sep.STRENGTH
-                dir_a = -1.0 if ent_a.hitbox.centerx <= ent_b.hitbox.centerx else 1.0
-                self._push(ent_a, ent_b, push * dir_a, push * -dir_a, axis="x")
-
-            ent_a.sync_rects()
-            ent_b.sync_rects()
-
-            # Measured rather than assumed: a pair can reach here with a push
-            # that rounds to nothing, and an entity pushed twice in one tick is
-            # worth re-syncing once.
-            for entity, previous in ((ent_a, before[0]), (ent_b, before[1])):
-                if (entity.hitbox.x, entity.hitbox.y) != previous and entity not in moved:
-                    moved.append(entity)
-
-        return moved
-
-    @staticmethod
-    def _push(ent_a: Any, ent_b: Any, delta_a: float, delta_b: float, axis: str) -> None:
-        if ent_a.pushable and ent_b.pushable:
-            setattr(ent_a.hitbox, axis, getattr(ent_a.hitbox, axis) + delta_a)
-            setattr(ent_b.hitbox, axis, getattr(ent_b.hitbox, axis) + delta_b)
-            if axis == "x":
-                ent_a.velocity.x = 0
-                ent_b.velocity.x = 0
-            else:
-                ent_a.velocity.y = 0
-                ent_b.velocity.y = 0
-
-        elif ent_a.pushable:
-            setattr(ent_a.hitbox, axis, getattr(ent_a.hitbox, axis) + delta_a * 2)
-            if axis == "x":
-                ent_a.velocity.x = 0
-            else:
-                ent_a.velocity.y = 0
-
-        elif ent_b.pushable:
-            setattr(ent_b.hitbox, axis, getattr(ent_b.hitbox, axis) + delta_b * 2)
-            if axis == "x":
-                ent_b.velocity.x = 0
-            else:
-                ent_b.velocity.y = 0
+from src.simulation.level.systems.separation_system import (
+    Any as Any,
+)
+from src.simulation.level.systems.separation_system import (
+    Entity as Entity,
+)
+from src.simulation.level.systems.separation_system import (
+    EntityGrid as EntityGrid,
+)
+from src.simulation.level.systems.separation_system import (
+    Iterable as Iterable,
+)
+from src.simulation.level.systems.separation_system import (
+    Sep as Sep,
+)
+from src.simulation.level.systems.separation_system import (
+    SeparationSystem as SeparationSystem,
+)
+from src.simulation.level.systems.separation_system import (
+    overlapping_pairs as overlapping_pairs,
+)

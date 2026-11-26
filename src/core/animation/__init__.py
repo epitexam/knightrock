@@ -1,4 +1,1 @@
-"""Sprite animation: per-state frame sequencing.
-
-Import from ``src.core.animation.animator``; nothing is re-exported here.
-"""
+"""Backward-compatible path for :mod:`src.simulation.animation.__init__`."""

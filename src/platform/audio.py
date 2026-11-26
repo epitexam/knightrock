@@ -29,7 +29,7 @@ from enum import StrEnum
 
 import pygame
 
-from src.core.events import (
+from src.shared.events import (
     EventBus,
     LevelCompleted,
     LevelStarted,
@@ -37,8 +37,8 @@ from src.core.events import (
     UiEffect,
     UiFeedback,
 )
-from src.core.paths import resource_path
-from src.core.settings import Audio as AudioSettings
+from src.shared.paths import resource_path
+from src.simulation.settings import Audio as AudioSettings
 
 logger = logging.getLogger(__name__)
 

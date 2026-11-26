@@ -91,6 +91,12 @@ type = "forbidden"
 source_modules = ["src.presentation"]
 forbidden_modules = ["src.application"]
 
+[[tool.importlinter.contracts]]
+name = "the simulation does not depend on the composition root"
+type = "forbidden"
+source_modules = ["src.simulation"]
+forbidden_modules = ["src.application"]
+
 [dependency-groups]
 dev = [
     "import-linter>=2.9",

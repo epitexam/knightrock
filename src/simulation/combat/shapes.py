@@ -22,7 +22,7 @@ from enum import Enum
 
 import pygame
 
-from src.core.settings import Combat as CombatSettings
+from src.simulation.settings import Combat as CombatSettings
 
 _EPSILON = CombatSettings.SHAPE_CONTACT_EPSILON_PX
 _DEFAULT_SWEEP_ITERATIONS = CombatSettings.SHAPE_SWEEP_MAX_ITERATIONS

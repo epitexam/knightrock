@@ -21,7 +21,7 @@ import math
 
 import pygame
 
-from src.core.settings import Combat as CombatSettings
+from src.simulation.settings import Combat as CombatSettings
 
 _MIN = CombatSettings.SWEEP_MIN_DISPLACEMENT_PX
 _MAX = CombatSettings.SWEEP_MAX_DISPLACEMENT_PX

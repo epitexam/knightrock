@@ -1,0 +1,473 @@
+"""
+Builds game objects from parsed level data using registries for extensibility.
+"""
+
+import functools
+import logging
+from collections.abc import Sequence
+
+import pygame
+from pygame.sprite import Group
+
+from src.core.level import properties as props
+from src.platform.assets import shared_library
+from src.platform.input.input_manager import InputManager
+from src.shared.colors import Colors
+from src.simulation.data.provider import GameplayData, shipped_gameplay_data
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.id_factory import IdFactory
+from src.simulation.entities.player import Player
+from src.simulation.hazards import (
+    OrbitingHazard,
+    SpanHazard,
+    art_bounds,
+    build_hazard_animator,
+    mirrored,
+)
+from src.simulation.level.level_data import DATA_LAYER_NAME, LevelData, ObjectData, ObjectLayerData
+from src.simulation.level.level_registry import Registry
+from src.simulation.level.systems.hazard_damage import HazardDamageSystem
+from src.simulation.physics.spatial_hash import SpatialHash
+from src.simulation.settings import World
+from src.simulation.sprite_groups import SpriteGroups
+from src.simulation.sprites import LevelExit, MovingPlatform, Sprite
+
+logger = logging.getLogger(__name__)
+
+TILE_LAYER_HANDLERS: Registry = Registry("tile layer")
+OBJECT_FACTORIES: Registry = Registry("object")
+
+#: Tiled tile layer as ``(x, y, surface)`` triples.
+TileList = Sequence[tuple[int, int, pygame.Surface]]
+
+
+def _build_terrain(tiles: TileList, groups: SpriteGroups) -> None:
+    """Create solid terrain sprites from tile layer tiles.
+
+    Terrain goes in ``static_sprites`` (the frozen draw plane) and
+    ``collision_sprites`` (the physics plane), and deliberately not in
+    ``all_sprites``: see :class:`~src.core.sprite_groups.SpriteGroups` for why
+    the draw planes are split.
+    """
+    for x, y, surf in tiles:
+        Sprite(
+            pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
+            surf=surf,
+            groups=(groups.static_sprites, groups.collision_sprites),
+        )
+
+
+def _build_decor(tiles: TileList, groups: SpriteGroups, *, foreground: bool) -> None:
+    """Create decorative sprites from tile layer tiles.
+
+    Foreground decor is its own plane because it draws last; background decor
+    is part of the frozen plane the terrain belongs to, and keeps the Tiled
+    layer order that decides which surface covers which.
+    """
+    target = groups.fg_sprites if foreground else groups.static_sprites
+    for x, y, surf in tiles:
+        Sprite(
+            pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
+            surf=surf,
+            groups=target,
+        )
+
+
+def _build_one_way_platforms(tiles: TileList, groups: SpriteGroups) -> None:
+    """Create one-way platform tiles: solid on top, pass-through elsewhere.
+
+    An entity standing on top is supported (floor contact); jumping from
+    below or walking into the side phases through, which is what a Tiled
+    "Platforms" layer means in a platformer.
+    """
+    for x, y, surf in tiles:
+        sprite = Sprite(
+            pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
+            surf=surf,
+            groups=(groups.static_sprites, groups.collision_sprites),
+        )
+        sprite.one_way = True
+
+
+TILE_LAYER_HANDLERS.register("Terrain")(_build_terrain)
+TILE_LAYER_HANDLERS.register("BG")(functools.partial(_build_decor, foreground=False))
+TILE_LAYER_HANDLERS.register("Platforms")(_build_one_way_platforms)
+TILE_LAYER_HANDLERS.register("FG")(functools.partial(_build_decor, foreground=True))
+
+
+def _explicit_waypoints(obj: ObjectData) -> list[tuple[float, float]] | None:
+    """
+    Waypoints authored on the object itself, or None when absent.
+
+    Prefers the 'points' attribute, then the 'waypoints' string property,
+    then 'end_x'/'end_y'.  When None, the object rectangle is the path.
+    """
+    if obj.points:
+        return obj.points
+    waypoints_str = obj.properties.get("waypoints", "")
+    if waypoints_str:
+        points = []
+        for point in waypoints_str.split(";"):
+            x_str, y_str = point.split(",")
+            points.append((float(x_str), float(y_str)))
+        return points
+    if "end_x" in obj.properties or "end_y" in obj.properties:
+        where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+        end_x = props.number(obj.properties, "end_x", obj.x, where=where)
+        end_y = props.number(obj.properties, "end_y", obj.y, where=where)
+        return [(obj.x, obj.y), (end_x, end_y)]
+    return None
+
+
+def _rect_path(obj: ObjectData) -> tuple[pygame.math.Vector2, pygame.math.Vector2]:
+    """The object rectangle's centre line: the full back-and-forth range.
+
+    The rectangle drawn in Tiled is the travel distance, not the sprite:
+    horizontal when the rectangle is at least as wide as tall, vertical
+    otherwise, running edge to edge through the rectangle's middle.
+    """
+    centre_x = obj.x + obj.width / 2
+    centre_y = obj.y + obj.height / 2
+    if obj.width >= obj.height:
+        return (
+            pygame.math.Vector2(obj.x, centre_y),
+            pygame.math.Vector2(obj.x + obj.width, centre_y),
+        )
+    return (
+        pygame.math.Vector2(centre_x, obj.y),
+        pygame.math.Vector2(centre_x, obj.y + obj.height),
+    )
+
+
+def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
+    """Create a MovingPlatform patrolling the object rectangle.
+
+    The Tiled rectangle is the travel range (back and forth), not the
+    platform: the pad is a small surface launched at the rectangle's
+    centre, then patrolling between the rectangle's ends at the 'speed'
+    property (default 100 px/s).  Pad size: 'platform_width'/
+    'platform_height' properties, default 2 tiles x half a tile.
+    """
+    half_tile = World.TILE_SIZE // 2
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    width = max(
+        props.number(obj.properties, "platform_width", World.TILE_SIZE * 2, where=where),
+        half_tile,
+    )
+    height = max(
+        props.number(obj.properties, "platform_height", half_tile, where=where),
+        half_tile,
+    )
+    surf = pygame.Surface((width, height))
+    surf.fill(Colors.gold)
+    speed = props.number(obj.properties, "speed", 100, where=where)
+    half = pygame.math.Vector2(width / 2, height / 2)
+    start, end = _rect_path(obj)
+    waypoints = _explicit_waypoints(obj)
+    if waypoints is None:
+        # Waypoints are top-left targets: offset them so the pad's *centre*
+        # travels the rectangle from end to end.
+        waypoint_a = (start.x - half.x, start.y - half.y)
+        waypoint_b = (end.x - half.x, end.y - half.y)
+        waypoints = [waypoint_a, waypoint_b]
+    middle = start.lerp(end, 0.5)
+    platform = MovingPlatform(
+        (middle.x - half.x, middle.y - half.y),
+        surf,
+        waypoints,
+        speed,
+        (groups.all_sprites, groups.collision_sprites),
+        collision_sprites=groups.collision_sprites,
+    )
+    groups.moving_platforms.add(platform)
+
+
+SAW_ART = "assets/graphics/enemies/saw/animation"
+FLOOR_SPIKES_ART = "assets/graphics/enemies/floor_spikes"
+
+
+def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+    """Create a linearly moving hazard (saw) patrolling the object rectangle.
+
+    The Tiled rectangle is the travel range, not the hazard: the saw sprite
+    launches at the rectangle's centre and sweeps the full range back and
+    forth at the 'speed' property (default 100 px/s).  Sprite size: 'size'
+    property, else the animation's natural frame size, else one tile.
+    """
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    speed = props.number(obj.properties, "speed", 100, where=where)
+    flip = props.flag(obj.properties, "flip", False, where=where)
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
+    try:
+        animator = build_hazard_animator({"spin": SAW_ART}, "spin")
+    except FileNotFoundError:
+        animator = None
+    if "size" in obj.properties:
+        side = props.number(obj.properties, "size", 0, where=where)
+        size = (side, side)
+    elif animator is not None:
+        size = animator.frame_size
+    else:
+        size = (World.TILE_SIZE, World.TILE_SIZE)
+    surf = pygame.Surface((max(size[0], 1), max(size[1], 1)))
+    surf.fill(Colors.black)
+    half = pygame.math.Vector2(size[0] / 2, size[1] / 2)
+    start, end = _rect_path(obj)
+    span_a = (start.x - half.x, start.y - half.y)
+    span_b = (end.x - half.x, end.y - half.y)
+    hazard = SpanHazard(
+        span_a,
+        surf,
+        speed,
+        flip,
+        groups.all_sprites,
+        damage=damage,
+        animator=animator,
+        span=(span_a, span_b),
+    )
+    # The blade is a disc in a square frame: it cuts with the disc.
+    frames = shared_library().frames(SAW_ART) if animator is not None else [surf]
+    hazard.fit_contact(art_bounds(frames, hazard.rect.size), round_shape=True)
+    groups.hazard_sprites.add(hazard)
+
+
+def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+    """Create a circularly moving hazard (spike)."""
+    size = max(obj.width, obj.height, 1)
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    pygame.draw.circle(surf, Colors.red, (size / 2, size / 2), size / 2)
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    radius = props.number(obj.properties, "radius", 0, where=where)
+    start_angle = props.number(obj.properties, "start_angle", 0, where=where)
+    end_angle = props.number(obj.properties, "end_angle", 360, where=where)
+    speed = props.number(obj.properties, "speed", 50, where=where)
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
+    hazard = OrbitingHazard(
+        (obj.x + obj.width / 2, obj.y + obj.height / 2),
+        surf,
+        radius,
+        start_angle,
+        end_angle,
+        speed,
+        groups.all_sprites,
+        damage=damage,
+    )
+    # Drawn as a circle in its square: it hurts with the circle.
+    hazard.fit_contact(pygame.FRect(0.0, 0.0, size, size), round_shape=True)
+    groups.hazard_sprites.add(hazard)
+
+
+def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+    """Create an immobile hazard (e.g. floor spikes) from a placed image."""
+    surf = obj.image
+    if surf is None:
+        surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
+        surf.fill(Colors.red)
+    elif obj.flip_x or obj.flip_y:
+        # Mirrored in Tiled (a spike hung from a ceiling): PyTMX gives the tile
+        # back unflipped, so it is turned here.
+        surf = pygame.transform.flip(surf, obj.flip_x, obj.flip_y)
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
+    try:
+        animator = build_hazard_animator({"spikes": FLOOR_SPIKES_ART}, "spikes")
+    except FileNotFoundError:
+        animator = None
+    hazard = SpanHazard(
+        (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
+    )
+    hazard.flip_x, hazard.flip_y = obj.flip_x, obj.flip_y
+    # The spikes fill half of their tile -- the bottom half, or the top one for
+    # a mirrored ceiling spike: only they hurt, not the air beside them.
+    frames = (
+        mirrored(shared_library().frames(FLOOR_SPIKES_ART), obj.flip_x, obj.flip_y)
+        if animator is not None
+        else [surf]
+    )
+    hazard.fit_contact(art_bounds(frames, hazard.rect.size))
+    groups.hazard_sprites.add(hazard)
+
+
+def _build_exit(obj: ObjectData, groups: SpriteGroups) -> None:
+    """Create the level exit flag.
+
+    The trigger follows the object's own rectangle rather than a fixed tile
+    squared off at its top-left corner: a flag 68x186 authored in Tiled used to
+    be reachable from a 64x64 box 186 px above its own top edge, so the exit
+    was two body heights over the flag's head.
+    """
+    groups.exit_sprites.add(LevelExit((obj.x, obj.y), groups.all_sprites, (obj.width, obj.height)))
+
+
+#: Object layers whose sprites sit *behind* the world, not in it.
+#:
+#: Every map ships the same object layers in the same order, and the first one
+#: is the background props -- drawn in Tiled between the BG tiles and the
+#: Terrain tiles, so they read as scenery the level sits in front of. The world
+#: builder used to file every decorative object in the moving plane, which is
+#: drawn *after* the frozen tiles, so those props were painted on top of the
+#: terrain they were placed behind.
+#:
+#: The rule is the name, for the same reason the tile-layer handlers are: the
+#: layers are called ``BG``/``BG details``/``Terrain``/``Platforms``/``FG``
+#: across all eight maps, and the classification is the builder's, not
+#: Tiled's z.
+BACKGROUND_LAYER_PREFIX = "BG"
+
+
+def _decor_group(layer: ObjectLayerData, groups: SpriteGroups) -> Group:
+    """Where an unnamed decorative object's sprite belongs.
+
+    A background layer's props are scenery, and scenery that never moves
+    belongs in the frozen plane with the tiles: the chunk index covers them,
+    the cull is the O(log n) one, and they draw where the document put them.
+    """
+    return (
+        groups.static_sprites
+        if layer.name.startswith(BACKGROUND_LAYER_PREFIX)
+        else groups.all_sprites
+    )
+
+
+OBJECT_FACTORIES.register("helicopter")(_build_moving_platform)
+OBJECT_FACTORIES.register("boat")(_build_moving_platform)
+OBJECT_FACTORIES.register("saw")(_build_span_hazard)
+OBJECT_FACTORIES.register("spike")(_build_orbiting_hazard)
+OBJECT_FACTORIES.register("floor_spike")(_build_static_hazard)
+OBJECT_FACTORIES.register("flag")(_build_exit)
+
+
+class WorldBuilder:
+    """
+    Constructs the game world from parsed LevelData.
+
+    It processes tile layers through registered handlers and object layers
+    through registered factories. Unknown objects are either spawned as
+    static images (if they have one) or logged as ignored.
+    """
+
+    def __init__(
+        self,
+        level_data: LevelData,
+        gameplay_data: GameplayData | None = None,
+        id_factory: IdFactory | None = None,
+    ) -> None:
+        self.level_data = level_data
+        self.id_factory = id_factory if id_factory is not None else IdFactory()
+        #: The values the fighters are built from; the shipped files when none
+        #: is given, so a level never builds from anything else.
+        self.gameplay_data: GameplayData = (
+            gameplay_data if gameplay_data is not None else shipped_gameplay_data()
+        )
+        #: Shared collision grid handed to every entity this builder creates.
+        #: Set by :meth:`bind_spatial_hash` before :meth:`build`; an entity
+        #: born without it falls back to a linear scan of every collidable in
+        #: the level (correct, but a measured x2.4 on the whole simulation).
+        self.spatial_hash: SpatialHash | None = None
+
+    def bind_spatial_hash(self, spatial_hash: SpatialHash) -> None:
+        """Adopt the level's collision grid for the entities about to be built."""
+        self.spatial_hash = spatial_hash
+
+    def build(self, groups: SpriteGroups, input_manager: InputManager) -> Player:
+        """
+        Build all sprites and return the player instance.
+
+        Args:
+            groups: Container for all sprite groups.
+            input_manager: Input manager to pass to the player.
+
+        Returns:
+            The Player instance, or None if not found.
+        """
+        for layer in self.level_data.tile_layers.values():
+            TILE_LAYER_HANDLERS.dispatch(layer.name, layer.tiles, groups)
+
+        player = self._build_player(groups, input_manager)
+        if player is None:
+            raise ValueError(
+                "Level has no 'player' object. Every level must define a "
+                "player spawn object in one of its object layers."
+            )
+
+        for object_layer in self.level_data.object_layers.values():
+            if object_layer.name == DATA_LAYER_NAME:
+                continue
+            for obj in object_layer.objects:
+                self._build_object(obj, groups, player, object_layer.name)
+
+        return player
+
+    def _build_player(self, groups: SpriteGroups, input_manager: InputManager) -> Player | None:
+        """Locate the player object and instantiate it.
+
+        The ``Data`` layer is skipped, as it is in :meth:`build`: it carries the
+        level's settings, not its world, and a definition that happened to be
+        named ``player`` there is not a spawn.
+        """
+        config = self.gameplay_data.player
+        for layer in self.level_data.object_layers.values():
+            if layer.name == DATA_LAYER_NAME:
+                continue
+            for obj in layer.objects:
+                if obj.name == "player":
+                    player = Player(
+                        (obj.x, obj.y),
+                        groups.all_sprites,
+                        groups.collision_sprites,
+                        groups.moving_platforms,
+                        input_manager,
+                        config=config,
+                        spatial_hash=self.spatial_hash,
+                        id_factory=self.id_factory,
+                    )
+                    groups.add_fighter(player)
+                    return player
+        return None
+
+    def _build_object(
+        self,
+        obj: ObjectData,
+        groups: SpriteGroups,
+        player: Player | None,
+        layer_name: str = "",
+    ) -> None:
+        """
+        Build a single object from an object layer.
+
+        Handles enemies (via factory), registered object types,
+        and static images.
+        """
+        if obj.name == "player":
+            return
+        config = self.gameplay_data.enemies.get(obj.name)
+        if config is not None:
+            where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+            # Absent is not false: an enemy that authors no direction keeps the
+            # coin toss, and one that does gets what it was given. Collapsing
+            # the two would pin every unplaced enemy to the same heading.
+            reverse = (
+                props.flag(obj.properties, "reverse", False, where=where)
+                if "reverse" in obj.properties
+                else None
+            )
+            entity = create_enemy(
+                obj.name,
+                pos=(obj.x, obj.y),
+                groups=(groups.all_sprites,),
+                collision_sprites=groups.collision_sprites,
+                player_reference=player,
+                config=config,
+                spatial_hash=self.spatial_hash,
+                reverse=reverse,
+                id_factory=self.id_factory,
+            )
+            groups.add_fighter(entity)
+        elif OBJECT_FACTORIES.has(obj.name):
+            OBJECT_FACTORIES.dispatch(obj.name, obj, groups)
+        elif obj.image is not None:
+            layer = self.level_data.object_layers.get(layer_name)
+            target = _decor_group(layer, groups) if layer else groups.all_sprites
+            Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=target)
+        else:
+            logger.warning("Object '%s' has no factory or image, ignored", obj.name)

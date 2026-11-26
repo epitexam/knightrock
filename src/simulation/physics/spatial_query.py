@@ -7,8 +7,8 @@ from typing import Protocol, cast
 
 import pygame
 
-from src.core.settings import Separation
 from src.simulation.physics.spatial_hash import SpatialHash, collider_box
+from src.simulation.settings import Separation
 
 
 class QuerySprite(Protocol):

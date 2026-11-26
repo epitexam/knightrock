@@ -1,1 +1,1 @@
-"""Game entities: base entity, vitals, player and enemies."""
+"""Backward-compatible path for :mod:`src.simulation.entities.__init__`."""

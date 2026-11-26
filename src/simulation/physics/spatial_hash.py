@@ -38,7 +38,7 @@ from typing import Protocol
 
 import pygame
 
-from src.core.settings import World
+from src.simulation.settings import World
 
 
 def collider_box(sprite: object) -> pygame.Rect | pygame.FRect | None:

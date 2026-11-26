@@ -4,9 +4,9 @@ from typing import Literal, Protocol
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Collision, GameFeel
 from src.simulation.physics.spatial_hash import SpatialHash, collider_box, is_one_way
 from src.simulation.physics.spatial_query import make_query
+from src.simulation.settings import Collision, GameFeel
 
 
 class CollisionSprite(Protocol):

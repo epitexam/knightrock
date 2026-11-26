@@ -107,7 +107,7 @@ def test_span_hazard_launches_centred_and_sweeps_the_full_range(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.core.level.world_builder.build_hazard_animator",
+        "src.simulation.level.world_builder.build_hazard_animator",
         lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError),
     )
     groups = SpriteGroups()
@@ -133,7 +133,7 @@ def test_span_hazard_uses_the_animation_natural_frame_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.core.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
+        "src.simulation.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
     )
     groups = SpriteGroups()
     _build_span_hazard(make_obj("saw", 0.0, 0.0, 300.0, 10.0), groups)
@@ -147,7 +147,7 @@ def test_span_hazard_size_property_overrides_the_frame_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.core.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
+        "src.simulation.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
     )
     groups = SpriteGroups()
     _build_span_hazard(make_obj("saw", 0.0, 0.0, 300.0, 10.0, size=32), groups)

@@ -47,8 +47,8 @@ __all__ = ["GOBLIN_ATTACKS", "PLAYER_ATTACKS", "SLIME_ATTACKS", "move_id"]
 @cache
 def _attack_sets() -> dict[str, dict[MoveId, AttackDefinition]]:
     """Every attack set, from the data file the game actually plays."""
-    from src.data.attacks import ATTACKS_FILENAME, read_attacks_file
-    from src.data.roots import gameplay_data_root
+    from src.simulation.data.attacks import ATTACKS_FILENAME, read_attacks_file
+    from src.simulation.data.roots import gameplay_data_root
 
     return read_attacks_file(gameplay_data_root() / ATTACKS_FILENAME)
 

@@ -5,15 +5,6 @@ from typing import Any, Protocol
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import (
-    Collision,
-    GameFeel,
-    Input,
-    Locomotion,
-    PlatformRide,
-    Separation,
-    Simulation,
-)
 from src.simulation.physics.collisions import (
     CollisionSprite,
     get_nearby_sprites,
@@ -22,6 +13,15 @@ from src.simulation.physics.collisions import (
 )
 from src.simulation.physics.gravity import apply_entity_gravity
 from src.simulation.physics.spatial_hash import SpatialHash, collider_box, is_one_way
+from src.simulation.settings import (
+    Collision,
+    GameFeel,
+    Input,
+    Locomotion,
+    PlatformRide,
+    Separation,
+    Simulation,
+)
 
 VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
 

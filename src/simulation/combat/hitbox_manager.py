@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pygame
 
-from src.core.settings import Combat as CombatSettings
 from src.simulation.combat.attack_state import AttackStateMachine
 from src.simulation.combat.combatant_protocol import Combatant
 from src.simulation.combat.frame_data import (
@@ -21,6 +20,7 @@ from src.simulation.combat.shapes import (
     broadphase_aabb,
 )
 from src.simulation.combat.sweep import swept_box
+from src.simulation.settings import Combat as CombatSettings
 
 
 def charge_reach_scale(charge_multiplier: float) -> float:

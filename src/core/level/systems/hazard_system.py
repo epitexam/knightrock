@@ -1,25 +1,11 @@
-"""HazardSystem: hazard sprite stage of the level tick.
+"""Backward-compatible path for :mod:`src.simulation.level.systems.hazard_system`."""
 
-Extracted from ``Level.update``.
-
-Damage application is deliberately *not* part of this stage:
-:class:`~src.core.level.systems.hazard_damage.HazardDamageSystem` runs later
-in the pipeline, once the entities have moved.
-"""
-
-from src.core.sprite_groups import SpriteGroups
-
-__all__ = ["HazardSystem"]
-
-
-class HazardSystem:
-    """Tick the hazard sprites (saws, spikes, orbiting hazards) once per step."""
-
-    def __init__(self, groups: SpriteGroups) -> None:
-        self.groups = groups
-
-    def process(self, delta_time: float) -> None:
-        """Advance every hazard sprite."""
-        for hazard in self.groups.hazard_sprites:
-            hazard.capture_contact_origin()
-        self.groups.hazard_sprites.update(delta_time)
+from src.simulation.level.systems.hazard_system import (
+    HazardSystem as HazardSystem,
+)
+from src.simulation.level.systems.hazard_system import (
+    SpriteGroups as SpriteGroups,
+)
+from src.simulation.level.systems.hazard_system import (
+    __all__ as __all__,
+)

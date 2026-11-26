@@ -1,1 +1,1 @@
-"""Internal dense component storage for the simulation."""
+"""Backward-compatible path for :mod:`src.simulation.ecs.__init__`."""

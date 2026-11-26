@@ -1,12 +1,17 @@
-"""Local rollback core (audit Phase 3 #3).
+"""Backward-compatible path for :mod:`src.simulation.rollback.__init__`."""
 
-Wires the snapshot primitives that already existed in the combat layer
-(``CombatSnapshot``/``AttackStateSnapshot``/``ChargeSnapshot``) into a
-working, testable ring buffer that can rewind a whole ``Level`` tick by
-tick.  Transport and remote reconciliation remain future work.
-"""
-
-from src.core.rollback.rollback import RollbackSystem
-from src.core.rollback.snapshots import LevelSnapshot, PlatformSnapshot, ProjectileSnapshot
-
-__all__ = ["LevelSnapshot", "PlatformSnapshot", "ProjectileSnapshot", "RollbackSystem"]
+from src.simulation.rollback import (
+    LevelSnapshot as LevelSnapshot,
+)
+from src.simulation.rollback import (
+    PlatformSnapshot as PlatformSnapshot,
+)
+from src.simulation.rollback import (
+    ProjectileSnapshot as ProjectileSnapshot,
+)
+from src.simulation.rollback import (
+    RollbackSystem as RollbackSystem,
+)
+from src.simulation.rollback import (
+    __all__ as __all__,
+)

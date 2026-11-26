@@ -81,5 +81,12 @@ dans le périmètre d'une tranche.
 - **Phase 3** (faite) : `src/presentation` contient display, rendering, fx et
   ui (53 modules) ; les quatre anciens paquets sont des shims contrôlés. Les
   tests qui lisaient le code source par chemin dur ou qui patchaient un module
-  ont été déplacés vers le nouveau chemin. Quatrième contrat import-linter :
-  la présentation ne dépend pas de l'application.
+  ont été déplacés vers le nouveau chemin.
+- **Phase 4, lot 1** (fait) : entities, states, data, ecs, level, rollback,
+  animation, sprites, sprite_groups, hazards, object_pool, settings,
+  atomic_json et les adaptateurs assets/resource coordinator ont rejoint
+  `src/simulation` ou `src/platform`. Les anciens chemins sont des shims
+  vérifiés par AST. Cinquième contrat import-linter : la simulation ne dépend
+  pas de l'application. Dette transitoire : `simulation.level` importe encore
+  `presentation.rendering` et `presentation.fx` — les ports de rendu et de
+  caméra sont créés mais pas encore injectés.

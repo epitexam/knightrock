@@ -4,7 +4,6 @@ from typing import cast
 import pygame
 from pygame.joystick import JoystickType
 
-from src.core.settings import Input as InputSettings
 from src.platform.input.device_registry import DeviceRegistry
 from src.platform.input.input_bindings import (
     ActionMap,
@@ -16,6 +15,7 @@ from src.platform.input.input_bindings import (
 )
 from src.shared.input_actions import InputAction
 from src.shared.input_state import InputState
+from src.simulation.settings import Input as InputSettings
 
 
 def resolve_move_axis(keyboard_axis: float, analog_axis: float, hat_axis: float) -> float:

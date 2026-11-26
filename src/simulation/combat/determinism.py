@@ -8,8 +8,8 @@ from collections.abc import Iterable
 
 import pygame
 
-from src.core.settings import Combat
 from src.simulation.combat.shapes import ShapePose
+from src.simulation.settings import Combat
 
 __all__ = ["GeometryDesyncError", "geometry_checksum"]
 

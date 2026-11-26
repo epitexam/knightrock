@@ -10,12 +10,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.frame_data import move_id
-from src.combat.refusal import Refusal
-from src.core.colors import FXColors
-from src.core.display.framing import Framing
-from src.core.fx import (
+from src.presentation.display.framing import Framing
+from src.presentation.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DashDustParticle,
@@ -30,23 +26,27 @@ from src.core.fx import (
     spawn_sweat_drops,
     spawners,
 )
-from src.core.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, Sweat
-from src.core.fx.tuning import Sweat as SweatSettings
-from src.core.level.systems import feedback_system
-from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.rendering.camera import Camera
-from src.core.rendering.render_hints import RenderHints
-from src.core.rendering.renderer import (
+from src.presentation.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, Sweat
+from src.presentation.fx.tuning import Sweat as SweatSettings
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.render_hints import RenderHints
+from src.presentation.rendering.renderer import (
     DASH_STRETCH_X,
     DASH_STRETCH_Y,
     Renderer,
     dash_frame,
     is_player_dashing,
 )
-from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
-from src.core.settings import Afterimage, HitFlash, Locomotion, Physics, Simulation
-from src.core.sprite_groups import SpriteGroups
-from src.states.player_states import GUARD_MOVE_MULT, PlayerState
+from src.presentation.rendering.renderer import _ghost_alpha as renderer_alpha
+from src.shared.colors import FXColors
+from src.simulation.combat.attack_data import PLAYER_ATTACKS
+from src.simulation.combat.frame_data import move_id
+from src.simulation.combat.refusal import Refusal
+from src.simulation.level.systems import feedback_system
+from src.simulation.level.systems.feedback_system import FeedbackSystem
+from src.simulation.settings import Afterimage, HitFlash, Locomotion, Physics, Simulation
+from src.simulation.sprite_groups import SpriteGroups
+from src.simulation.states.player_states import GUARD_MOVE_MULT, PlayerState
 from tests.fakes import FighterSprite
 from tests.unit.helpers import make_entity
 
@@ -586,8 +586,8 @@ def test_is_player_dashing_only_matches_dashing_players() -> None:
 
 
 def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
-    from src.core.input.input_manager import InputManager  # noqa: PLC015
-    from src.entities.player import Player  # noqa: PLC015
+    from src.platform.input.input_manager import InputManager  # noqa: PLC015
+    from src.simulation.entities.player import Player  # noqa: PLC015
 
     player = Player(
         pos=(0, 0),
@@ -610,8 +610,8 @@ def test_a_move_plays_the_clip_it_names_rather_than_the_one_for_its_posture() ->
     Now the clip is data on the definition, and this is the assertion that makes
     the field worth having.
     """
-    from src.core.input.input_manager import InputManager
-    from src.entities.player import Player
+    from src.platform.input.input_manager import InputManager
+    from src.simulation.entities.player import Player
 
     player = Player(
         pos=(0, 0),
@@ -638,8 +638,8 @@ def test_a_move_with_no_art_of_its_own_still_falls_back_to_the_posture_default()
     a designer adds before the frames do. :class:`Animator` treats an
     unresolvable clip as a no-op, so naming a clip that has not landed is safe.
     """
-    from src.core.input.input_manager import InputManager
-    from src.entities.player import Player
+    from src.platform.input.input_manager import InputManager
+    from src.simulation.entities.player import Player
 
     def _in_air() -> Player:
         player = Player(

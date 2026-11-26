@@ -33,10 +33,10 @@ from __future__ import annotations
 from dataclasses import replace
 from enum import Enum
 
-from src.core.settings import Combat as CombatSettings
 from src.simulation.combat.combatant_protocol import AttackerPort, Combatant, DamageResult, Finish
 from src.simulation.combat.frame_data import HitProperties
 from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.settings import Combat as CombatSettings
 
 
 def _is_grounded(target: Combatant) -> bool:

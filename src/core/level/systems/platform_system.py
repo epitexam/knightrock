@@ -1,55 +1,14 @@
-"""PlatformSystem: moving-platform stage of the level tick.
+"""Backward-compatible path for :mod:`src.simulation.level.systems.platform_system`."""
 
-Extracted from ``Level.update`` so the level becomes a facade over its
-systems.
-"""
-
-from src.core.sprite_groups import SpriteGroups
-from src.physics.spatial_hash import SpatialHash
-
-__all__ = ["PlatformSystem"]
-
-
-class PlatformSystem:
-    """Advance the moving platforms and re-bucket them in the collision grid.
-
-    The platforms move first each tick and the spatial hash must follow:
-    entity collision queries read the grid, so a platform that is not
-    re-bucketed would still be found at its previous position.
-    """
-
-    def __init__(self, groups: SpriteGroups, spatial_hash: SpatialHash) -> None:
-        self.groups = groups
-        self.spatial_hash = spatial_hash
-
-    def process(self, delta_time: float) -> None:
-        """Move the platforms, then re-bucket them for collision queries."""
-        self.groups.moving_platforms.update(delta_time)
-        self.spatial_hash.update_all(self.groups.moving_platforms)
-        self._push_entities()
-
-    def _push_entities(self) -> None:
-        """Shove entities a platform moved into this tick (pads are solid).
-
-        Entities already overlapping a platform before it moved are riders:
-        the carry in ``PhysicsSystem`` handles them.  Only entities the pad
-        *moved into* are pushed, along the pad's dominant axis and by at
-        most the pad's own displacement, so a push can never teleport.
-        """
-        for platform in self.groups.moving_platforms:
-            dx = platform.hitbox.x - platform.old_hitbox.x
-            dy = platform.hitbox.y - platform.old_hitbox.y
-            if dx == 0 and dy == 0:
-                continue
-            table = self.groups.movement_table
-            riders = table.iter_entities() if table is not None else self.groups.entity_sprites
-            for entity in riders:
-                if not entity.hitbox.colliderect(platform.hitbox):
-                    continue
-                if entity.hitbox.colliderect(platform.old_hitbox):
-                    continue
-                if abs(dx) >= abs(dy):
-                    entity.hitbox.x += dx
-                else:
-                    entity.hitbox.y += dy
-                entity.sync_rects()  # type: ignore[operator]
+from src.simulation.level.systems.platform_system import (
+    PlatformSystem as PlatformSystem,
+)
+from src.simulation.level.systems.platform_system import (
+    SpatialHash as SpatialHash,
+)
+from src.simulation.level.systems.platform_system import (
+    SpriteGroups as SpriteGroups,
+)
+from src.simulation.level.systems.platform_system import (
+    __all__ as __all__,
+)

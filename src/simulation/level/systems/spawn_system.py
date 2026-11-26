@@ -1,0 +1,310 @@
+"""SpawnSystem: debug-spawn head of the level pipeline.
+
+Runs first each tick, before the platforms move, so a runtime-spawned enemy
+joins the world before any stage reads it.  It owns the debug-spawn
+cooldowns and the spawn logic directly (moved here from the former
+``DebugController``), so the level no longer drives anything itself.
+
+Test bench: ``DEBUG_ATTACKS`` forces any move of the catalogue on the player
+(the chain finishers, the launchers, the charged slash, the stab, the aerials), ``DEBUG_SHOTS``
+fires pooled projectiles, and ``DEBUG_JUGGLE_KEY`` pops an airborne dummy
+to juggle.  The per-action helpers are plain methods so tests drive them
+without polling hardware keys.
+"""
+
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
+
+import pygame
+
+from src.simulation.combat.frame_data import MoveId, Stance, move_id
+from src.simulation.combat.refusal import Refusal
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.enemies.schema import EnemyConfig
+from src.simulation.entities.id_factory import IdFactory
+from src.simulation.entities.projectile import (
+    FIREBOLT_CONFIG,
+    PIERCING_BOLT_CONFIG,
+    Projectile,
+    ProjectileConfig,
+)
+from src.simulation.physics.spatial_hash import SpatialHash
+from src.simulation.settings import Debug, Respawn
+from src.simulation.sprite_groups import SpriteGroups
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
+    from src.simulation.entities.player import Player
+    from src.simulation.level.systems.projectile_system import ProjectileSystem
+
+DEBUG_SPAWNS = {
+    pygame.K_g: "goblin",
+    pygame.K_p: "slime",
+    pygame.K_t: "dummy",
+}
+
+#: Phase 5 showcase attacks forced on the player (touch nothing else).
+#: Key to the move each number triggers. Checked against the player's own table
+#: on use, so a move renamed or removed in ``attacks.json`` fails loudly here
+#: rather than leaving a number key that silently does nothing -- which is what a
+#: bare string in this dict would do.
+#:
+#: The air kit is on ``9``-``0``, after the ground moves, so the two
+#: groups read apart at a glance, which matters more here than usual: the ground
+#: keys work from anywhere and the air keys only work off the ground, so a dev
+#: pressing ``7`` on the floor is holding an airborne move the stance gate will
+#: refuse. :meth:`SpawnSystem.trigger_test_attack` raises on that rather than
+#: returning ``False``, so the reason is a traceback instead of a key that
+#: appears broken.
+DEBUG_ATTACKS: dict[int, MoveId] = {
+    pygame.K_1: move_id("slash_high_4"),
+    pygame.K_2: move_id("slash_low_4"),
+    pygame.K_3: move_id("punch_3"),
+    pygame.K_4: move_id("kick_2"),
+    pygame.K_5: move_id("charged_slash"),
+    pygame.K_6: move_id("stab"),
+    pygame.K_7: move_id("death_blow"),
+    pygame.K_8: move_id("throw"),
+    pygame.K_9: move_id("air_slash"),
+    pygame.K_0: move_id("air_kick"),
+}
+
+#: Phase 5 projectile presets fired from the player.
+DEBUG_SHOTS: dict[int, ProjectileConfig] = {
+    pygame.K_v: FIREBOLT_CONFIG,
+    pygame.K_b: PIERCING_BOLT_CONFIG,
+}
+
+#: Spawns an airborne dummy in front of the player to juggle.
+DEBUG_JUGGLE_KEY = pygame.K_c
+
+#: Horizontal speed of debug projectiles (px/s).
+DEBUG_SHOT_SPEED = 700.0
+
+__all__ = [
+    "DEBUG_ATTACKS",
+    "DEBUG_JUGGLE_KEY",
+    "DEBUG_SHOTS",
+    "DEBUG_SHOT_SPEED",
+    "DEBUG_SPAWNS",
+    "SpawnSystem",
+]
+
+
+class SpawnSystem:
+    """Tick the debug spawner (cooldowns decay, key-triggered spawns)."""
+
+    def __init__(
+        self,
+        groups: SpriteGroups,
+        spatial_hash: SpatialHash | None = None,
+        projectile_system: ProjectileSystem | None = None,
+        enemy_configs: Mapping[str, EnemyConfig] | None = None,
+        id_factory: IdFactory | None = None,
+    ) -> None:
+        self.groups = groups
+        #: The configurations the level's own enemies were built from, so a
+        #: bench spawn is the same goblin as a placed one (audit C4). ``None``
+        #: falls back to the shipped files inside ``create_enemy``.
+        self.enemy_configs: Mapping[str, EnemyConfig] = enemy_configs or {}
+        self.spatial_hash = spatial_hash
+        self.projectile_system = projectile_system
+        self.id_factory = id_factory if id_factory is not None else IdFactory()
+        self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
+        self.debug_cooldowns: dict[str, float] = {}
+        #: Last refused bench key, kept for the overlay instead of killing the
+        #: game: a bench key pressed in the wrong posture is a mistake to show,
+        #: not a reason to abort the whole run.
+        self.last_error: str | None = None
+        #: Attack name looped by the debug replay key, ``None`` when off.
+        self.attack_replay: MoveId | None = None
+        self._last_attack: MoveId | None = None
+
+    @property
+    def spawn_cooldown_max(self) -> float:
+        """Longest remaining debug-spawn cooldown."""
+        return max([*self.spawn_cooldowns.values(), *self.debug_cooldowns.values(), 0.0])
+
+    def process(self, delta_time: float, player: Player) -> None:
+        """Decay cooldowns, then spawn enemies for the debug keys held.
+
+        The whole method is the Phase 5 test bench, and none of it can act
+        without ``DEBUG=1`` anyway (the shortcuts it reads are only ever bound
+        by the debug overlay). Gating here rather than per-branch keeps the
+        test bench's work -- ``pygame.key.get_pressed()`` builds a fresh
+        sequence of per-key booleans every call, and four debug dictionaries
+        are walked on top of it -- out of the production tick entirely.
+        """
+        if not Debug.is_enabled():
+            return
+        self._decay_cooldowns(delta_time)
+        keys = pygame.key.get_pressed()
+        self._spawn_enemies(keys, player)
+        self._trigger_attacks(keys, player)
+        self.tick_attack_replay(player)
+        self._fire_shots(keys, player)
+        self._pop_juggle(keys, player)
+
+    def _decay_cooldowns(self, delta_time: float) -> None:
+        for enemy_name, cooldown in self.spawn_cooldowns.items():
+            if cooldown > 0:
+                self.spawn_cooldowns[enemy_name] = cooldown - delta_time
+        for action, cooldown in self.debug_cooldowns.items():
+            if cooldown > 0:
+                self.debug_cooldowns[action] = cooldown - delta_time
+
+    def _spawn_enemies(self, keys: Sequence[bool], player: Player) -> None:
+        for key, enemy_name in DEBUG_SPAWNS.items():
+            if keys[key] and self.spawn_cooldowns[enemy_name] <= 0:
+                self._spawn_enemy(enemy_name, player)
+
+    def _trigger_attacks(self, keys: Sequence[bool], player: Player) -> None:
+        for key, attack_name in DEBUG_ATTACKS.items():
+            if not (keys[key] and self._debug_ready(attack_name)):
+                continue
+            try:
+                started = self.trigger_test_attack(player, attack_name)
+            except (RuntimeError, KeyError) as exc:
+                # The direct API call still raises -- that is how the tests
+                # pin a mis-wired key -- but a key held during a live tick must
+                # not take the game down. Arm the cooldown so it is reported
+                # once per press rather than once per frame.
+                self.last_error = str(exc)
+                self._arm_debug_cooldown(attack_name)
+                continue
+            if started:
+                self.last_error = None
+                self._arm_debug_cooldown(attack_name)
+                self._last_attack = attack_name
+
+    def _fire_shots(self, keys: Sequence[bool], player: Player) -> None:
+        for key, config in DEBUG_SHOTS.items():
+            action = f"shot_{id(config)}"
+            if (
+                keys[key]
+                and self._debug_ready(action)
+                and self.fire_test_projectile(player, config) is not None
+            ):
+                self._arm_debug_cooldown(action)
+
+    def _pop_juggle(self, keys: Sequence[bool], player: Player) -> None:
+        if (
+            keys[DEBUG_JUGGLE_KEY]
+            and self._debug_ready("juggle_dummy")
+            and self.spawn_juggle_dummy(player) is not None
+        ):
+            self._arm_debug_cooldown("juggle_dummy")
+
+    def trigger_test_attack(self, player: Player, attack_name: MoveId) -> bool:
+        """Force a showcase attack on the player (Phase 5 test bench).
+
+        Two refusals raise and the rest return ``False``, because on a bench
+        they mean different things and one of them is a broken bench.
+
+        An unregistered name raises: the key is wired to a move nothing knows,
+        which is a rename in ``attacks.json`` that was not followed through.
+        ``start_attack`` cannot tell that from "you are busy".
+
+        A ``STANCE`` refusal raises too, and this is the air kit's reason for
+        existing. The four air keys only work off the ground, so a dev pressing
+        ``7`` while standing holds a move the gate is right to refuse -- and a
+        silent ``False`` for that reads as a dead key rather than as the posture
+        rule the bench is there to demonstrate. Naming the reason turns it into
+        the thing to jump first.
+
+        ``COOLDOWN`` and ``BUSY`` stay quiet: pressing a showcase key twice in a
+        row is not a mistake, and a bench that raised on it would be unusable.
+        """
+        start = player.combat.start_attack
+        if not player.combat.has_attack(attack_name):
+            raise KeyError(
+                f"Debug bench attack {str(attack_name)!r} is not in the player's table; "
+                "rename it in attacks.json or drop it from DEBUG_ATTACKS"
+            )
+        refusal = start(attack_name)
+        if refusal is Refusal.STANCE:
+            raise RuntimeError(
+                f"Debug bench attack {str(attack_name)!r} needs a different posture "
+                f"({player.stance.value}); {'the air keys only fire off the ground' if player.stance is Stance.AIR else 'this key only fires on the ground'}"
+            )
+        return bool(refusal)
+
+    def toggle_attack_replay(self, attack_name: MoveId | None = None) -> MoveId | None:
+        """Toggle looped replay of ``attack_name``; return the active name (``None`` = off)."""
+        if self.attack_replay is not None:
+            self.attack_replay = None
+            return None
+        self.attack_replay = attack_name or self._last_attack or next(iter(DEBUG_ATTACKS.values()))
+        return self.attack_replay
+
+    def selected_attack(self) -> MoveId | None:
+        """Return the attack currently selected for replay or export."""
+        return self.attack_replay or self._last_attack
+
+    def tick_attack_replay(self, player: Player) -> None:
+        """Restart the looped attack once idle and its cooldown is ready."""
+        if self.attack_replay is None:
+            return
+        if player.combat.is_attacking:
+            return
+        if not self._debug_ready(self.attack_replay):
+            return
+        if self.trigger_test_attack(player, self.attack_replay):
+            self._arm_debug_cooldown(self.attack_replay)
+
+    def fire_test_projectile(
+        self, player: Player, config: ProjectileConfig = FIREBOLT_CONFIG
+    ) -> Projectile | None:
+        """Fire a pooled projectile from the player toward its facing."""
+        if self.projectile_system is None:
+            return None
+        direction = 1.0 if player.facing_right else -1.0
+        hitbox = player.hitbox
+        return self.projectile_system.spawn(
+            config,
+            pos=(hitbox.centerx, hitbox.centery),
+            velocity=(DEBUG_SHOT_SPEED * direction, -50.0),
+            faction=player.faction,
+        )
+
+    def spawn_juggle_dummy(self, player: Player) -> Any | None:
+        """Pop an airborne dummy ahead of the player to juggle."""
+        hitbox = player.hitbox
+        offset_x = 140 if player.facing_right else -140
+        try:
+            enemy = create_enemy(
+                "dummy",
+                config=self.enemy_configs.get("dummy"),
+                pos=(hitbox.centerx + offset_x, hitbox.top - 150.0),
+                groups=(self.groups.all_sprites,),
+                collision_sprites=self.groups.collision_sprites,
+                player_reference=player,  # type: ignore[arg-type]
+                spatial_hash=self.spatial_hash,
+                id_factory=self.id_factory,
+            )
+        except KeyError:
+            return None
+        self.groups.add_fighter(enemy)
+        enemy.velocity.y = -550.0
+        enemy.on_surface["floor"] = False
+        return enemy
+
+    def _debug_ready(self, action: str) -> bool:
+        return self.debug_cooldowns.get(action, 0.0) <= 0
+
+    def _arm_debug_cooldown(self, action: str) -> None:
+        self.debug_cooldowns[action] = Respawn.DEBUG_SPAWN_COOLDOWN_S
+
+    def _spawn_enemy(self, enemy_name: str, player: Player) -> None:
+        offset_x = 100 if player.facing_right else -100
+        enemy = create_enemy(
+            enemy_name,
+            config=self.enemy_configs.get(enemy_name),
+            pos=(player.hitbox.centerx + offset_x, player.hitbox.top),
+            groups=(self.groups.all_sprites,),
+            collision_sprites=self.groups.collision_sprites,
+            player_reference=player,
+            spatial_hash=self.spatial_hash,
+            id_factory=self.id_factory,
+        )
+        self.groups.add_fighter(enemy)
+        self.spawn_cooldowns[enemy_name] = Respawn.DEBUG_SPAWN_COOLDOWN_S

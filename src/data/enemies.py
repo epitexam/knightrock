@@ -1,272 +1,86 @@
-"""Typed JSON loader for enemy configs.
+"""Backward-compatible path for :mod:`src.simulation.data.enemies`."""
 
-``enemies.json`` maps enemy type names to :class:`EnemyConfig` values::
-
-    {"version": 1, "enemies": {"goblin": {"size": [36, 48], ...}}}
-
-Each entry references its moves via ``attacks``: either the name of an
-attack set already loaded from ``attacks.json`` ("goblin") or a private
-inline attack table (the pattern ``dummy`` uses).  Animations are plain
-``{state: sprite_sheet_directory}`` maps, mirroring the
-``EnemyConfig.animations`` field added in Phase 2 #1.
-"""
-
-from __future__ import annotations
-
-from dataclasses import fields
-from pathlib import Path
-from typing import Any
-
-from src.combat.frame_data import AttackDefinition, MoveId
-from src.core.paths import confined_resource_path
-from src.data.attacks import read_attack_definition
-from src.data.errors import (
-    GameplayDataError,
-    pair_of_floats,
-    read_bool,
-    read_json_object,
-    read_number,
-    reject_unknown,
-    triple_of_ints,
+from src.simulation.data.enemies import (
+    ENEMIES_FILENAME as ENEMIES_FILENAME,
 )
-from src.data.errors import (
-    required_field as _required,
+from src.simulation.data.enemies import (
+    ENEMIES_VERSION as ENEMIES_VERSION,
 )
-from src.entities.enemies.schema import EnemyConfig, EnemyMove
-from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
-
-ENEMIES_FILENAME = "enemies.json"
-ENEMIES_VERSION = 1
-
-
-def _read_stun_max(raw: Any, where: str) -> float:
-    """The size of the stun gauge: above zero, or a blow of any weight would fill it."""
-    stun_max = read_number(raw, f"{where}.stun_max")
-    if not stun_max > 0.0:
-        raise GameplayDataError(f"{where}: 'stun_max' must be above 0, got {raw!r}")
-    return stun_max
-
-
-def _read_weight(raw: Any, where: str) -> float:
-    """A knockback divisor: a number above zero (zero would launch to infinity)."""
-    weight = read_number(raw, f"{where}.weight")
-    if not weight > 0.0:
-        raise GameplayDataError(f"{where}: 'weight' must be above 0, got {raw!r}")
-    return weight
-
-
-def _read_animations(raw: Any, where: str) -> dict[str, str]:
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise GameplayDataError(f"{where}: animations must be an object")
-    for state, directory in raw.items():
-        if not isinstance(directory, str):
-            raise GameplayDataError(f"{where}.{state}: directory must be a string")
-        try:
-            confined_resource_path(directory)
-        except ValueError as exc:
-            raise GameplayDataError(
-                f"{where}.{state}: directory must be relative to the project root"
-            ) from exc
-    return dict(raw)
-
-
-def _read_moves(
-    raw: Any, where: str, attacks: dict[MoveId, AttackDefinition]
-) -> tuple[EnemyMove, ...]:
-    """The moves list: each names one of the type's attacks, a range and a weight."""
-    if raw is None:
-        return ()
-    if not isinstance(raw, list):
-        raise GameplayDataError(f"{where}: 'moves' must be a list")
-    moves: list[EnemyMove] = []
-    for index, entry in enumerate(raw):
-        at = f"{where}.moves[{index}]"
-        if not isinstance(entry, dict):
-            raise GameplayDataError(f"{at}: a move must be an object")
-        reject_unknown(entry, frozenset({"name", "range", "weight"}), at)
-        name = _required(entry, "name", at)
-        if name not in attacks:
-            raise GameplayDataError(f"{at}: {name!r} is not one of this enemy's attacks")
-        try:
-            move = EnemyMove(
-                name=str(name),
-                range=read_number(_required(entry, "range", at), f"{at}.range"),
-                weight=read_number(entry.get("weight", 1.0), f"{at}.weight"),
-            )
-        except (TypeError, ValueError) as exc:
-            raise GameplayDataError(f"{at}: invalid move value: {exc}") from exc
-        if not (move.range > 0.0 and move.weight > 0.0):
-            raise GameplayDataError(f"{at}: 'range' and 'weight' must be above 0")
-        moves.append(move)
-    return tuple(moves)
-
-
-def read_enemy_config(
-    raw: Any,
-    where: str,
-    attack_sets: dict[str, dict[MoveId, AttackDefinition]],
-) -> EnemyConfig:
-    """Parse one enemy block into :class:`EnemyConfig`."""
-    if not isinstance(raw, dict):
-        raise GameplayDataError(f"{where}: enemy must be an object, got {raw!r}")
-    reject_unknown(raw, frozenset(field.name for field in fields(EnemyConfig)), where)
-    raw_attacks = _required(raw, "attacks", where)
-    attacks: dict[MoveId, AttackDefinition]
-    if isinstance(raw_attacks, str):
-        if raw_attacks not in attack_sets:
-            raise GameplayDataError(f"{where}: unknown attack set {raw_attacks!r}")
-        attacks = dict(attack_sets[MoveId(raw_attacks)])
-    elif isinstance(raw_attacks, dict):
-        attacks = {
-            MoveId(name): read_attack_definition(definition, f"{where}.attacks.{name}")
-            for name, definition in raw_attacks.items()
-        }
-    else:
-        raise GameplayDataError(f"{where}: 'attacks' must be a set name or an object")
-    try:
-        return EnemyConfig(
-            size=pair_of_floats(_required(raw, "size", where), f"{where}.size"),
-            color=triple_of_ints(_required(raw, "color", where), f"{where}.color"),
-            health=read_number(_required(raw, "health", where), f"{where}.health"),
-            attacks=attacks,
-            attack_name=raw.get("attack_name"),
-            moves=_read_moves(raw.get("moves"), where, attacks),
-            max_health=(
-                read_number(raw["max_health"], f"{where}.max_health")
-                if raw.get("max_health") is not None
-                else None
-            ),
-            hitbox_inflate=pair_of_floats(
-                raw.get("hitbox_inflate", [0.0, 0.0]), f"{where}.hitbox_inflate"
-            ),
-            hurtbox_inflate=pair_of_floats(
-                raw.get("hurtbox_inflate", [0.0, 0.0]), f"{where}.hurtbox_inflate"
-            ),
-            # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
-            hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
-            chase_speed=read_number(raw.get("chase_speed", 120.0), f"{where}.chase_speed"),
-            patrol_speed=(
-                read_number(raw["patrol_speed"], f"{where}.patrol_speed")
-                if raw.get("patrol_speed") is not None
-                else None
-            ),
-            vision_range=read_number(raw.get("vision_range", 300.0), f"{where}.vision_range"),
-            attack_range=read_number(raw.get("attack_range", 60.0), f"{where}.attack_range"),
-            patrol_interval=read_number(
-                raw.get("patrol_interval", 2.0), f"{where}.patrol_interval"
-            ),
-            idle_duration=read_number(raw.get("idle_duration", 0.5), f"{where}.idle_duration"),
-            has_ai=read_bool(raw.get("has_ai", True), f"{where}.has_ai"),
-            pushable=read_bool(raw.get("pushable", True), f"{where}.pushable"),
-            super_armor=read_bool(raw.get("super_armor", False), f"{where}.super_armor"),
-            passive_friction=read_number(
-                raw.get("passive_friction", 10.0), f"{where}.passive_friction"
-            ),
-            weight=_read_weight(raw.get("weight", 1.0), where),
-            can_jump=read_bool(raw.get("can_jump", False), f"{where}.can_jump"),
-            jump_height=read_number(raw.get("jump_height", 500.0), f"{where}.jump_height"),
-            jump_cooldown=read_number(raw.get("jump_cooldown", 1.0), f"{where}.jump_cooldown"),
-            leap_speed_mult=read_number(
-                raw.get("leap_speed_mult", 1.0), f"{where}.leap_speed_mult"
-            ),
-            stun_max=(
-                _read_stun_max(raw["stun_max"], where) if raw.get("stun_max") is not None else None
-            ),
-            stun_duration=read_number(raw.get("stun_duration", 0.0), f"{where}.stun_duration"),
-            guards=read_bool(raw.get("guards", False), f"{where}.guards"),
-            # None is not a JSON value: the key is simply absent when the type
-            # authors no direction. Present and false are different -- the first
-            # keeps the historical coin toss, the second pins the heading.
-            reverse=(
-                read_bool(raw["reverse"], f"{where}.reverse")
-                if raw.get("reverse") is not None
-                else None
-            ),
-            # Pivot sub-group name. Left as-is rather than validated against
-            # ``settings.PROFILES``: an unknown name resolves to the shipped
-            # defaults, and a level that names a group nobody defined should
-            # get a fighter that moves rather than one that refuses to spawn.
-            turn_profile=raw.get("turn_profile"),
-            animations=_read_animations(raw.get("animations"), f"{where}.animations"),
-        )
-    except (TypeError, ValueError) as exc:
-        raise GameplayDataError(f"{where}: invalid enemy value: {exc}") from exc
-
-
-def read_enemies_file(
-    path: str | Path,
-    attack_sets: dict[str, dict[MoveId, AttackDefinition]],
-) -> dict[str, EnemyConfig]:
-    """Load every enemy type from an ``enemies.json`` file."""
-    raw = read_json_object(path, ENEMIES_VERSION)
-    reject_unknown(raw, frozenset({"version", "enemies"}), str(path))
-    raw_enemies = _required(raw, "enemies", str(path))
-    if not isinstance(raw_enemies, dict):
-        raise GameplayDataError(f"{path}: 'enemies' must be an object")
-    return {
-        name: read_enemy_config(definition, f"{path}#{name}", attack_sets)
-        for name, definition in raw_enemies.items()
-    }
-
-
-def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
-    """Serialize an :class:`EnemyConfig` back to its JSON shape.
-
-    Attacks are serialized inline (never as a set name) so the file is
-    self-contained for designer edits; set references stay a load-time
-    convenience.  ``attack_set`` is recovered on demand by comparing
-    identity with the known sets.
-    """
-    from src.data.attacks import attack_definition_to_dict
-
-    return {
-        "size": list(config.size),
-        "color": list(config.color),
-        "health": config.health,
-        "attacks": {
-            name: attack_definition_to_dict(attack) for name, attack in config.attacks.items()
-        },
-        "attack_name": config.attack_name,
-        **(
-            {
-                "moves": [
-                    {"name": move.name, "range": move.range, "weight": move.weight}
-                    for move in config.moves
-                ]
-            }
-            if config.moves
-            else {}
-        ),
-        "max_health": config.max_health,
-        "hitbox_inflate": list(config.hitbox_inflate),
-        "hurtbox_inflate": list(config.hurtbox_inflate),
-        # P2 multi-hurtbox: key omitted for legacy configs (JSON shape kept).
-        **(
-            {"hurtbox_zones": hurtbox_zones_to_dict(config.hurtbox_zones)}
-            if config.hurtbox_zones is not None
-            else {}
-        ),
-        "chase_speed": config.chase_speed,
-        **({"patrol_speed": config.patrol_speed} if config.patrol_speed is not None else {}),
-        "vision_range": config.vision_range,
-        "attack_range": config.attack_range,
-        "patrol_interval": config.patrol_interval,
-        "idle_duration": config.idle_duration,
-        "has_ai": config.has_ai,
-        "pushable": config.pushable,
-        "super_armor": config.super_armor,
-        "passive_friction": config.passive_friction,
-        "weight": config.weight,
-        "can_jump": config.can_jump,
-        "jump_height": config.jump_height,
-        "jump_cooldown": config.jump_cooldown,
-        "leap_speed_mult": config.leap_speed_mult,
-        "stun_max": config.stun_max,
-        "stun_duration": config.stun_duration,
-        "guards": config.guards,
-        **({"turn_profile": config.turn_profile} if config.turn_profile is not None else {}),
-        **({"reverse": config.reverse} if config.reverse is not None else {}),
-        "animations": dict(config.animations),
-    }
+from src.simulation.data.enemies import (
+    Any as Any,
+)
+from src.simulation.data.enemies import (
+    AttackDefinition as AttackDefinition,
+)
+from src.simulation.data.enemies import (
+    EnemyConfig as EnemyConfig,
+)
+from src.simulation.data.enemies import (
+    EnemyMove as EnemyMove,
+)
+from src.simulation.data.enemies import (
+    GameplayDataError as GameplayDataError,
+)
+from src.simulation.data.enemies import (
+    MoveId as MoveId,
+)
+from src.simulation.data.enemies import (
+    Path as Path,
+)
+from src.simulation.data.enemies import (
+    _read_animations as _read_animations,
+)
+from src.simulation.data.enemies import (
+    _read_moves as _read_moves,
+)
+from src.simulation.data.enemies import (
+    _read_stun_max as _read_stun_max,
+)
+from src.simulation.data.enemies import (
+    _read_weight as _read_weight,
+)
+from src.simulation.data.enemies import (
+    _required as _required,
+)
+from src.simulation.data.enemies import (
+    annotations as annotations,
+)
+from src.simulation.data.enemies import (
+    enemy_config_to_dict as enemy_config_to_dict,
+)
+from src.simulation.data.enemies import (
+    fields as fields,
+)
+from src.simulation.data.enemies import (
+    hurtbox_zones_to_dict as hurtbox_zones_to_dict,
+)
+from src.simulation.data.enemies import (
+    pair_of_floats as pair_of_floats,
+)
+from src.simulation.data.enemies import (
+    read_attack_definition as read_attack_definition,
+)
+from src.simulation.data.enemies import (
+    read_bool as read_bool,
+)
+from src.simulation.data.enemies import (
+    read_enemies_file as read_enemies_file,
+)
+from src.simulation.data.enemies import (
+    read_enemy_config as read_enemy_config,
+)
+from src.simulation.data.enemies import (
+    read_hurtbox_zones as read_hurtbox_zones,
+)
+from src.simulation.data.enemies import (
+    read_json_object as read_json_object,
+)
+from src.simulation.data.enemies import (
+    read_number as read_number,
+)
+from src.simulation.data.enemies import (
+    reject_unknown as reject_unknown,
+)
+from src.simulation.data.enemies import (
+    triple_of_ints as triple_of_ints,
+)

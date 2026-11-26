@@ -2,7 +2,7 @@ from typing import Protocol
 
 import pygame
 
-from src.core.settings import GameFeel
+from src.simulation.settings import GameFeel
 
 
 class GravityEntity(Protocol):

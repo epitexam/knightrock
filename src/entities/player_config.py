@@ -1,120 +1,32 @@
-"""Player configuration dataclass for data-driven player initialization."""
+"""Backward-compatible path for :mod:`src.simulation.entities.player_config`."""
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-
-from src.combat.frame_data import AttackDefinition, MoveId
-from src.core.colors import Colors
-from src.core.settings import Combat, Physics
-from src.entities.hurtbox_zones import HurtboxZoneDef
-
-
-def _default_attacks() -> dict[MoveId, AttackDefinition]:
-    """The player's default attack table, read from the shipped data file.
-
-    Imported here rather than at module scope: ``attack_data`` resolves its
-    tables by reading ``attacks.json``, and doing that during this module's
-    import would run the loader before ``PlayerConfig`` exists -- the loader
-    reaches back here through ``data.player``.
-    """
-    from src.combat.attack_data import PLAYER_ATTACKS
-
-    return dict(PLAYER_ATTACKS)
-
-
-@dataclass(frozen=True)
-class PlayerConfig:
-    """Reusable data needed to create and configure the player entity.
-
-    Attributes
-    ----------
-    size : tuple[float, float]
-        Width and height of the player sprite.
-    color : tuple[int, int, int]
-        RGB color for the player sprite.
-    health : float
-        Starting health points.
-    max_health : float
-        Maximum health cap.
-    hitbox_inflate : tuple[float, float]
-        (x, y) inflation for the hitbox relative to the rect.
-    attacks : Mapping[MoveId, AttackDefinition]
-        Dictionary of attack definitions.
-    speed : float
-        Base movement speed.
-    floor_control : float
-        Horizontal control when on the ground.
-    air_control : float
-        Horizontal control when airborne.
-    jump_height : float
-        Vertical impulse for a normal jump.
-    wall_jump_height : float
-        Vertical impulse for a wall jump.
-    wall_jump_push_multiplier : float
-        Horizontal push multiplier for wall jumps.
-    wall_jump_lock_duration : float
-        Duration to lock controls after a wall jump.
-    wall_jump_min_lock : float
-        Minimum lock duration after a wall jump.
-    wall_slide_speed : float
-        Descent speed when sliding down a wall.
-    max_midair_jumps : int
-        Maximum number of jumps allowed while airborne.
-    max_wall_jumps : int | float
-        Maximum number of wall jumps allowed.
-    coyote_duration : float
-        Duration after leaving a surface where jump is still allowed.
-    jump_buffer_duration : float
-        Duration to buffer a jump input before landing.
-    max_dash_charges : int
-        Maximum number of dash charges.
-    dash_speed : float
-        Horizontal speed during a dash.
-    dash_duration : float
-        Duration of a dash in seconds.
-    dash_penalty_duration : float
-        Duration of penalty after a dash.
-    dash_recharge_time : float
-        Time to recharge one dash charge.
-    dash_gravity_mult : float
-        Gravity multiplier during a dash.
-    hurt_duration : float
-        Duration of the hurt state.
-    invincibility_duration : float
-        Duration of invincibility frames after taking damage.
-    faction : str
-        Faction identifier for combat targeting.
-    """
-
-    size: tuple[float, float] = (48.0, 56.0)
-    color: tuple[int, int, int] = Colors.green
-    health: float = 100.0
-    max_health: float = 100.0
-    hitbox_inflate: tuple[float, float] = (-8.0, 0.0)
-    hurtbox_inflate: tuple[float, float] = (0.0, 0.0)
-    attacks: Mapping[MoveId, AttackDefinition] = field(default_factory=_default_attacks)
-    speed: float = Physics.PLAYER_SPEED
-    floor_control: float = Physics.FLOOR_CONTROL
-    air_control: float = Physics.AIR_CONTROL
-    jump_height: float = Physics.JUMP_FORCE
-    wall_jump_height: float = Physics.JUMP_FORCE * 0.90 * 1.15
-    wall_jump_push_multiplier: float = 1.3
-    wall_jump_lock_duration: float = 0.18
-    wall_jump_min_lock: float = 0.08
-    wall_slide_speed: float = Physics.WALL_SLIDE_SPEED
-    max_midair_jumps: int = 1
-    max_wall_jumps: int | float = float("inf")
-    coyote_duration: float = Physics.COYOTE_DURATION
-    jump_buffer_duration: float = Physics.JUMP_BUFFER_DURATION
-    max_dash_charges: int = Physics.DASH_MAX_CHARGES
-    dash_speed: float = Physics.DASH_SPEED
-    dash_duration: float = Physics.DASH_DURATION
-    dash_penalty_duration: float = Physics.DASH_PENALTY_TIME
-    dash_recharge_time: float = Physics.DASH_RECHARGE_TIME
-    dash_gravity_mult: float = Physics.DASH_GRAVITY_MULT
-    dash_coyote_time: float = Physics.DASH_COYOTE_TIME
-    hurt_duration: float = Combat.PLAYER_HURT_DURATION
-    invincibility_duration: float = Combat.INVINCIBILITY_DURATION
-    faction: str = "player"
-    # P2 multi-hurtbox: None = legacy fallback on ``hurtbox_inflate``.
-    hurtbox_zones: tuple[HurtboxZoneDef, ...] | None = None
+from src.simulation.entities.player_config import (
+    AttackDefinition as AttackDefinition,
+)
+from src.simulation.entities.player_config import (
+    Combat as Combat,
+)
+from src.simulation.entities.player_config import (
+    HurtboxZoneDef as HurtboxZoneDef,
+)
+from src.simulation.entities.player_config import (
+    Mapping as Mapping,
+)
+from src.simulation.entities.player_config import (
+    MoveId as MoveId,
+)
+from src.simulation.entities.player_config import (
+    Physics as Physics,
+)
+from src.simulation.entities.player_config import (
+    PlayerConfig as PlayerConfig,
+)
+from src.simulation.entities.player_config import (
+    _default_attacks as _default_attacks,
+)
+from src.simulation.entities.player_config import (
+    dataclass as dataclass,
+)
+from src.simulation.entities.player_config import (
+    field as field,
+)
