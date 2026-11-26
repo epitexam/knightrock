@@ -1,0 +1,443 @@
+import math
+from collections.abc import Iterable
+from typing import Any, Protocol
+
+import pygame
+from pygame.math import Vector2
+
+from src.core.settings import (
+    Collision,
+    GameFeel,
+    Input,
+    Locomotion,
+    PlatformRide,
+    Separation,
+    Simulation,
+)
+from src.simulation.physics.collisions import (
+    CollisionSprite,
+    get_nearby_sprites,
+    resolve_collisions,
+    update_contact_state,
+)
+from src.simulation.physics.gravity import apply_entity_gravity
+from src.simulation.physics.spatial_hash import SpatialHash, collider_box, is_one_way
+
+VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
+
+
+class MovementCombat(Protocol):
+    @property
+    def movement_multiplier(self) -> float: ...
+
+
+class WallJumpLock(Protocol):
+    """The lock that damps the run after a wall jump (the player's jump controller).
+
+    ``wall_jump_lock_timer`` is counted down by :func:`apply_horizontal_movement`.
+    """
+
+    wall_jump_lock_timer: float
+    wall_jump_lock_duration: float
+    wall_jump_min_lock: float
+
+
+class HorizontalMovementEntity(Protocol):
+    velocity: Vector2
+    move_axis: float
+    speed: float
+    floor_control: float
+    air_control: float
+    on_surface: dict[str, bool]
+    turn_enabled: bool
+    turn_brake_control: float
+    turn_plant_px_s: float
+    #: ``None`` for a fighter that cannot wall jump.
+    wall_jump_lock: WallJumpLock | None
+
+    @property
+    def combat(self) -> MovementCombat: ...
+
+
+class JumpState(Protocol):
+    """The jump resources :func:`resolve_jump` spends: the player's jump controller."""
+
+    jump_buffer_timer: float
+    coyote_timer: float
+    wall_jump_lock_timer: float
+    wall_jump_lock_duration: float
+    jump_height: float
+    wall_jump_height: float
+    wall_jump_push_multiplier: float
+    wall_jumps_left: int | float
+    midair_jumps_left: int
+
+
+class JumpEntity(Protocol):
+    """Surface consumed by :func:`resolve_jump`: the body, and its jump resources."""
+
+    velocity: Vector2
+    speed: float
+    on_surface: dict[str, bool]
+
+    @property
+    def jump(self) -> JumpState: ...
+
+
+class MovableEntity(Protocol):
+    velocity: Vector2
+    rect: pygame.FRect
+    hitbox: pygame.FRect
+    old_hitbox: pygame.FRect
+    on_surface: dict[str, bool]
+    collision_sprites: Iterable[CollisionSprite]
+    spatial_hash: SpatialHash | None
+    normal_gravity: float
+    fall_gravity: float
+    slide_gravity: float
+    max_slide_speed: float
+    max_fall_speed: float
+    gravity_scale: float
+    fast_fall: bool
+    drag_coefficient: float
+    fall_drag_coefficient: float
+    move_axis: float
+    crushed: bool
+    carry_backup: tuple[float, float, float, float] | None
+
+    def wall_bounce_factor(self) -> float:
+        """How much horizontal velocity a wall returns (0 when not knocked)."""
+        ...
+
+    def is_wall_sliding(self) -> bool: ...
+
+    def sync_rects(self) -> None: ...
+
+    def _on_floor_contact(self) -> None: ...
+
+    def _on_wall_contact(self) -> None: ...
+
+
+class MovingPlatform(Protocol):
+    hitbox: pygame.FRect
+    old_hitbox: pygame.FRect
+
+
+class PlatformRider(Protocol):
+    on_surface: dict[str, bool]
+    hitbox: pygame.FRect
+    old_hitbox: pygame.FRect
+    carry_backup: tuple[float, float, float, float] | None
+
+    def sync_rects(self) -> None: ...
+
+
+def apply_horizontal_movement(entity: HorizontalMovementEntity, delta_time: float) -> None:
+    """Apply horizontal movement with acceleration, braking and damping.
+
+    Acceleration and braking are separate rates, and they have to be.
+
+    A single exponential ease toward the target is symmetric by construction:
+    the same ``control`` bleeds speed off on the way to a stop as it does on the
+    way back up to a run. That is the right shape for one of the two and the
+    wrong shape for the other. Coasting to a halt should follow the same curve
+    as accelerating out of it -- it is the same movement seen from the other
+    end. A *reversal* is not that. It is the fighter putting his weight down
+    and changing his mind, and a symmetric curve crosses zero without ever
+    dwelling there: at ``FLOOR_CONTROL`` a full run crosses in under two
+    frames, which is over before the eye has it, so a pivot reads as a teleport
+    no matter what the sprite is doing.
+
+    So a reversal brakes toward zero at :data:`settings.Turn.BRAKE_CONTROL` --
+    a higher rate than the acceleration, and aimed at zero rather than at the
+    new direction -- and the ordinary acceleration takes over once the fighter
+    is slow enough to be planted (:data:`settings.Turn.PLANT_PX_S`). The
+    reversal becomes stop-then-push, which is both what it looks like and the
+    only version of it that survives being watched.
+
+    Airborne, unchanged. A mid-air reversal is a jump turn, it already reads on
+    the arc, and the tighter air curve is what makes an air dash feel like an
+    air dash.
+    """
+    lock = entity.wall_jump_lock
+    if lock is not None and lock.wall_jump_lock_timer > 0:
+        elapsed = lock.wall_jump_lock_duration - lock.wall_jump_lock_timer
+        lock.wall_jump_lock_timer -= delta_time
+
+        opposing = (entity.move_axis > Input.AXIS_DEADZONE and entity.velocity.x < 0) or (
+            entity.move_axis < -Input.AXIS_DEADZONE and entity.velocity.x > 0
+        )
+
+        if elapsed >= lock.wall_jump_min_lock and opposing:
+            lock.wall_jump_lock_timer = 0.0
+        else:
+            damp_alpha = 1.0 - math.exp(-Locomotion.WALL_JUMP_DAMPING * delta_time)
+            entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
+            return
+
+    target_speed = entity.move_axis * entity.speed * entity.combat.movement_multiplier
+
+    if target_speed == 0 and abs(entity.velocity.x) < Locomotion.STOP_SPEED_PX_S:
+        entity.velocity.x = 0.0
+        return
+
+    grounded = entity.on_surface["floor"]
+    if grounded and _braking(entity, target_speed):
+        # Aimed at zero on purpose: easing toward the new direction would
+        # curve through the crossing instead of stopping at it.
+        alpha = 1.0 - math.exp(-entity.turn_brake_control * delta_time)
+        entity.velocity.x += (0 - entity.velocity.x) * alpha
+    else:
+        control = entity.floor_control if grounded else entity.air_control
+        alpha = 1.0 - math.exp(-control * delta_time)
+        entity.velocity.x = entity.velocity.x + (target_speed - entity.velocity.x) * alpha
+
+    if abs(entity.velocity.x) < VELOCITY_EPSILON:
+        entity.velocity.x = 0.0
+
+
+def _braking(entity: HorizontalMovementEntity, target_speed: float) -> bool:
+    """Whether this tick is the brake half of this fighter's reversal.
+
+    Four conditions, and the first is the one that decides who is in scope.
+
+    ``turn_enabled`` gates the brake along with the facing hold it belongs to.
+    This function is reached by every fighter in the game -- the movement call
+    is shared -- so a fighter that has not opted into the pivot must not be
+    given half of it either. It would plant and push differently while never
+    being turned around, which reads as an unrelated and unexplainable change
+    of handling: the enemy feels heavier and there is nothing on screen saying
+    why.
+
+    The rest are as before: the rate is off (0 restores the single curve), the
+    input must oppose the velocity, the target must be a direction rather than
+    a coast to a stop, and the fighter must have momentum to bleed.
+    """
+    if not entity.turn_enabled:
+        return False
+    if entity.turn_brake_control <= 0.0:
+        return False
+    velocity = entity.velocity.x
+    if abs(velocity) < entity.turn_plant_px_s:
+        return False
+    if target_speed == 0.0:
+        return False
+    return (target_speed > 0.0) != (velocity > 0.0)
+
+
+def resolve_jump(entity: JumpEntity) -> None:
+    """Resolve a jump attempt: from the ground or coyote time, off a wall, or in the air."""
+    jump = entity.jump
+    if jump.jump_buffer_timer <= 0:
+        return
+
+    if jump.coyote_timer > 0:
+        entity.velocity.y = -jump.jump_height
+        jump.jump_buffer_timer = 0.0
+        jump.coyote_timer = 0.0
+    elif (entity.on_surface["left"] or entity.on_surface["right"]) and jump.wall_jumps_left > 0:
+        entity.velocity.y = -jump.wall_jump_height
+        push = entity.speed * jump.wall_jump_push_multiplier
+        entity.velocity.x = push if entity.on_surface["left"] else -push
+        jump.wall_jump_lock_timer = jump.wall_jump_lock_duration
+        jump.wall_jumps_left -= 1
+        jump.jump_buffer_timer = 0.0
+    elif jump.midair_jumps_left > 0:
+        entity.velocity.y = -jump.jump_height
+        jump.midair_jumps_left -= 1
+        jump.jump_buffer_timer = 0.0
+
+
+def apply_jump_cut(entity: Any, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> None:
+    """Cut a rising jump short on button release (variable jump height).
+
+    Neutral at the default divisor (1.0): the velocity is untouched.
+    """
+    if divisor <= 1.0 or entity.velocity.y >= 0:
+        return
+    entity.velocity.y /= divisor
+
+
+def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = True) -> None:
+    """Move an entity according to its velocity and the environment.
+
+    Uses spatial hash for O(1) collision lookup. Falls back to
+    the original O(n) search if spatial_hash is not available.
+    """
+    entity.crushed = False
+    # Use spatial hash if available, otherwise fall back to collision_sprites
+    if entity.spatial_hash is not None:
+        nearby_sprites = get_nearby_sprites(entity, spatial_hash=entity.spatial_hash)
+    else:
+        nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
+
+    move_x = entity.velocity.x * delta_time
+    steps_x = min(
+        Simulation.MAX_SUBSTEPS_PER_AXIS,
+        max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE)),
+    )
+    step_move_x = move_x / steps_x
+
+    box = entity.hitbox
+    for _ in range(steps_x):
+        entity.old_hitbox = box.copy()
+        box.x += step_move_x
+        resolve_collisions(entity, "horizontal", nearby_sprites)
+
+        if abs(entity.velocity.x) < VELOCITY_EPSILON:
+            entity.velocity.x = 0.0
+            break
+
+    if apply_gravity:
+        apply_entity_gravity(entity, delta_time)
+
+    move_y = entity.velocity.y * delta_time
+    steps_y = min(
+        Simulation.MAX_SUBSTEPS_PER_AXIS,
+        max(1, math.ceil(abs(move_y) / Separation.SUB_STEP_SIZE)),
+    )
+    step_move_y = move_y / steps_y
+
+    for _ in range(steps_y):
+        entity.old_hitbox = box.copy()
+        box.y += step_move_y
+        resolve_collisions(entity, "vertical", nearby_sprites)
+        if abs(entity.velocity.y) < VELOCITY_EPSILON:
+            entity.velocity.y = 0.0
+            break
+
+    _snap_to_ground(entity, nearby_sprites)
+    _revert_carry_crush(entity)
+    update_contact_state(entity, nearby_sprites)
+
+
+def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
+    """Stick to ground within a few pixels instead of floating off edges.
+
+    Neutral at the default distance (0.0): nothing is probed.
+    """
+    snap = GameFeel.GROUND_SNAP_PX
+    if snap <= 0 or entity.velocity.y < 0:
+        return
+
+    best: float | None = None
+    for sprite in nearby_sprites:
+        if is_one_way(sprite):
+            box = collider_box(sprite)
+            if box is None or entity.old_hitbox.bottom > box.top + Collision.CONTACT_SKIN_PX:
+                continue
+            gap = box.top - entity.hitbox.bottom
+            if 0 <= gap <= snap and (best is None or gap < best):
+                best = gap
+            continue
+        box = collider_box(sprite)
+        if box is None:
+            continue
+        overlap_x = min(entity.hitbox.right, box.right) - max(entity.hitbox.left, box.left)
+        if overlap_x <= 0:
+            continue
+        gap = box.top - entity.hitbox.bottom
+        if 0 <= gap <= snap and (best is None or gap < best):
+            best = gap
+    if best is not None:
+        entity.hitbox.bottom += best
+        entity.velocity.y = 0.0
+        entity.sync_rects()
+
+
+def _revert_carry_crush(entity: MovableEntity) -> None:
+    """Restore the pre-carry position when a platform crushed the entity."""
+    backup = entity.carry_backup
+    entity.carry_backup = None
+    if not entity.crushed or backup is None:
+        return
+    entity.hitbox.x, entity.hitbox.y, entity.hitbox.width, entity.hitbox.height = backup
+    entity.velocity.x = 0.0
+    entity.velocity.y = 0.0
+    entity.sync_rects()
+
+
+def _sticky_snap(
+    entity: PlatformRider,
+    platform: MovingPlatform,
+    vertical_dist: float,
+    platform_dy: float,
+) -> bool:
+    """Catch a fast-descending platform's new top instead of detaching.
+
+    Neutral at the default factor (0.0): never engages. When engaged, the
+    entity drops exactly onto the new surface (never embedded in the pad).
+    """
+    sticky = PlatformRide.STICKY_FACTOR * max(0.0, platform_dy)
+    if sticky <= 0:
+        return False
+    if not (
+        PlatformRide.SNAP_EPSILON_TOP_PX
+        < vertical_dist
+        <= PlatformRide.SNAP_EPSILON_TOP_PX + sticky
+    ):
+        return False
+    snap = min(platform_dy, platform.hitbox.top - entity.hitbox.bottom)
+    if snap <= 0:
+        return False
+    entity.carry_backup = (
+        entity.hitbox.x,
+        entity.hitbox.y,
+        entity.hitbox.width,
+        entity.hitbox.height,
+    )
+    entity.hitbox.x += platform.hitbox.x - platform.old_hitbox.x
+    entity.hitbox.y += snap
+    return True
+
+
+def apply_moving_platform(
+    entity: PlatformRider, moving_platforms: Iterable[MovingPlatform]
+) -> None:
+    """Apply moving-platform support for an entity standing on the platform."""
+    if not entity.on_surface["floor"]:
+        return
+
+    for platform in moving_platforms:
+        p_box = platform.hitbox
+        p_old_box = platform.old_hitbox
+
+        vertical_dist = entity.hitbox.bottom - p_old_box.top
+        platform_dy = p_box.y - p_old_box.y
+
+        if not (
+            -PlatformRide.SNAP_EPSILON_BOTTOM_PX
+            <= vertical_dist
+            <= PlatformRide.SNAP_EPSILON_TOP_PX
+        ):
+            if not _sticky_snap(entity, platform, vertical_dist, platform_dy):
+                continue
+            entity.old_hitbox = entity.hitbox.copy()
+            entity.sync_rects()
+            break
+
+        overlap = min(entity.hitbox.right, p_old_box.right) - max(
+            entity.hitbox.left, p_old_box.left
+        )
+        if overlap <= 0:
+            continue
+
+        platform_dx = p_box.x - p_old_box.x
+        platform_dy = p_box.y - p_old_box.y
+
+        if platform_dx == 0 and platform_dy == 0:
+            continue
+
+        entity.carry_backup = (
+            entity.hitbox.x,
+            entity.hitbox.y,
+            entity.hitbox.width,
+            entity.hitbox.height,
+        )
+        entity.hitbox.x += platform_dx
+        entity.hitbox.y += platform_dy
+
+        entity.old_hitbox = entity.hitbox.copy()
+
+        entity.sync_rects()
+        break

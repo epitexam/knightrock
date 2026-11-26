@@ -57,3 +57,14 @@ def test_candidate_matches_legacy(scenario: str, tmp_path: Path) -> None:
 def test_scenarios_are_distinct(tmp_path: Path) -> None:
     digests = {_run(name, "legacy", tmp_path) for name in SCENARIO_NAMES}
     assert len(digests) == len(SCENARIO_NAMES)
+
+
+def test_migrated_modules_resolve_to_the_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The resolver, not a caller, decides which tree a capability lives in."""
+    from tests.parity.impl import NEW_PATHS, module_name
+
+    monkeypatch.setenv("KNIGHTROCK_ARCH", "new")
+    for logical, candidate in NEW_PATHS.items():
+        assert module_name(logical) == candidate
+    monkeypatch.setenv("KNIGHTROCK_ARCH", "legacy")
+    assert module_name("physics.gravity") == "src.physics.gravity"

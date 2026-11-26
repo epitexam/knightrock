@@ -1,23 +1,18 @@
-"""Physics helpers for entity movement, collisions and detection.
+"""Backward-compatible path for :mod:`src.simulation.physics`."""
 
-The physics layer is a real aggregation point -- eight call sites import from
-this package rather than from a leaf module -- so it keeps re-exporting. The
-set is the nine names below and nothing else: the other twelve it used to
-carry (``EntityGrid``, ``overlapping_pairs``, ``apply_entity_gravity``,
-``apply_jump_cut``, ``update_moving_platform``, ``update_contact_state``,
-``hitbox_collide``, ``get_nearby_sprites`` and the spatial-hash types) are
-imported from their own modules by their only consumers.
-"""
-
-from .collisions import resolve_collisions
-from .movement import (
+from src.simulation.physics.collisions import resolve_collisions
+from src.simulation.physics.movement import (
     apply_horizontal_movement,
     apply_moving_platform,
     move_entity,
     resolve_jump,
 )
-from .spatial_hash import SpatialHash
-from .velocity import apply_slide_friction, apply_velocity_friction, lerp_velocity
+from src.simulation.physics.spatial_hash import SpatialHash
+from src.simulation.physics.velocity import (
+    apply_slide_friction,
+    apply_velocity_friction,
+    lerp_velocity,
+)
 
 __all__ = [
     "SpatialHash",

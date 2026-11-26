@@ -1,350 +1,50 @@
-"""Spatial hash grid for efficient collision detection.
+"""Backward-compatible path for :mod:`src.simulation.physics.spatial_hash`."""
 
-The world is divided into square cells; each collidable sprite is registered
-in **every cell its collision box (hitbox or rect) overlaps** and a query
-visits every cell covered by its own slightly-inflated hitbox. Lookups stay
-local (a handful of cells) instead of scanning every tile, while never
-missing a sprite that spans several cells or rests exactly on a cell
-boundary.
-
-Lifecycle
----------
-- Static geometry (tiles) is bucketed once at level load: ``add``/``add_all``.
-- Sprites that move (moving platforms) must be re-bucketed each tick with
-  ``update`` / ``update_all``; a stale bucket would hide them from queries.
-- ``add`` is idempotent; ``remove`` unregisters a sprite from the cells it
-  occupies; ``clear`` empties the grid.
-
-``get_nearby`` may return false positives (callers re-check candidates with
-real collision tests) but must not return false negatives: the query box is
-inflated by ``QUERY_MARGIN_PX`` so a sprite resting exactly on a surface, or
-reached within one tick of movement, is still found.
-
-Cell-size selection
--------------------
-A cell size of roughly ``1.5×`` to ``2×`` the largest expected object works
-well: large enough that most objects touch few cells (cheap inserts/queries),
-small enough that each cell holds few members (cheap per-cell scans).  The
-default **128 px** suits 64 px tiles and 48×56 px entities, while keeping
-``QUERY_MARGIN_PX`` (32) below one cell so a single-cell query still captures
-the margin band.
-"""
-
-from collections import defaultdict
-from collections.abc import Iterable
-from contextlib import suppress
-from math import ceil, floor
-from typing import Protocol
-
-import pygame
-
-from src.core.settings import World
-
-
-def collider_box(sprite: object) -> pygame.Rect | pygame.FRect | None:
-    """The box a sprite collides with: its ``hitbox``, else its ``rect``.
-
-    The one reading of a collider for the whole physics package. Collision
-    groups mix terrain tiles (a ``rect`` only), moving platforms and entities
-    (a ``hitbox`` that differs from the drawn ``rect``); ``None`` means the
-    sprite has no box and takes no part in the collision.
-    """
-    box = getattr(sprite, "hitbox", None)
-    if box is not None:
-        return box  # type: ignore[no-any-return]
-    return getattr(sprite, "rect", None)
-
-
-def is_one_way(sprite: object) -> bool:
-    """Whether a collider only holds what lands on its top (a jump-through pad).
-
-    Read here for the same reason as :func:`collider_box`: the collision group
-    mixes scenery, which declares the flag, with whatever a caller hands in.
-    """
-    return bool(getattr(sprite, "one_way", False))
-
-
-__all__ = [
-    "is_one_way",
-    "QUERY_MARGIN_PX",
-    "SpatialHash",
-    "SpatialHashable",
-    "RectHashable",
-    "SpatialHashMember",
-]
-
-# Cell-coverage margin for queries. Must stay >= the maximum distance an
-# entity travels in one tick (MAX_FALL_SPEED 1500 px/s / 60 Hz ~= 25 px) plus
-# a small rest epsilon, so the per-tick cached query cannot miss a sprite
-# reached mid-substep or touched exactly at a cell boundary.
-QUERY_MARGIN_PX = 32.0
-
-
-class SpatialHashable(Protocol):
-    """Object exposing a ``hitbox`` (entities, moving platforms)."""
-
-    @property
-    def hitbox(self) -> pygame.Rect | pygame.FRect:
-        """The collision hitbox of the object."""
-        ...
-
-
-class RectHashable(Protocol):
-    """Object exposing only a ``rect`` (e.g. terrain tiles)."""
-
-    @property
-    def rect(self) -> pygame.Rect | pygame.FRect:
-        """The collision box of the object."""
-        ...
-
-
-# Anything bucketable in the grid: a hitbox or a rect.  The runtime derives
-# the box with ``getattr(sprite, 'hitbox', getattr(sprite, 'rect', None))``,
-# preferring a ``hitbox`` attribute (which carries the entity's precise
-# hurtbox) and falling back to the sprite's coarse ``rect`` for terrain
-# tiles.  Both protocols are accepted at insertion so tiles and entities share
-# one grid without adapter wrappers.
-SpatialHashMember = SpatialHashable | RectHashable
-
-
-class SpatialHash:
-    """2D grid mapping each cell to the sprites overlapping it.
-
-    This is particularly effective for tile-based games where most
-    collision objects (tiles) are static and can be bucketed once at
-    level load time, while the few dynamic ones are re-bucketed per tick.
-
-    Attributes
-    ----------
-    cell_size : int
-        Size of each grid cell in pixels. Larger cells = fewer cells
-        but more sprites per cell. 128px is a good default for 64px tiles.
-    grid : dict[tuple[int, int], list[SpatialHashMember]]
-        Mapping of cell coordinates to lists of sprites in that cell.
-    """
-
-    def __init__(self, cell_size: int = World.HASH_CELL_SIZE):
-        """Initialize the spatial hash with a cell size.
-
-        Args:
-            cell_size: Size of each grid cell in world units. Defaults to
-                ``World.HASH_CELL_SIZE``, which the entity grid uses too --
-                they are queried with the same rectangles, so a cell that
-                one of them considers too far is a collision the other
-                cannot see.
-        """
-        self.cell_size = cell_size
-        self.grid: dict[tuple[int, int], list[SpatialHashMember]] = defaultdict(list)
-        # ``id(sprite) -> (sprite, its cells)``. The sprite is kept in the
-        # value, not only in the buckets, and that is the whole reason the
-        # hazard is handled rather than documented: a key built from ``id()``
-        # alone can be *recycled*. CPython hands the address of a freed object
-        # to the next object allocated, so a sprite that died without being
-        # unregistered leaves a key that a brand new sprite can collide with
-        # -- and `add` is idempotent by that key, so the new sprite would be
-        # silently not inserted. It would then be invisible to every query and
-        # pass straight through its target. Holding the sprite makes the key
-        # checkable: `add` confirms the object is the one it registered, and a
-        # mismatch is a miss rather than somebody else's bucket.
-        self._cells_by_sprite: dict[int, tuple[SpatialHashMember, tuple[tuple[int, int], ...]]] = {}
-        # Query results by cell range, emptied by every change to the grid. A
-        # fighter asks about the same few cells several times a tick -- its
-        # move, then the AI's ledge and landing probes -- and between two
-        # changes of the grid the answer cannot differ.
-        self._queries: dict[tuple[int, int, int, int], list[SpatialHashMember]] = {}
-        # Reused for span computation; a query never keeps a reference to it.
-        self._query_box = pygame.FRect(0, 0, 0, 0)
-
-    def add(self, sprite: SpatialHashMember) -> None:
-        """Register a sprite in every cell its hitbox overlaps (idempotent).
-
-        Idempotent for the *same sprite*, which is not the same thing as
-        idempotent for the same ``id()``. See ``_cells_by_sprite``: a recycled
-        id is treated as a different sprite and registered properly, where the
-        obvious implementation would have skipped it.
-        """
-        box = self._box_of(sprite)
-        if box is None:
-            return  # Skip sprites without hitbox or rect
-        key = id(sprite)
-        existing = self._cells_by_sprite.get(key)
-        if existing is not None and existing[0] is sprite:
-            return
-        if existing is not None:
-            # The address was recycled onto this sprite. The entry belongs to
-            # an object that is gone, so drop it before registering.
-            self.remove(existing[0])
-        cells = self._cells_for_box(box)
-        for cell in cells:
-            self.grid[cell].append(sprite)
-        self._cells_by_sprite[key] = (sprite, cells)
-        self._invalidate_queries(cells)
-
-    def add_all(self, sprites: Iterable[SpatialHashMember]) -> None:
-        """Register multiple sprites.
-
-        Args:
-            sprites: Iterable of sprites to add.
-        """
-        for sprite in sprites:
-            self.add(sprite)
-
-    def remove(self, sprite: SpatialHashMember) -> None:
-        """Unregister a sprite from every cell it occupies.
-
-        Args:
-            sprite: The sprite previously registered via ``add``.
-        """
-        entry = self._cells_by_sprite.pop(id(sprite), None)
-        if entry is None or entry[0] is not sprite:
-            # Either never registered, or the id now belongs to someone else.
-            # Removing "its" cells here would empty another sprite's buckets.
-            return
-        cells = entry[1]
-        self._invalidate_queries(cells)
-        for cell in cells:
-            bucket = self.grid.get(cell)
-            if bucket is None:
-                continue
-            with suppress(ValueError):
-                bucket.remove(sprite)
-            if not bucket:
-                del self.grid[cell]
-
-    def update(self, sprite: SpatialHashMember) -> None:
-        """Re-bucket a sprite after its hitbox moved.
-
-        Args:
-            sprite: A registered sprite whose hitbox changed position.
-        """
-        self.remove(sprite)
-        self.add(sprite)
-
-    def update_all(self, sprites: Iterable[SpatialHashMember]) -> None:
-        """Re-bucket multiple sprites (e.g. moving platforms each tick).
-
-        Args:
-            sprites: Iterable of registered sprites that moved this tick.
-        """
-        for sprite in sprites:
-            self.update(sprite)
-
-    def clear(self) -> None:
-        """Remove all sprites from the grid."""
-        self.grid.clear()
-        self._cells_by_sprite.clear()
-        self._queries.clear()
-
-    @property
-    def occupied_cells(self) -> int:
-        """How many cells currently hold at least one sprite.
-
-        Exposed so a caller can tell whether bucketing bought anything. A
-        population spread over one cell is a population the grid cannot prune,
-        and knowing that is cheaper than finding out per query.
-        """
-        return len(self.grid)
-
-    def get_nearby(self, hitbox: pygame.Rect | pygame.FRect) -> list[SpatialHashMember]:
-        """Return the sprites overlapping the cells covered by ``hitbox``.
-
-        The cell range is computed from the hitbox inflated by
-        ``QUERY_MARGIN_PX`` on every side, so sprites resting on a surface or
-        reached during this tick's substeps are never missed. Sprites
-        spanning several cells are returned once. Callers still perform the
-        real collision test on the returned candidates.
-
-        Args:
-            hitbox: The hitbox to query around.
-
-        Returns:
-            List of sprites that might collide. May include false positives.
-        """
-        margin = QUERY_MARGIN_PX
-        query = self._query_box
-        query.left = hitbox.left - margin
-        query.top = hitbox.top - margin
-        query.width = hitbox.width + 2 * margin
-        query.height = hitbox.height + 2 * margin
-        span = self._cell_span(query)
-        cached = self._queries.get(span)
-        if cached is not None:
-            return list(cached)
-        nearby: list[SpatialHashMember] = []
-        seen: set[int] = set()
-        x0, x1, y0, y1 = span
-        grid = self.grid
-        for cy in range(y0, y1 + 1):
-            for cx in range(x0, x1 + 1):
-                for sprite in grid.get((cx, cy), ()):
-                    key = id(sprite)
-                    if key not in seen:
-                        seen.add(key)
-                        nearby.append(sprite)
-        self._queries[span] = nearby
-        return list(nearby)
-
-    def append_nearby(
-        self,
-        hitbox: pygame.Rect | pygame.FRect,
-        nearby: list[SpatialHashMember],
-        seen: set[int],
-    ) -> None:
-        """Append query members into caller-owned buffers without allocating a result list."""
-        margin = QUERY_MARGIN_PX
-        query = self._query_box
-        query.left = hitbox.left - margin
-        query.top = hitbox.top - margin
-        query.width = hitbox.width + 2 * margin
-        query.height = hitbox.height + 2 * margin
-        for cell in self._cells_for_box(query):
-            for sprite in self.grid.get(cell, ()):
-                key = id(sprite)
-                if key not in seen:
-                    seen.add(key)
-                    nearby.append(sprite)
-
-    @staticmethod
-    def _box_of(sprite: SpatialHashMember) -> pygame.Rect | pygame.FRect | None:
-        """Return a sprite's hitbox, falling back to its rect."""
-        return collider_box(sprite)
-
-    def _invalidate_queries(self, cells: tuple[tuple[int, int], ...]) -> None:
-        """Drop only cached searches whose cell range touches ``cells``.
-
-        A moving platform re-buckets every tick; clearing the whole cache there
-        meant a fighter's move, ledge and landing probes never shared a result.
-        A cached search can only be stale if it covered a cell that changed, so
-        the rest stay valid.
-        """
-        if not self._queries or not cells:
-            return
-        touched = set(cells)
-        for span in list(self._queries):
-            x0, x1, y0, y1 = span
-            if any(x0 <= cx <= x1 and y0 <= cy <= y1 for cx, cy in touched):
-                del self._queries[span]
-
-    def _cell_span(self, box: pygame.Rect | pygame.FRect) -> tuple[int, int, int, int]:
-        """The first and last cell column and row the box overlaps: ``(x0, x1, y0, y1)``."""
-        x0 = floor(box.left / self.cell_size)
-        x1 = ceil(box.right / self.cell_size) - 1
-        y0 = floor(box.top / self.cell_size)
-        y1 = ceil(box.bottom / self.cell_size) - 1
-        if x1 < x0:  # zero-width box: keep a single column
-            x1 = x0
-        if y1 < y0:  # zero-height box: keep a single row
-            y1 = y0
-        return x0, x1, y0, y1
-
-    def _cells_for_box(self, box: pygame.Rect | pygame.FRect) -> tuple[tuple[int, int], ...]:
-        """Return every cell the box overlaps, column-major.
-
-        Args:
-            box: A pygame Rect or FRect.
-
-        Returns:
-            Tuple of (cell_x, cell_y) coordinates for each covered cell.
-        """
-        x0, x1, y0, y1 = self._cell_span(box)
-        return tuple((cx, cy) for cy in range(y0, y1 + 1) for cx in range(x0, x1 + 1))
+from src.simulation.physics.spatial_hash import (
+    QUERY_MARGIN_PX as QUERY_MARGIN_PX,
+)
+from src.simulation.physics.spatial_hash import (
+    Iterable as Iterable,
+)
+from src.simulation.physics.spatial_hash import (
+    Protocol as Protocol,
+)
+from src.simulation.physics.spatial_hash import (
+    RectHashable as RectHashable,
+)
+from src.simulation.physics.spatial_hash import (
+    SpatialHash as SpatialHash,
+)
+from src.simulation.physics.spatial_hash import (
+    SpatialHashable as SpatialHashable,
+)
+from src.simulation.physics.spatial_hash import (
+    SpatialHashMember as SpatialHashMember,
+)
+from src.simulation.physics.spatial_hash import (
+    World as World,
+)
+from src.simulation.physics.spatial_hash import (
+    __all__ as __all__,
+)
+from src.simulation.physics.spatial_hash import (
+    ceil as ceil,
+)
+from src.simulation.physics.spatial_hash import (
+    collider_box as collider_box,
+)
+from src.simulation.physics.spatial_hash import (
+    defaultdict as defaultdict,
+)
+from src.simulation.physics.spatial_hash import (
+    floor as floor,
+)
+from src.simulation.physics.spatial_hash import (
+    is_one_way as is_one_way,
+)
+from src.simulation.physics.spatial_hash import (
+    pygame as pygame,
+)
+from src.simulation.physics.spatial_hash import (
+    suppress as suppress,
+)

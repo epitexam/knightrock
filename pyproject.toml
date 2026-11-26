@@ -79,6 +79,12 @@ forbidden_modules = [
     "src.ui",
 ]
 
+[[tool.importlinter.contracts]]
+name = "platform adapters do not depend on the interface or the composition root"
+type = "forbidden"
+source_modules = ["src.platform"]
+forbidden_modules = ["src.ui", "src.application"]
+
 [dependency-groups]
 dev = [
     "import-linter>=2.9",

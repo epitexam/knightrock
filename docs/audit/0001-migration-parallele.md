@@ -64,3 +64,17 @@ goldens existants), **moyenne** sur le calendrier (5 à 6 semaines estimées).
 Réévaluer si : un digest diffère sans cause unique identifiée ; une faute
 injectée survit ; l'écart de tick dépasse 3 % ; un import non prévu apparaît
 dans le périmètre d'une tranche.
+
+## Avancement
+
+- **Phase 0** (faite) : harnais de parité, 12 fautes tuées, bascule
+  `KNIGHTROCK_ARCH`, contrat import-linter initial.
+- **Phase 1** (faite) : noyau partagé `src.shared` et ports headless ; les
+  anciens chemins restent des shims de ré-export.
+- **Phase 2, tranches physics, combat, audio et input** (faites) :
+  `src/simulation/physics`, `src/simulation/combat` et `src/platform` sont les
+  nouveaux chemins ; les anciens paquets sont des shims vérifiés par des tests
+  AST. `src.combat.damage_types` et `src.shared.input_state` appartiennent au
+  noyau partagé. Dette transitoire assumée : la simulation et les adaptateurs
+  lisent encore `src.core.settings` et `src.data.errors` jusqu'à la migration
+  de la configuration et des données, qui feront l'objet d'un ADR séparé.

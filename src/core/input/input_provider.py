@@ -1,334 +1,62 @@
-from collections.abc import Mapping, Sequence
-from typing import cast
+"""Backward-compatible path for :mod:`src.platform.input.input_provider`."""
 
-import pygame
-from pygame.joystick import JoystickType
-
-from src.core.input.device_registry import DeviceRegistry
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import (
-    ActionMap,
-    AxisMap,
-    ButtonMap,
-    ComboMap,
-    GameplayBindings,
-    InputBindings,
+from src.platform.input.input_provider import (
+    ActionMap as ActionMap,
 )
-from src.core.input.input_state import InputState
-from src.core.settings import Input as InputSettings
-
-
-def resolve_move_axis(keyboard_axis: float, analog_axis: float, hat_axis: float) -> float:
-    """Combine the three move sources into one axis. The keyboard axis is zero whenever the control screen has detached MOVE_X, so it can be passed unconditionally."""
-    directions = {
-        direction
-        for direction in (
-            _axis_direction(keyboard_axis),
-            _axis_direction(analog_axis),
-            _axis_direction(hat_axis),
-        )
-        if direction != 0
-    }
-    if len(directions) > 1:
-        return 0.0
-    if keyboard_axis != 0.0:
-        return keyboard_axis
-    if analog_axis != 0.0:
-        return analog_axis
-    return hat_axis
-
-
-def _axis_direction(value: float) -> int:
-    if value > 0.0:
-        return 1
-    if value < 0.0:
-        return -1
-    return 0
-
-
-class InputProvider:
-    def poll(self) -> InputState:
-        raise NotImplementedError
-
-    def note_event(self, event: pygame.event.Event) -> None:
-        """Optionally latch an input edge seen between two polls.
-
-        Providers that read a state snapshot rather than an event stream
-        (a keyboard polled per frame) need this to see taps shorter than a
-        poll interval. Providers fed by an event stream can ignore it.
-        """
-
-
-class NullInputProvider(InputProvider):
-    def poll(self) -> InputState:
-        return InputState()
-
-
-class LocalInputProvider(InputProvider):
-    def __init__(
-        self,
-        bindings: InputBindings | None = None,
-        devices: DeviceRegistry | None = None,
-    ) -> None:
-        self._bindings = bindings or InputBindings()
-        self.devices = devices if devices is not None else DeviceRegistry()
-        self._current_joy_buttons: dict[int, bool] = {}
-        self._current_joy_axes: dict[int, float] = {}
-        self._current_joy_hats: dict[int, tuple[float, float]] = {}
-        self._latched_keys: set[int] = set()
-        self._latched_buttons: set[int] = set()
-
-    def set_bindings(self, bindings: InputBindings) -> None:
-        self._bindings = bindings
-
-    def connect_joystick(self, joystick: JoystickType) -> None:
-        self.devices.connect(joystick)
-
-    def disconnect_joystick(self, instance_id: int) -> None:
-        self.devices.disconnect(instance_id)
-
-    def reassign_joystick(self, joysticks: dict[int, JoystickType]) -> None:
-        self.devices.replace(joysticks)
-
-    def note_event(self, event: pygame.event.Event) -> None:
-        """Latch a key or pad-button edge seen between two polls.
-
-        ``pygame.key.get_pressed()`` is a *state* read: a key pressed and
-        released between two polls -- which happens whenever a tap is shorter
-        than the frame, and the game runs two simulation ticks per presented
-        frame -- is already back up and therefore invisible. The game already
-        drains the whole event queue each frame, so it hands the edges here
-        and the next poll reports the action as held for exactly one tick.
-
-        The pad's buttons are latched the same way, for the same reason and for
-        one more: the level does not poll while hit-stop holds the world still,
-        so a tap made inside the freeze is over before the next poll, and the
-        latch is what plays it on the first tick that moves.
-
-        Only presses are latched. A release carries no action of its own, and
-        holding the latch through it would make a release look like a press.
-        """
-        if event.type == pygame.KEYDOWN:
-            key = int(getattr(event, "key", -1))
-            if key >= 0:
-                self._latched_keys.add(key)
-        elif event.type == pygame.JOYBUTTONDOWN and self._from_the_pad(event):
-            self._latched_buttons.add(int(event.button))
-
-    def _from_the_pad(self, event: pygame.event.Event) -> bool:
-        """Whether a pad event comes from the pad that drives the player."""
-        joystick = self.devices.active()
-        return joystick is not None and getattr(event, "instance_id", None) == (
-            joystick.get_instance_id()
-        )
-
-    def poll(self) -> InputState:
-        keys = pygame.key.get_pressed()
-        gameplay = self._bindings.gameplay
-        self._current_joy_buttons = {}
-        self._current_joy_axes = {}
-        self._current_joy_hats = {}
-        joystick = self.devices.active()
-        if joystick is not None:
-            for index in range(joystick.get_numbuttons()):
-                self._current_joy_buttons[index] = bool(joystick.get_button(index))
-            for index in range(joystick.get_numaxes()):
-                self._current_joy_axes[index] = joystick.get_axis(index)
-            hat_indices = {
-                index
-                for binding in gameplay.gamepad_hats.values()
-                for index in (binding if isinstance(binding, tuple) else (binding,))
-            }
-            for index in hat_indices:
-                self._current_joy_hats[index] = joystick.get_hat(index)
-
-        down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN, latch=False)
-        if not down_held:
-            down_held = self._button_held(
-                gameplay.gamepad_buttons, InputAction.MOVE_DOWN, latch=False
-            )
-        if not down_held:
-            down_axis = self._apply_deadzone(
-                self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_DOWN)
-            )
-            down_held = down_axis > 0.0
-        if not down_held:
-            hat = self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_DOWN)
-            down_held = hat[1] < 0
-
-        up_held = self._move_up_held(keys, gameplay)
-
-        held = {
-            # ``MOVE_DOWN`` is the low stance on the ground and the fast fall in
-            # the air: two postures, not presses. It is read with ``latch=False``
-            # above so a tap shorter than a poll cannot arrive as a one-tick
-            # hold and flicker the posture.
-            InputAction.MOVE_DOWN: down_held,
-            # A prompt asks for Up with this action, not with Jump: Space and
-            # the A button are attacks outside a prompt, and the arrow/D-pad
-            # up is the direction the screen shows.
-            InputAction.MOVE_UP: up_held,
-            InputAction.GUARD: self._key_held(keys, gameplay.keyboard, InputAction.GUARD)
-            or self._button_held(gameplay.gamepad_buttons, InputAction.GUARD),
-            InputAction.JUMP: self._key_held(keys, gameplay.keyboard, InputAction.JUMP)
-            or self._button_held(gameplay.gamepad_buttons, InputAction.JUMP),
-            InputAction.DASH: self._key_held(keys, gameplay.keyboard, InputAction.DASH)
-            or self._button_held(gameplay.gamepad_buttons, InputAction.DASH)
-            or self._axis_value(gameplay.gamepad_axes, InputAction.DASH)
-            > InputSettings.DASH_AXIS_THRESHOLD,
-            InputAction.RESET: self._key_held(keys, gameplay.keyboard, InputAction.RESET)
-            or self._button_held(gameplay.gamepad_buttons, InputAction.RESET),
-        }
-        special_keyboard = self._combo_held(
-            keys, gameplay.keyboard_combos, InputAction.SPECIAL_ATTACK
-        )
-        special_gamepad = self._combo_held(
-            self._current_joy_buttons, gameplay.gamepad_combos, InputAction.SPECIAL_ATTACK
-        )
-        if special_keyboard or special_gamepad:
-            held[InputAction.SPECIAL_ATTACK] = True
-        else:
-            for action in (
-                InputAction.ATTACK_1,
-                InputAction.ATTACK_2,
-                InputAction.SHOOT,
-            ):
-                held[action] = self._key_held(keys, gameplay.keyboard, action) or (
-                    self._button_held(gameplay.gamepad_buttons, action)
-                )
-        state = InputState(
-            move_axis=self._calculate_move_axis(keys),
-            held_actions=frozenset(action for action, active in held.items() if active),
-        )
-        # Consumed: a latched tap must not be reported again on the next poll,
-        # or the action would be held for as long as no new key was pressed.
-        self._latched_keys.clear()
-        self._latched_buttons.clear()
-        return state
-
-    def _move_up_held(
-        self, keys: Sequence[bool] | Mapping[int, bool], gameplay: GameplayBindings
-    ) -> bool:
-        """Up from the arrow key, the stick's negative Y, or D-pad up."""
-        if self._key_held(keys, gameplay.keyboard, InputAction.MOVE_UP):
-            return True
-        axis = self._apply_deadzone(self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_UP))
-        if axis < 0.0:
-            return True
-        if self._button_held(gameplay.gamepad_buttons, InputAction.MOVE_UP):
-            # The controls screen removes the axis and the hat when a pad
-            # button is captured for this action. Reading the buttons is what
-            # keeps a rebound Up usable in a prompt. MOVE_DOWN is a posture and
-            # reads its button without the latch; Up is an edge the prompt must
-            # still see when the tap landed during hit-stop.
-            return True
-        return self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_UP)[1] > 0
-
-    def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
-        bindings = self._bindings.gameplay
-        keyboard_axis = self._keyboard_axis_value(keys, bindings.keyboard)
-        if keyboard_axis == 0.0:
-            keyboard_axis = self._pad_button_axis_value(bindings.gamepad_buttons)
-        analog = self._apply_deadzone(self._axis_value(bindings.gamepad_axes, InputAction.MOVE_X))
-        hat = float(self._hat_value(bindings.gamepad_hats, InputAction.MOVE_X)[0])
-        return resolve_move_axis(keyboard_axis, analog, hat)
-
-    def _keyboard_axis_value(
-        self, keys: Sequence[bool] | Mapping[int, bool], bindings: ActionMap
-    ) -> float:
-        axis_keys = bindings.get(InputAction.MOVE_X)
-        if not isinstance(axis_keys, tuple) or len(axis_keys) != 2:
-            # MOVE_X detached from the controls screen: no keyboard axis.
-            return 0.0
-        left_key, right_key = axis_keys
-        return float(self._key_value(keys, right_key)) - float(self._key_value(keys, left_key))
-
-    def _pad_button_axis_value(self, bindings: ButtonMap) -> float:
-        """D-pad exposed as buttons: the (left, right) pair bound to MOVE_X."""
-        indices = self._pad_indices(bindings, InputAction.MOVE_X)
-        if len(indices) != 2:
-            return 0.0
-        left, right = indices
-        return float(self._current_joy_buttons.get(right, False)) - float(
-            self._current_joy_buttons.get(left, False)
-        )
-
-    @staticmethod
-    def _key_value(keys: Sequence[bool] | Mapping[int, bool], key: int) -> bool:
-        if isinstance(keys, Mapping):
-            return keys.get(key, False)
-        return keys[key]
-
-    def _key_held(
-        self,
-        keys: Sequence[bool] | Mapping[int, bool],
-        bindings: ActionMap,
-        action: InputAction,
-        latch: bool = True,
-    ) -> bool:
-        """Whether ``action``'s key is down, optionally ignoring the edge latch.
-
-        ``latch=False`` is for the hold-only actions. The latch exists so a tap
-        shorter than a poll is still seen, which is the right trade for an
-        edge-triggered action like an attack -- but wrong for a posture: a
-        one-tick low stance would throw a low slash for a high press, so a
-        graze of the key would read as the wrong move rather than a press that
-        was too short.
-        """
-        binding = bindings.get(action)
-        if binding is None:
-            # Action detached from the controls screen: never active.
-            return False
-        codes = binding if isinstance(binding, tuple) else (binding,)
-        if any(self._key_value(keys, code) for code in codes):
-            return True
-        if not latch:
-            return False
-        # A tap shorter than the poll interval is already back up in the
-        # snapshot, so the latched KEYDOWN is the only trace it left.
-        return bool(self._latched_keys.intersection(codes))
-
-    @staticmethod
-    def _pad_indices(bindings: ButtonMap, action: InputAction) -> tuple[int, ...]:
-        """The SDL indices bound to ``action`` (one index, or MOVE_X's pair)."""
-        binding = bindings.get(action)
-        if binding is None:
-            return ()
-        return binding if isinstance(binding, tuple) else (binding,)
-
-    def _button_held(self, bindings: ButtonMap, action: InputAction, latch: bool = True) -> bool:
-        """Whether ``action``'s pad button is down, or was tapped since the last poll.
-
-        ``latch=False`` for the postures, as in :meth:`_key_held`.
-        """
-        indices = self._pad_indices(bindings, action)
-        if any(self._current_joy_buttons.get(index, False) for index in indices):
-            return True
-        return latch and bool(self._latched_buttons.intersection(indices))
-
-    def _axis_value(self, bindings: AxisMap, action: InputAction) -> float:
-        bindings = cast(Mapping[InputAction, int], bindings)
-        index = bindings.get(action)
-        return 0.0 if index is None else self._current_joy_axes.get(index, 0.0)
-
-    def _hat_value(self, bindings: ButtonMap, action: InputAction) -> tuple[float, float]:
-        indices = self._pad_indices(bindings, action)
-        index = indices[0] if indices else None
-        return (0.0, 0.0) if index is None else self._current_joy_hats.get(index, (0.0, 0.0))
-
-    @staticmethod
-    def _combo_held(
-        current: Sequence[bool] | Mapping[int, bool], bindings: ComboMap, action: InputAction
-    ) -> bool:
-        combo = bindings.get(action, ())
-        if isinstance(current, Mapping):
-            return bool(combo) and all(current.get(code, False) for code in combo)
-        return bool(combo) and all(current[code] for code in combo)
-
-    @staticmethod
-    def _apply_deadzone(value: float) -> float:
-        value = max(-1.0, min(1.0, value))
-        if abs(value) < InputSettings.AXIS_DEADZONE:
-            return 0.0
-        magnitude = (abs(value) - InputSettings.AXIS_DEADZONE) / (1.0 - InputSettings.AXIS_DEADZONE)
-        return magnitude if value > 0.0 else -magnitude
+from src.platform.input.input_provider import (
+    AxisMap as AxisMap,
+)
+from src.platform.input.input_provider import (
+    ButtonMap as ButtonMap,
+)
+from src.platform.input.input_provider import (
+    ComboMap as ComboMap,
+)
+from src.platform.input.input_provider import (
+    DeviceRegistry as DeviceRegistry,
+)
+from src.platform.input.input_provider import (
+    GameplayBindings as GameplayBindings,
+)
+from src.platform.input.input_provider import (
+    InputAction as InputAction,
+)
+from src.platform.input.input_provider import (
+    InputBindings as InputBindings,
+)
+from src.platform.input.input_provider import (
+    InputProvider as InputProvider,
+)
+from src.platform.input.input_provider import (
+    InputSettings as InputSettings,
+)
+from src.platform.input.input_provider import (
+    InputState as InputState,
+)
+from src.platform.input.input_provider import (
+    JoystickType as JoystickType,
+)
+from src.platform.input.input_provider import (
+    LocalInputProvider as LocalInputProvider,
+)
+from src.platform.input.input_provider import (
+    Mapping as Mapping,
+)
+from src.platform.input.input_provider import (
+    NullInputProvider as NullInputProvider,
+)
+from src.platform.input.input_provider import (
+    Sequence as Sequence,
+)
+from src.platform.input.input_provider import (
+    _axis_direction as _axis_direction,
+)
+from src.platform.input.input_provider import (
+    cast as cast,
+)
+from src.platform.input.input_provider import (
+    pygame as pygame,
+)
+from src.platform.input.input_provider import (
+    resolve_move_axis as resolve_move_axis,
+)

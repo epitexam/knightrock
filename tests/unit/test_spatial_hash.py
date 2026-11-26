@@ -179,7 +179,7 @@ def test_move_entity_queries_through_spatial_hash(monkeypatch):
         seen["collision_sprites"] = collision_sprites
         return []
 
-    monkeypatch.setattr("src.physics.movement.get_nearby_sprites", fake_get_nearby)
+    monkeypatch.setattr("src.simulation.physics.movement.get_nearby_sprites", fake_get_nearby)
 
     entity = make_entity()
     entity.spatial_hash = marker
@@ -200,7 +200,7 @@ def test_move_entity_falls_back_without_spatial_hash(monkeypatch):
         seen["collision_sprites"] = collision_sprites
         return []
 
-    monkeypatch.setattr("src.physics.movement.get_nearby_sprites", fake_get_nearby)
+    monkeypatch.setattr("src.simulation.physics.movement.get_nearby_sprites", fake_get_nearby)
 
     entity = make_entity()  # spatial_hash is None -> fallback path
     move_entity(entity, 1 / 60)  # type: ignore[arg-type]

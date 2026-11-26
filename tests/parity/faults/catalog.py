@@ -38,7 +38,7 @@ class Fault:
 FAULTS: tuple[Fault, ...] = (
     Fault(
         "gravity_scale",
-        "src/physics/gravity.py",
+        "src/simulation/physics/gravity.py",
         "grav *= entity.gravity_scale",
         "grav *= entity.gravity_scale * 1.1",
         "idle",
