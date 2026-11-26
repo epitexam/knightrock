@@ -70,7 +70,7 @@ def test_level_draws_health_bars_before_it_checks_debug() -> None:
     source = (SRC / "presentation/rendering/adapter.py").read_text(encoding="utf-8")
     body = source[source.index("    def present(") :]
     bars = body.index("draw_health_bars")
-    gate = body.index("if not debug_enabled:")
+    gate = body.index("if not context.debug_enabled:")
 
     assert bars < gate, "the bars must be painted before the debug gate returns"
 

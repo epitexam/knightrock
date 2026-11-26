@@ -13,6 +13,7 @@ from src.platform.input.input_manager import InputManager
 from src.shared.contracts import (
     AssetPort,
     CameraPort,
+    FrameContext,
     FxPort,
     SnapshotPort,
     WorldRendererPort,
@@ -604,14 +605,16 @@ class Level:
         """
         self.renderer.present(
             self.groups,
-            player=self.player,
-            fps=fps,
-            frame_time=frame_time,
-            alpha=alpha,
-            scene_host=scene_host,
-            spawn_cooldown=self.spawn_system.spawn_cooldown_max,
-            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
-            guard_events=self.gameplay_loop.combat_system.guard_events,
-            last_clash=self.gameplay_loop.combat_system.last_clash,
-            debug_enabled=Debug.is_enabled(),
+            FrameContext(
+                player=self.player,
+                fps=fps,
+                frame_time=frame_time,
+                alpha=alpha,
+                scene_host=scene_host,
+                spawn_cooldown=self.spawn_system.spawn_cooldown_max,
+                hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
+                guard_events=self.gameplay_loop.combat_system.guard_events,
+                last_clash=self.gameplay_loop.combat_system.last_clash,
+                debug_enabled=Debug.is_enabled(),
+            ),
         )

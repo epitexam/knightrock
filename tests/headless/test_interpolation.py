@@ -60,7 +60,7 @@ def test_the_health_bar_follows_the_drawn_fighter() -> None:
     foe.render_hints.previous_center = (foe.hitbox.centerx - 40.0, foe.hitbox.centery)
     level.renderer.draw(level.groups, alpha=0.0)
     calls: list[dict] = []
-    level.renderer.overlay.draw_health_bars = (  # type: ignore[method-assign]
+    level.renderer.overlay.real.draw_health_bars = (  # type: ignore[method-assign]
         lambda entities, camera, screen_rects=None: calls.append(screen_rects or {}) or []
     )
 
