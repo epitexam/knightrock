@@ -4,7 +4,7 @@ A 2D hack 'n' slash platformer in Python with [pygame-ce](https://github.com/pyg
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3881%20passing-brightgreen)](#quality)
+[![tests](https://img.shields.io/badge/tests-3865%20passing-brightgreen)](#quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#quality)
 
@@ -60,4 +60,4 @@ This README is the front door. All detail lives in a self-contained documentatio
 
 ## Quality
 
-3881 tests · 94 % instruction coverage · 84 % branch coverage · strict mypy (212 files in `src`) · Ruff clean. These gates block CI; the commands and what they protect are in [Tests and quality](docs/guides/testing.md).
+3865 tests · 94 % instruction coverage · 84 % branch coverage · strict mypy (212 files in `src`) · Ruff clean. These gates block CI; the commands and what they protect are in [Tests and quality](docs/guides/testing.md).

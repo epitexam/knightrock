@@ -94,3 +94,5 @@ dans le périmètre d'une tranche.
   paquets ont été supprimés. `KNIGHTROCK_ARCH` accepte `legacy` et `new`, qui
   résolvent désormais vers la même implémentation. Les contrats import-linter
   sont réécrits sur les paquets cibles.
+- **Phase 6** (faite) : harnais de parité retiré, mesures finales et dette
+  restante consignées dans [l'ADR 0002](0002-cloture.md).
