@@ -5,8 +5,9 @@ keys, conflicting menu arrows) so the rest of the game only ever sees a
 complete set. The file itself is :class:`~src.application.settings_store.SettingsStore`'s.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, cast
+from typing import cast
 
 import pygame
 
@@ -27,6 +28,7 @@ from src.platform.input.input_bindings import (
 from src.shared.input_actions import InputAction
 
 BINDINGS_FORMAT_VERSION = 2
+
 
 # Actions bound as a (left, right) pair: the keyboard stores them as a tuple,
 # and ``gamepad_buttons`` can take a pair of buttons for pads that expose their
@@ -167,11 +169,13 @@ def _fill_menu_pause_default(bindings: ButtonMap) -> ButtonMap:
 
 
 def _fill_move_up_defaults(
-    keyboard: Any, axes: AxisMap, hats: ButtonMap
-) -> tuple[Any, AxisMap, ButtonMap]:
+    keyboard: ActionMap, axes: AxisMap, hats: ButtonMap
+) -> tuple[ActionMap, AxisMap, ButtonMap]:
     """Restore the arrow and D-pad/stick up for files written before MOVE_UP."""
     if InputAction.MOVE_UP not in keyboard:
-        keyboard = MappingProxyType({**keyboard, InputAction.MOVE_UP: pygame.K_UP})
+        keyboard = cast(
+            "ActionMap", MappingProxyType({**keyboard, InputAction.MOVE_UP: pygame.K_UP})
+        )
     if InputAction.MOVE_UP not in axes:
         axes = cast(AxisMap, MappingProxyType({**axes, InputAction.MOVE_UP: 1}))
     if InputAction.MOVE_UP not in hats:
@@ -179,7 +183,7 @@ def _fill_move_up_defaults(
     return keyboard, axes, hats
 
 
-def _fill_shoot_default(bindings: Any, default: int) -> Any:
+def _fill_shoot_default[MapT: Mapping[InputAction, object]](bindings: MapT, default: int) -> MapT:
     """``bindings`` with the shot on ``default``, if it has no shot and ``default`` is free."""
     if InputAction.SHOOT in bindings:
         return bindings
@@ -190,7 +194,7 @@ def _fill_shoot_default(bindings: Any, default: int) -> Any:
     }
     if default in taken:
         return bindings
-    return MappingProxyType({**bindings, InputAction.SHOOT: default})
+    return cast("MapT", MappingProxyType({**bindings, InputAction.SHOOT: default}))
 
 
 #: The gameplay pad layout every file had before the Xbox layout, by default.

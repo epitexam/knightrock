@@ -12,10 +12,14 @@ parse as integers.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from src.shared.paths import confined_resource_path
-from src.simulation.data.errors import GameplayDataError, read_json_object, reject_unknown
+from src.simulation.data.errors import (
+    GameplayDataError,
+    JsonValue,
+    read_json_object,
+    reject_unknown,
+)
 
 LEVELS_FILENAME = "levels.json"
 LEVELS_VERSION = 1
@@ -51,7 +55,7 @@ def read_levels_file(path: str | Path) -> dict[int, str]:
     return levels
 
 
-def levels_to_dict(levels: dict[int, str]) -> dict[str, Any]:
+def levels_to_dict(levels: dict[int, str]) -> dict[str, JsonValue]:
     """Serialize an id -> path registry back to its JSON shape."""
     return {
         "version": LEVELS_VERSION,
