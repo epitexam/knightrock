@@ -1,8 +1,16 @@
 import math
-from typing import Any
+from typing import Protocol
+
+from pygame.math import Vector2
 
 
-def apply_velocity_friction(entity: Any, friction: float, delta_time: float) -> None:
+class FrictionBody(Protocol):
+    """The kinematics friction helpers read."""
+
+    velocity: Vector2
+
+
+def apply_velocity_friction(entity: FrictionBody, friction: float, delta_time: float) -> None:
     """Apply framerate-independent friction to an entity's horizontal velocity."""
     if abs(entity.velocity.x) < 0.01:
         entity.velocity.x = 0.0
@@ -12,13 +20,15 @@ def apply_velocity_friction(entity: Any, friction: float, delta_time: float) -> 
     entity.velocity.x += (0 - entity.velocity.x) * alpha
 
 
-def lerp_velocity(entity: Any, target: float, speed: float, delta_time: float) -> None:
+def lerp_velocity(entity: FrictionBody, target: float, speed: float, delta_time: float) -> None:
     """Framerate-independent lerp an entity velocity component toward a target value."""
     alpha = 1.0 - math.exp(-speed * delta_time)
     entity.velocity.x += (target - entity.velocity.x) * alpha
 
 
-def apply_slide_friction(entity: Any, friction: float, drag: float, delta_time: float) -> None:
+def apply_slide_friction(
+    entity: FrictionBody, friction: float, drag: float, delta_time: float
+) -> None:
     """Slow a body sliding on the ground: a constant grip plus a speed-proportional drag.
 
     ``dv/dt = -(friction + drag * |v|)``, integrated exactly so the curve does

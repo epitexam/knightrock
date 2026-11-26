@@ -1,11 +1,11 @@
 from collections.abc import Iterable, Sequence
-from typing import Any
 
 import pygame
 
 from src.simulation.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.simulation.combat.sweep import swept_box
 from src.simulation.physics.platforms import update_moving_platform
+from src.simulation.physics.spatial_hash import SpatialHash
 from src.simulation.settings import World
 
 
@@ -95,7 +95,7 @@ class MovingPlatform(Sprite):
         waypoints: Sequence[tuple[float, float]],
         speed: float,
         groups: pygame.sprite.AbstractGroup | Iterable[pygame.sprite.AbstractGroup] | None = None,
-        collision_sprites: Iterable[Any] | None = None,
+        collision_sprites: Iterable[pygame.sprite.Sprite] | None = None,
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.waypoints = [pygame.math.Vector2(x, y) for (x, y) in waypoints]
@@ -108,7 +108,7 @@ class MovingPlatform(Sprite):
         # Optional grid over those colliders, so the movement check queries
         # its neighbourhood instead of the whole level. None falls back to
         # the full scan.
-        self.spatial_hash: Any = None
+        self.spatial_hash: SpatialHash | None = None
 
         self.hitbox: pygame.FRect = self.rect.copy()
         self.old_hitbox: pygame.FRect = self.hitbox.copy()

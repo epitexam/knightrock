@@ -5,9 +5,12 @@ The Level facade: it builds a world and delegates its tick to the systems.
 import logging
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 import pygame
+
+if TYPE_CHECKING:
+    from src.simulation.sprites import MovingPlatform
 
 from src.platform.input.input_manager import InputManager
 from src.shared.contracts import (
@@ -49,7 +52,7 @@ from src.simulation.rollback import (
     ProjectileSnapshot,
     RollbackSystem,
 )
-from src.simulation.settings import Debug, World
+from src.simulation.settings import Debug, Tuning, World
 from src.simulation.sprite_groups import SpriteGroups
 
 logger = logging.getLogger(__name__)
@@ -80,11 +83,11 @@ class Level:
         events: EventBus | None = None,
         rollback_enabled: bool = False,
         gameplay_data: GameplayData | None = None,
-        overlay: Any = None,
+        overlay: object | None = None,
         renderer: WorldRendererPort | None = None,
         camera: CameraPort | None = None,
         asset_port: AssetPort | None = None,
-        tuning: Any = None,
+        tuning: Tuning | None = None,
         fx_port: FxPort | None = None,
     ) -> None:
         """
@@ -319,11 +322,11 @@ class Level:
 
     def _bake_planes(
         self,
-        statics: tuple[Any, ...],
-        foreground: tuple[Any, ...],
+        statics: tuple[pygame.sprite.Sprite, ...],
+        foreground: tuple[pygame.sprite.Sprite, ...],
         *,
         enabled: bool | None = None,
-    ) -> tuple[Any, Any]:
+    ) -> tuple[object | None, object | None]:
         """Bake each frozen plane when its target-sized surface fits the cap."""
         data = self.level_data
         return self.renderer.bake_planes(
@@ -345,7 +348,7 @@ class Level:
         self.reconvert_tiles()
         self.install_static_planes()
 
-    def _moving_planes(self) -> tuple[Iterable[Any], ...]:
+    def _moving_planes(self) -> tuple[Iterable[pygame.sprite.Sprite], ...]:
         """The sprite groups whose contents move during a session."""
         groups = self.groups
         return (
@@ -505,6 +508,20 @@ class Level:
             if name in snapshot.parts:
                 provider.load_state(snapshot.parts[name])
 
+    def _restore_entity(self, entity_snapshot: EntitySnapshot) -> None:
+        """Re-register one fighter, then teleport its state back."""
+        entity = entity_snapshot.entity
+        if entity not in self.groups.fighters:
+            self.groups.fighters.append(entity)
+            if entity.presentation is not None:
+                entity.presentation.add(*entity_snapshot.groups)
+        entity.bind_movement(self.movement_table)
+        entity.bind_vitals(self.vitals_table)
+        entity.bind_geometry(self.geometry_table)
+        entity.bind_combat(self.combat_table)
+        entity.ensure_presentation(self.groups)
+        entity.load_state(entity_snapshot)
+
     def load_state(self, snapshot: LevelSnapshot) -> None:
         """Rewind the level to a captured tick.
 
@@ -532,19 +549,10 @@ class Level:
                 entity.kill()
 
         for entity_snapshot in snapshot.entities.values():
-            entity = entity_snapshot.entity
-            if entity not in self.groups.fighters:
-                self.groups.fighters.append(entity)
-                entity.presentation.add(*entity_snapshot.groups)
-            entity.bind_movement(self.movement_table)
-            entity.bind_vitals(self.vitals_table)
-            entity.bind_geometry(self.geometry_table)
-            entity.bind_combat(self.combat_table)
-            entity.ensure_presentation(self.groups)
-            entity.load_state(entity_snapshot)
+            self._restore_entity(entity_snapshot)
 
         for platform_snapshot in snapshot.platforms:
-            platform = platform_snapshot.platform
+            platform = cast("MovingPlatform", platform_snapshot.platform)
             platform.pos.x, platform.pos.y = platform_snapshot.pos
             platform.current_target = platform_snapshot.current_target
             platform.direction = platform_snapshot.direction

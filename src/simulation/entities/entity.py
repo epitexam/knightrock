@@ -3,9 +3,12 @@
 import random
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pygame
+
+if TYPE_CHECKING:
+    from src.simulation.sprites import MovingPlatform
 from pygame.math import Vector2
 from pygame.sprite import Group
 
@@ -80,7 +83,7 @@ class EntitySnapshot:
     rollback would serialize — while ``entity`` and ``groups`` are local-only.
     """
 
-    entity: Any
+    entity: Entity
     entity_id: str
     hitbox: tuple[float, float, float, float]
     old_hitbox: tuple[float, float, float, float]
@@ -89,11 +92,11 @@ class EntitySnapshot:
     facing_right: bool
     move_axis: float
     pushable: bool
-    rng_state: tuple[Any, ...]
+    rng_state: tuple[object, ...]
     vitals: VitalsSnapshot
     combat: CombatSnapshot
     state_machine: StateMachineSnapshot
-    groups: list[Any] = field(default_factory=list)
+    groups: list[pygame.sprite.AbstractGroup] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -253,7 +256,7 @@ class Entity:
         self.spatial_hash: SpatialHash | None = spatial_hash
         # Owns velocity and surface contacts, exposed by the properties below.
         self._movement = MovementComponent(self)
-        self.moving_platforms: Iterable[Any] = []
+        self.moving_platforms: Iterable[MovingPlatform] = []
         # The lock that damps the run after a wall jump; only the player has one.
         self.wall_jump_lock: WallJumpLock | None = None
 
@@ -1050,7 +1053,7 @@ class Entity:
         """Move the entity based on velocity, resolving collisions."""
         move_entity(self, delta_time, apply_gravity=apply_gravity)
 
-    def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
+    def apply_moving_platform(self, moving_platforms: Iterable[MovingPlatform]) -> None:
         """Carry the entity along moving platforms."""
         apply_moving_platform(self, moving_platforms)
 

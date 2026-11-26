@@ -192,12 +192,12 @@ class PresentationRenderer:
 def build_presentation_renderer(
     surface: pygame.Surface,
     config: LevelConfig | None,
-    overlay: WorldOverlay | None = None,
+    overlay: object | None = None,
     camera: Camera | None = None,
 ) -> PresentationRenderer:
     """Build the real adapter from a render target and level config."""
     selected = camera if camera is not None else Camera.for_target(surface)
-    renderer = Renderer(surface, selected, config, overlay)
+    renderer = Renderer(surface, selected, config, cast("WorldOverlay | None", overlay))
     return PresentationRenderer(renderer, selected)
 
 

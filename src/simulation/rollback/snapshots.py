@@ -15,7 +15,7 @@ would transmit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Protocol
 
 from src.shared.input_state import InputState
 from src.simulation.combat.shapes import ShapePose
@@ -34,7 +34,7 @@ class SnapshotCapable(Protocol):
 class PlatformSnapshot:
     """Capture of one moving platform's kinematic state."""
 
-    platform: Any
+    platform: object
     pos: tuple[float, float]
     current_target: int
     direction: int
@@ -82,4 +82,4 @@ class LevelSnapshot:
     platforms: list[PlatformSnapshot] = field(default_factory=list)
     projectiles: list[ProjectileSnapshot] = field(default_factory=list)
     #: State contributed by subsystems registered through ``SnapshotPort``.
-    parts: dict[str, Any] = field(default_factory=dict)
+    parts: dict[str, object] = field(default_factory=dict)

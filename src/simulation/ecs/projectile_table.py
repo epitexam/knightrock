@@ -9,10 +9,13 @@ can be reduced to a draw adapter.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 from src.simulation.ecs.table import DenseTable, Handle
 from src.simulation.entities.projectile import Projectile
+
+if TYPE_CHECKING:
+    from src.simulation.entities.projectile import Projectile as PresentationSprite
 
 _COLUMNS = (
     "owner_id",
@@ -73,5 +76,5 @@ class ProjectileTable(DenseTable):
     def handle_of(self, slot: int) -> Handle:
         return self.handle_at(slot)
 
-    def proxy_of(self, slot: int) -> Any:
-        return self.column("proxy")[slot]
+    def proxy_of(self, slot: int) -> PresentationSprite:
+        return cast("PresentationSprite", self.column("proxy")[slot])
