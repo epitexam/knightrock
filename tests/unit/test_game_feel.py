@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import GameFeel
-from src.physics.movement import apply_jump_cut, move_entity, resolve_jump
+from src.simulation.physics.movement import apply_jump_cut, move_entity, resolve_jump
+from src.simulation.settings import GameFeel
 
 
 class FeelEntity:
@@ -148,7 +148,7 @@ def test_ground_snap_sticks_to_close_floor_by_default() -> None:
 
 
 def test_step_up_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.physics.collisions import resolve_collisions
+    from src.simulation.physics.collisions import resolve_collisions
 
     monkeypatch.setattr(GameFeel, "STEP_UP_PX", 0.0)
     entity = WallEntity(pygame.FRect(60, 152, 40, 48))  # feet at 200
@@ -164,7 +164,7 @@ def test_step_up_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_step_up_mounts_small_ledge_by_default() -> None:
-    from src.physics.collisions import resolve_collisions
+    from src.simulation.physics.collisions import resolve_collisions
 
     entity = WallEntity(pygame.FRect(60, 152, 40, 48))
     entity.old_hitbox = entity.hitbox.copy()
@@ -179,7 +179,7 @@ def test_step_up_mounts_small_ledge_by_default() -> None:
 
 
 def test_corner_correction_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.physics.collisions import resolve_collisions
+    from src.simulation.physics.collisions import resolve_collisions
 
     monkeypatch.setattr(GameFeel, "CORNER_CORRECT_PX", 0.0)
     entity = WallEntity(pygame.FRect(90, 120, 40, 48))
@@ -195,7 +195,7 @@ def test_corner_correction_off_when_disabled(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_corner_correction_nudges_past_the_edge_by_default() -> None:
-    from src.physics.collisions import resolve_collisions
+    from src.simulation.physics.collisions import resolve_collisions
 
     entity = WallEntity(pygame.FRect(90, 120, 40, 48))
     entity.old_hitbox = entity.hitbox.copy()

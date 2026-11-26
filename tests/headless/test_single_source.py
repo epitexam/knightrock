@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from src.core.input.input_manager import InputManager
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.data.provider import GameplayData, shipped_gameplay_data
+from src.platform.input.input_manager import InputManager
+from src.simulation.data.provider import GameplayData, shipped_gameplay_data
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from tests.headless.conftest import make_viewport
 
 

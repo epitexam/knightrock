@@ -26,11 +26,11 @@ pygame.init()
 pygame.display.set_mode((1152, 648))
 
 from src.application.scenes.option_screen import SELECTED_MARK, Option, OptionScreen  # noqa: E402
-from src.core.input.event_router import InputDevice, RoutedInput  # noqa: E402
-from src.core.input.input_actions import InputAction  # noqa: E402
-from src.core.settings import Input as InputSettings  # noqa: E402
-from src.ui.menu_model import MenuItem, MenuModel  # noqa: E402
-from src.ui.menu_view import MenuView  # noqa: E402
+from src.platform.input.event_router import InputDevice, RoutedInput  # noqa: E402
+from src.presentation.ui.menu_model import MenuItem, MenuModel  # noqa: E402
+from src.presentation.ui.menu_view import MenuView  # noqa: E402
+from src.shared.input_actions import InputAction  # noqa: E402
+from src.simulation.settings import Input as InputSettings  # noqa: E402
 
 
 class FakeGame(SimpleNamespace):
@@ -526,7 +526,7 @@ def test_a_held_page_down_key_repeats() -> None:
     """The key is meant to be held, so the repeat the router
     arms for it has to reach the list.
     """
-    from src.core.input.event_router import EventRouter
+    from src.platform.input.event_router import EventRouter
 
     now = [100.0]
     router = EventRouter(clock=lambda: now[0])

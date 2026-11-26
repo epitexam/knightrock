@@ -9,7 +9,7 @@ update the corresponding assertion with a reason in the audit.
 
 from __future__ import annotations
 
-from src.data.provider import shipped_gameplay_data
+from src.simulation.data.provider import shipped_gameplay_data
 
 
 def test_every_player_strike_carries_an_explicit_hitstop() -> None:

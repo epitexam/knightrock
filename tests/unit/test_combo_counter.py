@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.combat.combat_component import CombatComponent
-from src.combat.combo_tracker import ComboTracker
+from src.simulation.combat.combat_component import CombatComponent
+from src.simulation.combat.combo_tracker import ComboTracker
 
 
 def test_a_whiffed_swing_never_reaches_the_counter() -> None:
@@ -118,7 +118,7 @@ def test_a_hit_after_the_window_lapsed_still_opens_a_chain() -> None:
 
 def test_taking_a_hit_kills_the_combo() -> None:
     """The counter is dropped, not merely paused, when the player is hit."""
-    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.simulation.combat.attack_data import PLAYER_ATTACKS
     from tests.unit.helpers import make_entity
 
     entity = make_entity(attacks=PLAYER_ATTACKS)
@@ -149,7 +149,7 @@ def test_taking_a_hit_cannot_be_credited_to_the_attack_it_interrupted() -> None:
     armed until recovery, and the next contact the player made -- possibly
     several attacks later -- would be billed to it.
     """
-    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.simulation.combat.attack_data import PLAYER_ATTACKS
     from tests.unit.helpers import make_entity
 
     entity = make_entity(attacks=PLAYER_ATTACKS)
@@ -169,7 +169,7 @@ def test_the_arming_rolls_back_with_the_frame_it_belongs_to() -> None:
     same kind of state -- it decides what the *next* hit does -- so restoring
     the counter without it would resurrect an attack the rollback undid.
     """
-    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.simulation.combat.attack_data import PLAYER_ATTACKS
     from tests.unit.helpers import make_entity
 
     entity = make_entity(attacks=PLAYER_ATTACKS)

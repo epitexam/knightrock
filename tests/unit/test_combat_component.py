@@ -3,10 +3,10 @@
 import pygame
 from pygame.sprite import Group
 
-from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.core.input.input_manager import InputManager
-from src.entities.enemies.factory import create_enemy
-from src.entities.player import Player
+from src.platform.input.input_manager import InputManager
+from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.player import Player
 
 
 class MockPlayer:
@@ -98,8 +98,8 @@ class TestNoNullCombatComponentWaste:
 
     def test_entity_with_attacks_no_null_combat(self):
         """Test that Entity with attacks doesn't create NullCombatComponent."""
-        from src.combat.attack_data import PLAYER_ATTACKS
-        from src.entities.entity import Entity
+        from src.simulation.combat.attack_data import PLAYER_ATTACKS
+        from src.simulation.entities.entity import Entity
 
         groups = Group()
         collision_sprites = Group()
@@ -120,7 +120,7 @@ class TestNoNullCombatComponentWaste:
 
     def test_entity_without_attacks_has_null_combat(self):
         """Test that Entity without attacks has NullCombatComponent."""
-        from src.entities.entity import Entity
+        from src.simulation.entities.entity import Entity
 
         groups = Group()
         collision_sprites = Group()

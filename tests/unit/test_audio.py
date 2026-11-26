@@ -12,8 +12,8 @@ import os
 import pygame
 import pytest
 
-from src.core.audio import SOUNDS, AudioBus, AudioCategory, SoundId, SoundSpec, cue_for
-from src.core.events import (
+from src.platform.audio import SOUNDS, AudioBus, AudioCategory, SoundId, SoundSpec, cue_for
+from src.shared.events import (
     EventBus,
     LevelCompleted,
     LevelStarted,

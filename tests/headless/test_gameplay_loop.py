@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
+from src.simulation.level.systems.gameplay_loop import CombatLoop, GameplayLoop
 from tests.unit.helpers import activate, entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase

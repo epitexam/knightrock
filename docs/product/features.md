@@ -18,7 +18,7 @@ Knightrock is a 2D hack 'n' slash platformer built with pygame-ce. It is designe
 
 ## Combat in one paragraph
 
-Three attack buttons - blade, body and shot - throw high or low moves that can be charged. A killing slash leaves a foe doomed for a direction prompt; beats fill a stun gauge that opens a throw; two blades that meet enter a clash. Battery, fury, guard, dark step and the slot machine are tuned in `src/core/settings.py` and described in [Controls](controls.md).
+Three attack buttons - blade, body and shot - throw high or low moves that can be charged. A killing slash leaves a foe doomed for a direction prompt; beats fill a stun gauge that opens a throw; two blades that meet enter a clash. Battery, fury, guard, dark step and the slot machine are tuned in `src/simulation/settings.py` and described in [Controls](controls.md).
 
 ## Where things live
 

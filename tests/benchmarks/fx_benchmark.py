@@ -51,8 +51,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 
-from src.core.colors import FXColors
-from src.core.fx import (
+from src.presentation.fx import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
@@ -69,9 +68,10 @@ from src.core.fx import (
     spawn_landing_grains,
     spawners,
 )
-from src.core.fx import particles as particles
-from src.core.fx.tuning import Dust, FootstepDust, FxGuard
-from src.core.rendering.render_hints import RenderHints
+from src.presentation.fx import particles as particles
+from src.shared.colors import FXColors
+from src.shared.render_hints import RenderHints
+from src.simulation.fx_tuning import Dust, FootstepDust, FxGuard
 
 #: The frame this plane has to fit inside, at 60 Hz.
 FRAME_BUDGET_US = 1000.0 / 60.0 * 1000.0

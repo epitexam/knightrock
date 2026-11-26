@@ -3,7 +3,7 @@
 import pytest
 
 from src.application.attack_authoring import export_attack
-from src.data.attacks import read_attacks_file
+from src.simulation.data.attacks import read_attacks_file
 from tests.unit.helpers import make_attack, make_phase
 
 

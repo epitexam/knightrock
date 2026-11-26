@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.menu_page import MenuPage
 from src.application.scenes.menu_scene import MenuScene
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuAction, MenuItem
-from src.ui.styles import TEXT_CRIT
-from src.ui.text import t
+from src.presentation.ui.menu_model import MenuAction, MenuItem
+from src.presentation.ui.styles import TEXT_CRIT
+from src.presentation.ui.text import t
+from src.shared.input_actions import InputAction
 
 if TYPE_CHECKING:
     from src.application.scene_context import SceneContext

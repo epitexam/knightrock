@@ -11,9 +11,9 @@ import typing
 
 import pygame
 
-from src.combat.combatant_protocol import Combatant
-from src.data.provider import shipped_gameplay_data
-from src.entities.player_controllers import DashController, JumpController
+from src.simulation.combat.combatant_protocol import Combatant
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.player_controllers import DashController, JumpController
 from tests.fakes import _CONTROLLER_FIELDS, BodyStub
 
 #: What the contact, hazard and pairing systems read from a body.

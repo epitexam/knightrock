@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.combat.frame_data import AttackDefinition, Height, PhaseDefinition
-from src.data.provider import shipped_gameplay_data
+from src.simulation.combat.frame_data import AttackDefinition, Height, PhaseDefinition
+from src.simulation.data.provider import shipped_gameplay_data
 
 ATTACKS = shipped_gameplay_data().attack_sets
 
@@ -125,7 +125,7 @@ def test_no_two_moves_of_one_fighter_are_the_same_move(owner: str) -> None:
 
 
 def test_every_shot_a_phase_launches_exists() -> None:
-    from src.entities.shots import SHOTS
+    from src.simulation.entities.shots import SHOTS
 
     launched = {
         phase.launches

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.core.settings import Debug
+from src.simulation.settings import Debug
 
 
 def test_debug_disabled_when_environment_unset(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -5,7 +5,7 @@ import os
 import pygame
 import pytest
 
-from src.core.ecs.presentation import PresentationSprite
+from src.simulation.ecs.presentation import PresentationSprite
 from tests.headless.arena import arena, settle
 
 

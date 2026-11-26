@@ -5,7 +5,7 @@ from __future__ import annotations
 import pygame
 import pytest
 
-from src.core.settings import Interpolation
+from src.simulation.settings import Interpolation
 from tests.headless.test_combat_dynamism import DT, _arena
 
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from src.core.events import (
+from src.shared.events import (
     MAX_RECORDED_FAILURES,
     AppExitRequested,
     Event,
@@ -288,7 +288,7 @@ def test_rewind_rearms_a_notification_latch() -> None:
     from types import SimpleNamespace
     from typing import Any, cast
 
-    from src.core.level.systems.notification_system import NotificationSystem
+    from src.simulation.level.systems.notification_system import NotificationSystem
 
     bus = EventBus()
     seen: list[int] = []

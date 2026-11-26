@@ -7,13 +7,13 @@ from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
-from src.core.display import letterbox
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import picture
-from src.core.display.monitors import degraded
-from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.controls_view import RowKind
+from src.platform.input.event_router import EventRouter, InputDevice, RoutedInput
+from src.presentation.display import letterbox
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import picture
+from src.presentation.display.monitors import degraded
+from src.presentation.ui.controls_view import RowKind
+from src.shared.input_actions import InputAction
 
 
 def _game() -> SimpleNamespace:
@@ -286,7 +286,7 @@ def test_controls_focus_is_rendered_on_the_footer_rows() -> None:
     An option row is one target, so the bar covers the whole row -- sampled at
     its right end, past any text.
     """
-    from src.ui.styles import SELECTION_BG
+    from src.presentation.ui.styles import SELECTION_BG
 
     pygame.font.init()
     game = _game()

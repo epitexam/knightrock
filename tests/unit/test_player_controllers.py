@@ -3,8 +3,8 @@
 import pygame
 import pytest
 
-from src.entities.player_config import PlayerConfig
-from src.entities.player_controllers import DashController, JumpController
+from src.simulation.entities.player_config import PlayerConfig
+from src.simulation.entities.player_controllers import DashController, JumpController
 
 
 @pytest.fixture

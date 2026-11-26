@@ -11,14 +11,14 @@ from typing import cast
 
 import pygame
 
-from src.core.level.level import Level
-from src.core.settings import Physics, Simulation, World
-from src.physics.spatial_hash import (
+from src.simulation.level.level import Level
+from src.simulation.physics.spatial_hash import (
     QUERY_MARGIN_PX,
     SpatialHash,
     SpatialHashMember,
 )
-from src.physics.spatial_query import LinearQuery, make_query
+from src.simulation.physics.spatial_query import LinearQuery, make_query
+from src.simulation.settings import Physics, Simulation, World
 from tests.unit.helpers import make_entity
 
 
@@ -168,7 +168,7 @@ def test_remove_and_clear_unregister_sprites():
 
 
 def test_move_entity_queries_through_spatial_hash(monkeypatch):
-    from src.physics.movement import move_entity
+    from src.simulation.physics.movement import move_entity
     from tests.unit.test_movement_collision_cache import make_entity
 
     seen: dict[str, object] = {}
@@ -179,7 +179,7 @@ def test_move_entity_queries_through_spatial_hash(monkeypatch):
         seen["collision_sprites"] = collision_sprites
         return []
 
-    monkeypatch.setattr("src.physics.movement.get_nearby_sprites", fake_get_nearby)
+    monkeypatch.setattr("src.simulation.physics.movement.get_nearby_sprites", fake_get_nearby)
 
     entity = make_entity()
     entity.spatial_hash = marker
@@ -190,7 +190,7 @@ def test_move_entity_queries_through_spatial_hash(monkeypatch):
 
 
 def test_move_entity_falls_back_without_spatial_hash(monkeypatch):
-    from src.physics.movement import move_entity
+    from src.simulation.physics.movement import move_entity
     from tests.unit.test_movement_collision_cache import make_entity
 
     seen: dict[str, object] = {}
@@ -200,7 +200,7 @@ def test_move_entity_falls_back_without_spatial_hash(monkeypatch):
         seen["collision_sprites"] = collision_sprites
         return []
 
-    monkeypatch.setattr("src.physics.movement.get_nearby_sprites", fake_get_nearby)
+    monkeypatch.setattr("src.simulation.physics.movement.get_nearby_sprites", fake_get_nearby)
 
     entity = make_entity()  # spatial_hash is None -> fallback path
     move_entity(entity, 1 / 60)  # type: ignore[arg-type]
@@ -331,7 +331,7 @@ def test_zero_area_box_with_negative_dimensions_never_crashes():
 
 
 def test_both_spatial_grids_default_to_the_same_cell_size() -> None:
-    from src.physics.entity_grid import EntityGrid
+    from src.simulation.physics.entity_grid import EntityGrid
 
     environment = SpatialHash()
     entities = EntityGrid()
@@ -342,7 +342,7 @@ def test_both_spatial_grids_default_to_the_same_cell_size() -> None:
 
 def test_a_level_wires_both_grids_to_the_shared_cell_size() -> None:
     """Not just the defaults: what the level actually builds."""
-    from src.physics.entity_grid import EntityGrid
+    from src.simulation.physics.entity_grid import EntityGrid
     from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
     level = Level(
@@ -433,7 +433,7 @@ def test_a_killed_entity_leaves_the_collision_grid() -> None:
 def test_a_dead_entity_does_not_stay_reachable_through_the_entity_grid() -> None:
     """The grid that *does* hold entities is per-tick, so this is about the
     boundary: nothing that has died is reachable through a stale bucket."""
-    from src.physics.entity_grid import EntityGrid
+    from src.simulation.physics.entity_grid import EntityGrid
 
     grid = EntityGrid()
     entity = make_entity(pos=(100.0, 100.0), faction="enemy")

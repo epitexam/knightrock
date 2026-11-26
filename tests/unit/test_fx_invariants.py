@@ -22,15 +22,15 @@ from pathlib import Path
 
 import pytest
 
-from src.core.settings import Locomotion
+from src.simulation.settings import Locomotion
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FX_PACKAGE = REPO_ROOT / "src" / "core" / "fx"
+FX_PACKAGE = REPO_ROOT / "src" / "presentation" / "fx"
 FX_MODULE = FX_PACKAGE / "__init__.py"
 SPAWNERS_MODULE = FX_PACKAGE / "spawners.py"
 PARTICLES_MODULE = FX_PACKAGE / "particles.py"
 DRAW_MODULE = FX_PACKAGE / "draw.py"
-SETTINGS_MODULE = REPO_ROOT / "src" / "core" / "settings.py"
+SETTINGS_MODULE = REPO_ROOT / "src" / "simulation" / "settings.py"
 FX_TUNING_CLASSES = {
     "Dust",
     "DustGrain",
@@ -83,7 +83,7 @@ def _names_in_dunder_all(tree: ast.Module) -> set[str]:
 def _fx_reexports() -> set[str]:
     """The names a non-FX module reaches FX through, across the whole tree.
 
-    Submodules are not part of this. `from src.core.fx import spawners` is a
+    Submodules are not part of this. `from src.presentation.fx import spawners` is a
     caller choosing a layer, which the split invited on purpose; it says
     nothing about whether the package root re-exports anything, and counting
     it would make the surface check pass on names nobody went through the
@@ -92,15 +92,19 @@ def _fx_reexports() -> set[str]:
     reached: set[str] = set()
     submodules = {path.stem for path in FX_MODULES}
     for path in _python_files():
-        if FX_PACKAGE in path.parents:
+        if (
+            FX_PACKAGE in path.parents
+            and path.name != "adapter.py"
+            or ("core" in path.parts and "fx" in path.parts)
+        ):
             continue
         source = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(source):
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
-            if node.module.endswith("core.fx"):
+            if node.module.endswith(("core.fx", "presentation.fx")):
                 reached.update(alias.name for alias in node.names if alias.name not in submodules)
-            elif node.module == "src.core":
+            elif node.module in ("src.core", "src.presentation"):
                 for alias in node.names:
                     if alias.name == "fx":
                         reached.update(
@@ -263,7 +267,11 @@ def test_the_particle_cap_is_known_to_one_place() -> None:
     exempt = {"spawners.py", "__init__.py"}
     for path in (REPO_ROOT / "src").rglob("*.py"):
         in_package = FX_PACKAGE in path.parents
-        if "__pycache__" in path.parts or (in_package and path.name in exempt):
+        if (
+            "__pycache__" in path.parts
+            or ("core" in path.parts and "fx" in path.parts)
+            or (in_package and path.name in exempt)
+        ):
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if "MAX_FX_SPRITES" in line:
@@ -401,8 +409,8 @@ def test_every_footstep_tier_is_a_player_state_and_nothing_else() -> None:
     ``walk_slow``, which is silent on purpose, so the assertion names it rather
     than banning it.
     """
-    from src.core.fx.tuning import FootstepDust
-    from src.states.player_states import PlayerState
+    from src.simulation.fx_tuning import FootstepDust
+    from src.simulation.states.player_states import PlayerState
 
     states = {state.value for state in PlayerState}
     keys = set(FootstepDust.TIER)
@@ -434,8 +442,8 @@ def test_the_default_footstep_tier_is_the_run_row() -> None:
     Compared by value on both fields, because a row that matched on one and not
     the other would be a worse bug than either.
     """
-    from src.core.fx.tuning import FootstepDust
-    from src.states.player_states import PlayerState
+    from src.simulation.fx_tuning import FootstepDust
+    from src.simulation.states.player_states import PlayerState
 
     assert FootstepDust.TIER[PlayerState.RUN.value] == FootstepDust.DEFAULT_TIER, (
         "an entity outside the table marks the floor at a run's cadence"
@@ -456,9 +464,9 @@ def test_the_walk_and_run_combs_are_far_enough_apart_to_read_as_gaits() -> None:
     too far apart and the walk is not marking the floor at all, which is the
     ``walk_slow`` behaviour wearing the wrong state's name.
     """
-    from src.core.fx.tuning import FootstepDust
-    from src.core.settings import Physics
-    from src.states.player_states import PlayerState
+    from src.simulation.fx_tuning import FootstepDust
+    from src.simulation.settings import Physics
+    from src.simulation.states.player_states import PlayerState
 
     walk = FootstepDust.TIER[PlayerState.WALK.value]
     run = FootstepDust.TIER[PlayerState.RUN.value]

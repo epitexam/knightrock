@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from src.core.input.event_router import RoutedInput
-from src.ui.scale import ScaledView
+from src.platform.input.event_router import RoutedInput
+from src.presentation.ui.scale import ScaledView
 
 if TYPE_CHECKING:
     from src.application.scene_context import SceneContext

@@ -2,7 +2,7 @@
 
 import pygame
 
-from src.core.rendering.renderer import _SHEAR_CACHE, _sheared
+from src.presentation.rendering.renderer import _SHEAR_CACHE, _sheared
 
 
 def _source(size: tuple[int, int], color: tuple[int, int, int, int]) -> pygame.Surface:

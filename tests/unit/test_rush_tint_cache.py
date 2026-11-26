@@ -6,7 +6,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
 
-from src.core.rendering.strike_trails import (
+from src.presentation.rendering.strike_trails import (
     _RUSH_TINT_CACHE_MAX,  # noqa: SLF001 - the bound under test
     RUSH_FADE,
     RUSH_TINT,

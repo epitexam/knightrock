@@ -12,12 +12,12 @@ from typing import Any
 
 import pygame
 
-from src.combat.combat_component import NullCombatComponent
-from src.combat.knockback import KnockbackConfig
-from src.combat.shapes import ShapeKind, ShapePose, SweptShape
-from src.core.rendering.render_hints import RenderHints
-from src.core.sprites import Sprite
-from src.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
+from src.shared.render_hints import RenderHints
+from src.simulation.combat.combat_component import NullCombatComponent
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.combat.shapes import ShapeKind, ShapePose, SweptShape
+from src.simulation.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
+from src.simulation.sprites import Sprite
 
 #: Where the real Player keeps each controller field: flat test name -> attribute
 #: on the controller. Flat names keep the tests short; the stand-in stores them

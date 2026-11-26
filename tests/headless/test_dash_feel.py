@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.settings import Physics
+from src.simulation.settings import Physics
 from tests.headless.arena import DASH, DT, arena, settle
 
 

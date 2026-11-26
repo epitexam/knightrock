@@ -1,8 +1,8 @@
 """Level → app event integration tests (Phase 2 #5)."""
 
-from src.core.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
-from src.core.input.input_manager import InputManager
-from src.core.level.level import Level
+from src.platform.input.input_manager import InputManager
+from src.shared.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
+from src.simulation.level.level import Level
 from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
 

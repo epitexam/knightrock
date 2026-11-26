@@ -6,8 +6,8 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from src.combat.frame_data import AttackDefinition, MoveId
-from src.data.attacks import write_attacks_file
+from src.simulation.combat.frame_data import AttackDefinition, MoveId
+from src.simulation.data.attacks import write_attacks_file
 
 
 def export_attack(

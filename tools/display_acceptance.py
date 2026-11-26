@@ -35,10 +35,10 @@ if __package__ in {None, ""}:
 import pygame
 
 from src.application.game import Game
-from src.core.display import detection
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, picture
-from src.core.display.monitors import MIN_WINDOW
+from src.presentation.display import detection
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy, picture
+from src.presentation.display.monitors import MIN_WINDOW
 
 #: The display states worth watching, in the order the acceptance run shows
 #: them. The window geometry is checked after each one.

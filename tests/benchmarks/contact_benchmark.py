@@ -29,10 +29,10 @@ if __package__ in {None, ""}:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.combat.frame_data import HitProperties
-from src.combat.knockback import KnockbackConfig
-from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
-from src.physics.entity_grid import EntityGrid
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.level.systems.contact_system import ContactSystem, OffensiveBox
+from src.simulation.physics.entity_grid import EntityGrid
 from tests.unit.helpers import activate, entity_at, make_attack, make_phase
 
 

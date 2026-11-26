@@ -1,8 +1,8 @@
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_state import InputState
+from src.platform.input.input_manager import InputManager
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
 from tests.unit.helpers import ScriptedInputProvider
 
 

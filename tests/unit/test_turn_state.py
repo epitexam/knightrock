@@ -21,24 +21,24 @@ from itertools import pairwise
 import pygame
 import pytest
 
-from src.core.display.framing import Framing
-from src.core.fx.tuning import FootstepDust
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_state import InputState
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import (
+from src.platform.input.input_manager import InputManager
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import (
     Renderer,
     _sheared,
     turn_frame,
     turn_offset_px,
     turn_skew_px,
 )
-from src.core.settings import Turn
-from src.entities.player import Player
-from src.states.player_states import PlayerState
-from src.states.state_machine import StateMachine
-from src.states.turn_state import request_turn
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.entities.player import Player
+from src.simulation.fx_tuning import FootstepDust
+from src.simulation.settings import Turn
+from src.simulation.states.player_states import PlayerState
+from src.simulation.states.state_machine import StateMachine
+from src.simulation.states.turn_state import request_turn
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets
@@ -65,8 +65,8 @@ def _enemy(kind: str = "goblin", **overrides):
     that changes, whereas "the group is applied and the flag is read at the
     right moment" is the mechanism and does not.
     """
-    from src.data.provider import shipped_gameplay_data
-    from src.entities.enemies.enemy import Enemy
+    from src.simulation.data.provider import shipped_gameplay_data
+    from src.simulation.entities.enemies.enemy import Enemy
 
     config = dataclasses.replace(
         shipped_gameplay_data().enemies[kind], **{"turn_profile": None, **overrides}
@@ -699,7 +699,7 @@ def test_a_one_pixel_lean_is_not_flattened_away() -> None:
     lean at all, which looks like the quantisation being honoured while quietly
     deleting the smallest tilts it was introduced to keep.
     """
-    from src.core.rendering.renderer import SKEW_STEP, _quantize_skew
+    from src.presentation.rendering.renderer import SKEW_STEP, _quantize_skew
 
     assert _quantize_skew(1) != 0
     assert _quantize_skew(-1) != 0
@@ -723,7 +723,7 @@ def test_the_shear_cache_survives_repeated_pivots() -> None:
     because the rate is the property that matters and a bound on a count would
     only say the cache is big enough today.
     """
-    from src.core.rendering.renderer import _SHEAR_CACHE, _quantize_skew, _sheared
+    from src.presentation.rendering.renderer import _SHEAR_CACHE, _quantize_skew, _sheared
 
     sources = [pygame.Surface((40, 56), pygame.SRCALPHA) for _ in range(2)]
     for surface in sources:
@@ -755,7 +755,7 @@ def test_the_lean_ramps_down_without_jumping_straight_to_zero() -> None:
     The quantisation costs resolution, so the thing it must not cost is the
     shape: still a ramp from most to least, never a cliff to nothing.
     """
-    from src.core.rendering.renderer import _quantize_skew
+    from src.presentation.rendering.renderer import _quantize_skew
 
     ramp = [_quantize_skew(int(round(Turn.SKEW_PX * (1.0 - tick / 12.0)))) for tick in range(12)]
 
@@ -806,7 +806,7 @@ def test_a_pivot_does_not_distort_the_hitbox() -> None:
 
 def test_the_renderer_resolves_the_pivoting_fighter_once() -> None:
     """The blit loop resolves it by identity, like the dash."""
-    from src.core.sprite_groups import SpriteGroups
+    from src.simulation.sprite_groups import SpriteGroups
 
     surface = pygame.Surface((64, 64))
     camera = Camera(Framing(float(64), float(64)))
@@ -829,7 +829,7 @@ def test_a_flash_lands_on_the_pivoting_body_and_not_where_it_was() -> None:
     A hit landed during a pivot is exactly when the flash fires, and one left
     at the un-offset position is a silhouette of a fighter who is not there.
     """
-    from src.core.sprite_groups import SpriteGroups
+    from src.simulation.sprite_groups import SpriteGroups
 
     surface = pygame.Surface((64, 64))
     camera = Camera(Framing(float(64), float(64)))
@@ -938,7 +938,7 @@ def test_an_enemy_pivots_when_it_opts_in() -> None:
     stick reversal is for the player, and it is the one that reads well: the
     fighter is already turning and nothing about it announces the change.
     """
-    from src.states.enemy_states import EnemyState  # noqa: F401
+    from src.simulation.states.enemy_states import EnemyState  # noqa: F401
 
     enemy = _enemy("goblin")
     enemy.turn_enabled = True
@@ -1030,7 +1030,7 @@ def test_the_shared_body_refuses_to_run_on_its_own() -> None:
     silently get a ``NotImplementedError`` from wherever the hold happened to
     end rather than from the class that forgot the method.
     """
-    from src.states.turn_state import TurnState
+    from src.simulation.states.turn_state import TurnState
 
     class Unfinished(TurnState):
         """A pivot whose author forgot where the fighter goes afterwards."""

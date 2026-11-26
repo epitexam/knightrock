@@ -7,13 +7,13 @@
 The source tree stays the source of truth: the ``.so`` files are generated,
 ignored by git, and never required to run or test the game. Compilation happens
 in a throwaway copy of ``src/`` because mypyc derives the extension's module
-name from the path it is given; building ``src/physics/velocity.py`` from the
+name from the path it is given; building ``src/simulation/physics/velocity.py`` from the
 project root produces a module called ``physics.velocity`` instead of
-``src.physics.velocity``, which fails to import. The finished extensions are
+``src.simulation.physics.velocity``, which fails to import. The finished extensions are
 copied back to their real package paths with a manifest so ``--clean`` cannot
 delete a file this script did not write.
 
-The perimeter is deliberately narrower than ``src/physics/``:
+The perimeter is deliberately narrower than ``src/simulation/physics/``:
 
 - ``collisions``, ``movement`` and ``hit_resolver`` type an ECS ``SurfaceFlagsView``
   as ``dict[str, bool]``. Interpreted Python accepts the structural match; mypyc
@@ -39,11 +39,11 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / ".native-manifest"
 
 MODULES = (
-    "src/physics/gravity.py",
-    "src/physics/platforms.py",
-    "src/physics/spatial_hash.py",
-    "src/physics/spatial_query.py",
-    "src/physics/velocity.py",
+    "src/simulation/physics/gravity.py",
+    "src/simulation/physics/platforms.py",
+    "src/simulation/physics/spatial_hash.py",
+    "src/simulation/physics/spatial_query.py",
+    "src/simulation/physics/velocity.py",
 )
 
 

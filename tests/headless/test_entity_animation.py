@@ -2,9 +2,9 @@
 
 import pygame
 
-from src.entities.enemies.schema import EnemyConfig
-from src.entities.player import Player
-from src.states.player_states import PlayerIdleState, PlayerRunState
+from src.simulation.entities.enemies.schema import EnemyConfig
+from src.simulation.entities.player import Player
+from src.simulation.states.player_states import PlayerIdleState, PlayerRunState
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets
@@ -49,7 +49,7 @@ def test_entity_without_animator_keeps_flat_surface(mock_input_manager):
 
 
 def test_enemy_without_animations_keeps_colored_surface():
-    from src.entities.enemies.enemy import Enemy
+    from src.simulation.entities.enemies.enemy import Enemy
 
     config = EnemyConfig(
         size=(32.0, 32.0),

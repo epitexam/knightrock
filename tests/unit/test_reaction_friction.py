@@ -4,13 +4,13 @@ from types import SimpleNamespace
 
 import pygame
 
-from src.states.enemy_states import EnemyKnockbackState
-from src.states.player_states import (
+from src.simulation.states.enemy_states import EnemyKnockbackState
+from src.simulation.states.player_states import (
     PlayerHurtState,
     PlayerKnockbackState,
     PlayerStaggerState,
 )
-from src.states.reaction_states import KnockbackState
+from src.simulation.states.reaction_states import KnockbackState
 
 
 def make_grounded_player() -> SimpleNamespace:
@@ -87,7 +87,7 @@ def test_reactions_take_their_friction_from_settings() -> None:
     """One model, tuned in one place: no state carries a rate of its own."""
     import inspect
 
-    from src.states import reaction_states
+    from src.simulation.states import reaction_states
 
     source = inspect.getsource(reaction_states.apply_reaction_drag)
     assert "Physics.REACTION_SLIDE_FRICTION" in source

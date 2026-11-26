@@ -18,13 +18,13 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((1152, 648))
 
-from src.core.display.framing import DEFAULT_FRAMING  # noqa: E402
-from src.core.display.letterbox import picture  # noqa: E402
-from src.core.display.viewport import Viewport  # noqa: E402
-from src.core.input.input_manager import InputManager  # noqa: E402
-from src.core.level.level import Level  # noqa: E402
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager  # noqa: E402
-from src.core.rendering.static_layer import bake_static_layer  # noqa: E402
+from src.platform.input.input_manager import InputManager  # noqa: E402
+from src.presentation.display.framing import DEFAULT_FRAMING  # noqa: E402
+from src.presentation.display.letterbox import picture  # noqa: E402
+from src.presentation.display.viewport import Viewport  # noqa: E402
+from src.presentation.rendering.static_layer import bake_static_layer  # noqa: E402
+from src.simulation.level.level import Level  # noqa: E402
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager  # noqa: E402
 from tests.conftest import requires_assets  # noqa: E402
 
 # The real level and its tile art are git-ignored; a fresh checkout has neither.

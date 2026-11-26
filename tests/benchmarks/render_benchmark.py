@@ -45,15 +45,15 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import picture
-from src.core.display.presentation import Presentation
-from src.core.input.input_manager import InputManager
-from src.core.level.level import Level
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Simulation, World
-from src.core.sprites import Sprite
+from src.platform.input.input_manager import InputManager
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import picture
+from src.presentation.display.presentation import Presentation
+from src.presentation.rendering.tile_chunk_index import TileChunkIndex
+from src.simulation.level.level import Level
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
+from src.simulation.settings import Simulation, World
+from src.simulation.sprites import Sprite
 
 #: Window sizes worth a row: the common ones, 16:10, ultrawide and 4K.
 WINDOWS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3440, 1440), (3840, 2160)]

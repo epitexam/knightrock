@@ -18,13 +18,13 @@ import os
 import pygame
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_provider import InputProvider
-from src.core.input.input_state import InputState
-from src.core.level.level import Level
-from src.entities.enemies.factory import create_enemy
-from src.entities.entity import Entity
-from src.entities.projectile import FIREBOLT_CONFIG
+from src.platform.input.input_provider import InputProvider
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.projectile import FIREBOLT_CONFIG
+from src.simulation.level.level import Level
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets

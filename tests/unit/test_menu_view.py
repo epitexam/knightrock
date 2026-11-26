@@ -3,8 +3,8 @@ import os
 import pygame
 import pytest
 
-from src.ui.menu_model import MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.presentation.ui.menu_model import MenuItem, MenuModel
+from src.presentation.ui.menu_view import MenuView
 
 
 @pytest.fixture(scope="module", autouse=True)

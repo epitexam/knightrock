@@ -22,7 +22,7 @@ from src.application.fatal_screen import (
     _window_geometry,
     show_fatal_error,
 )
-from src.core.display.monitors import Monitor, Topology, centre_on
+from src.presentation.display.monitors import Monitor, Topology, centre_on
 
 
 def _events(monkeypatch, batches) -> None:

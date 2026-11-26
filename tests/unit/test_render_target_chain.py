@@ -21,11 +21,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((320, 240))
 
-from src.core.display.framing import DEFAULT_FRAMING  # noqa: E402
-from src.core.display.viewport import Viewport  # noqa: E402
-from src.core.rendering.camera import Camera  # noqa: E402
-from src.core.rendering.renderer import Renderer  # noqa: E402
-from src.ui.scale import PANEL_MAX_SCALE  # noqa: E402
+from src.presentation.display.framing import DEFAULT_FRAMING  # noqa: E402
+from src.presentation.display.viewport import Viewport  # noqa: E402
+from src.presentation.rendering.camera import Camera  # noqa: E402
+from src.presentation.rendering.renderer import Renderer  # noqa: E402
+from src.presentation.ui.scale import PANEL_MAX_SCALE  # noqa: E402
 
 #: Densities worth walking the chain through: whole numbers, the awkward
 #: fractions a real display produces, and one below one.
@@ -157,7 +157,7 @@ def test_the_frame_is_geometry_coherent_at_every_density(density: float) -> None
     anything. So the check has to be that a sprite's scaled image and its blit
     rect are the same size, at every scale.
     """
-    from src.core.sprite_groups import SpriteGroups
+    from src.simulation.sprite_groups import SpriteGroups
 
     renderer = _renderer(density)
     groups = SpriteGroups()
@@ -178,7 +178,7 @@ def test_the_frame_is_geometry_coherent_at_every_density(density: float) -> None
 
 def test_a_frame_reaches_the_target_and_nothing_else() -> None:
     """One draw, and it lands on the target -- the whole point of the refactor."""
-    from src.core.sprite_groups import SpriteGroups
+    from src.simulation.sprite_groups import SpriteGroups
 
     renderer = _renderer(1.0)
     target = renderer.surface

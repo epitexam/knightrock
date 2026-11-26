@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from src.application.save_game import SAVE_FORMAT_VERSION, SaveGame
-from src.core.atomic_json import write_json_atomic
+from src.simulation.atomic_json import write_json_atomic
 
 
 def test_sanitizes_negative_duplicate_and_missing_ids() -> None:

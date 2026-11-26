@@ -1,6 +1,6 @@
 """P3t1 reception: hit-vs-hit priority/clash and unblockable."""
 
-from src.core.level.systems.combat_system import CombatSystem
+from src.simulation.level.systems.combat_system import CombatSystem
 from tests.unit.helpers import entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -111,7 +111,7 @@ def test_an_attacker_already_cancelled_cancels_no_one_else() -> None:
 def test_unblockable_bypasses_guard() -> None:
     from pygame.sprite import Group
 
-    from src.entities.player import Player
+    from src.simulation.entities.player import Player
     from tests.unit.helpers import InputStub
 
     player = Player(

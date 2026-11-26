@@ -16,15 +16,15 @@ from src.application.game import Game
 from src.application.scenes.fatal_error_scene import FatalErrorScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, picture
-from src.core.display.monitors import Monitor, Topology, centre_on, fit_size, opening_size
-from src.core.display.stage import Stage, WindowSpec
-from src.core.display.viewport import Viewport
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.level.level_manager import LevelManager, UnknownLevelError
-from src.core.paths import PROJECT_ROOT, resource_path
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import FitPolicy, picture
+from src.presentation.display.monitors import Monitor, Topology, centre_on, fit_size, opening_size
+from src.presentation.display.stage import Stage, WindowSpec
+from src.presentation.display.viewport import Viewport
+from src.shared.input_actions import InputAction
+from src.shared.paths import PROJECT_ROOT, resource_path
+from src.simulation.level.level_manager import LevelManager, UnknownLevelError
 
 
 def test_resource_path_is_independent_from_current_working_directory(
@@ -302,7 +302,7 @@ def test_the_window_is_resizable_and_never_asks_for_a_mode_change(
 
 def _panel(width: int, height: int):
     """A monitor whose usable area is the whole panel, for stage arithmetic."""
-    from src.core.display.monitors import Monitor
+    from src.presentation.display.monitors import Monitor
 
     return Monitor(index=0, name="", bounds=(0, 0, width, height), usable=(0, 0, width, height))
 
@@ -906,7 +906,7 @@ def test_a_remembered_window_size_is_clamped_and_not_rewritten(tmp_path: Path) -
     )
     game._initialize()
 
-    from src.core.display.monitors import fit_size
+    from src.presentation.display.monitors import fit_size
 
     oversized = (7680, 4320)
     game.apply_settings(replace(game.settings, window_size=oversized))
@@ -1141,7 +1141,7 @@ def test_the_game_can_name_the_screen_its_window_is_on(
     control would make the answer a property of the desk it ran on.
     """
     game = _game_in_a_window(tmp_path, window_size=(1280, 720))
-    from src.core.display.monitors import Monitor, Topology
+    from src.presentation.display.monitors import Monitor, Topology
 
     desk = Topology(
         monitors=(
@@ -1219,7 +1219,7 @@ def test_the_target_is_the_window_so_a_resize_reaches_the_views(
     So nothing is posted here at all. The window is resized and a frame runs; the
     target, the density, the interface scale and every view follow.
     """
-    from src.core.display.letterbox import picture
+    from src.presentation.display.letterbox import picture
 
     game = Game(
         save_path=tmp_path / "savegame.json",

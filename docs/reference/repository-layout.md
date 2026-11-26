@@ -39,8 +39,8 @@ docs/              Audit reports, measurements, open points, design proposals
 ## Reading the tree
 
 - `src/application/` is the composition root: it is where the interface and the simulation are allowed to meet.
-- `src/core/` owns framing, input, events, audio and rendering; it never imports `ui`.
-- `src/core/level/systems/` holds the ordered fixed-tick systems, including combat.
+- `src/presentation/` owns framing and rendering; `src/platform/` owns input and audio; `src/shared/` owns events and the ports. None of them is imported by `src/simulation/`.
+- `src/simulation/level/systems/` holds the ordered fixed-tick systems, including combat.
 - `data/gameplay/` is tracked JSON; see [Gameplay data](../product/gameplay-data.md).
 - `assets/` holds TMX levels and sprites required at runtime.
 - `tests/` is deliberately excluded from mypy; see [Tests and quality](../guides/testing.md).

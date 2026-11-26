@@ -5,14 +5,14 @@ What a setting is allowed to be
 A choice the player can make and the game can honour, or nothing. That rule is
 what this file is down to.
 
-The window is the only source of truth (:mod:`src.core.display.letterbox`);
+The window is the only source of truth (:mod:`src.presentation.display.letterbox`);
 the picture is derived from it. What survives is of two shapes: settings that
 were never about the screen -- whole-pixel art, vsync, a frame limit, an
 interface scale, the bindings -- and **one** size key, ``window_size``, which is
 a *preference* and not a claim. It is asked for as it stands where the panel can
 take it, clamped where it cannot, and never written back, so the file never
 carries a number the window disagrees with
-(:func:`src.core.display.monitors.fit_size`).
+(:func:`src.presentation.display.monitors.fit_size`).
 
 Schema v3 dropped the window keys, and v4 still reads the keys that remain. A
 removed key is ignored rather than rejected, because the bindings are the
@@ -29,13 +29,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from src.core.atomic_json import write_json_atomic
-from src.core.display.letterbox import FitPolicy
-from src.core.input.bindings_codec import (
+from src.platform.input.bindings_codec import (
     bindings_from_dict,
     bindings_to_dict,
 )
-from src.core.input.input_bindings import InputBindings
+from src.platform.input.input_bindings import InputBindings
+from src.presentation.display.letterbox import FitPolicy
+from src.simulation.atomic_json import write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ class UserSettings:
     panel_scale: float = 1.0
     #: The window size to open at, or ``None`` to keep the size the player last
     #: dragged the window to. Clamped to the monitor it opens on rather than
-    #: overwritten -- see :func:`src.core.display.monitors.fit_size`.
+    #: overwritten -- see :func:`src.presentation.display.monitors.fit_size`.
     window_size: tuple[int, int] | None = None
     #: The size the window had when the game last closed, with no size chosen.
     #: Used only to open at it next time; never a preference, and written only
@@ -263,7 +263,7 @@ class UserSettings:
         The window key is read as a *request*. Nothing here decides whether it
         can be honoured -- that needs the topology, which is not known until the
         window is opened -- so it is carried through and clamped by
-        :mod:`src.core.display.monitors` at launch. What is decided here is only
+        :mod:`src.presentation.display.monitors` at launch. What is decided here is only
         whether the file is well formed, because a settings file that fails to
         parse takes the player's bindings down with it.
 

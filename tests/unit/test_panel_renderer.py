@@ -5,8 +5,8 @@ import os
 import pygame
 import pytest
 
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import TEXT_MUTED, TEXT_TITLE
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.styles import TEXT_MUTED, TEXT_TITLE
 
 
 @pytest.fixture(scope="module", autouse=True)

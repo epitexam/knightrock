@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import GameFeel
-from src.physics.gravity import apply_entity_gravity
+from src.simulation.physics.gravity import apply_entity_gravity
+from src.simulation.settings import GameFeel
 
 
 def make_entity(**overrides) -> SimpleNamespace:

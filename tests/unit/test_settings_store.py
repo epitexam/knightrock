@@ -10,7 +10,7 @@ from src.application.settings_store import (
     SettingsStore,
     UserSettings,
 )
-from src.core.input.input_actions import InputAction
+from src.shared.input_actions import InputAction
 
 
 def _write_v1(tmp_path: Path, *, width: int, height: int, fullscreen: bool) -> Path:
@@ -348,7 +348,7 @@ def test_the_frame_limit_ladder_covers_the_screen_the_player_has() -> None:
     """The first real session this ran on was a 180Hz panel, and the ladder
     stopped at 144 -- so the one rate the player was looking at was the one they
     could not select."""
-    from src.core.display.detection import desktop_refresh_rates
+    from src.presentation.display.detection import desktop_refresh_rates
 
     rates = [rate for rate in desktop_refresh_rates() if rate > 0]
     for rate in rates:

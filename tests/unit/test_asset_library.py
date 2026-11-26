@@ -6,7 +6,7 @@ from pathlib import Path
 import pygame
 import pytest
 
-from src.core.asset_library import AssetLibrary
+from src.platform.assets import AssetLibrary
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -124,7 +124,7 @@ def test_frames_directory_without_png_raises(tmp_path: Path) -> None:
 
 
 def test_shared_library_is_lazy_singleton() -> None:
-    import src.core.asset_library as module
+    import src.platform.assets as module
 
     first = module.shared_library()
     second = module.shared_library()
@@ -150,7 +150,7 @@ def animation_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         raw = pygame.Surface((8, 8))
         raw.fill((10 * index, 20, 30))
         pygame.image.save(raw, run / f"{index}.png")
-    monkeypatch.setattr("src.core.asset_library.resource_path", lambda path: str(tmp_path / path))
+    monkeypatch.setattr("src.platform.assets.resource_path", lambda path: str(tmp_path / path))
     return tmp_path
 
 

@@ -1,8 +1,8 @@
 import pygame
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuItem, MenuModel
+from src.presentation.ui.menu_model import MenuItem, MenuModel
+from src.shared.input_actions import InputAction
 
 
 def test_menu_model_moves_with_wrap_and_skips_disabled_items() -> None:
@@ -117,7 +117,7 @@ def test_menu_model_rejects_an_unusable_scale(scale: float) -> None:
     make the interface invisible or larger than the screen, and a NaN, which
     would quietly produce zero-sized rects everywhere.
     """
-    from src.ui.menu_view import MenuView
+    from src.presentation.ui.menu_view import MenuView
 
     with pytest.raises(ValueError, match="interface scale"):
         MenuView(scale=scale)
@@ -125,7 +125,7 @@ def test_menu_model_rejects_an_unusable_scale(scale: float) -> None:
 
 @pytest.mark.parametrize("scale", [0.5, 0.8, 1.0, 1.25, 1.511, 1.8889, 2.4, 4.0])
 def test_menu_model_accepts_the_scales_the_game_actually_produces(scale: float) -> None:
-    from src.ui.menu_view import MenuView
+    from src.presentation.ui.menu_view import MenuView
 
     assert MenuView(scale=scale)._scale == scale
 

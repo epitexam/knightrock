@@ -26,9 +26,9 @@ import os
 import pygame
 import pytest
 
-from src.ui.menu_model import MenuItem, MenuModel
-from src.ui.menu_view import MenuView
-from src.ui.metrics import MIN_TEXT_RATIO, Metrics
+from src.presentation.ui.menu_model import MenuItem, MenuModel
+from src.presentation.ui.menu_view import MenuView
+from src.presentation.ui.metrics import MIN_TEXT_RATIO, Metrics
 
 #: The window sizes that have to work: the design size, a 1080p screen, the
 #: user's 2176x1224 laptop, an ultrawide, a 4K panel, and two sizes too small
@@ -60,7 +60,7 @@ def _rows(count: int) -> list:
     Built through ``as_grid_row`` rather than hand-rolled, so the widths these
     tests measure are the widths the controls screen actually asks for.
     """
-    from src.ui.controls_view import BindingCell, BindingRow
+    from src.presentation.ui.controls_view import BindingCell, BindingRow
 
     return [
         BindingRow(
@@ -72,7 +72,7 @@ def _rows(count: int) -> list:
 
 def _grid_drawn(size, scale, rows, footers=("Esc : back",)):
     """A grid drawn the way a scene draws it, with the fonts actually built."""
-    from src.ui.grid_view import GridView
+    from src.presentation.ui.grid_view import GridView
 
     surface = pygame.Surface(size)
     view = GridView(scale)
@@ -226,7 +226,7 @@ def test_a_long_value_widens_the_panel_instead_of_being_cut() -> None:
     panel responds to its content at all, which is the property the 900 cap
     removed.
     """
-    from src.ui.controls_view import BindingCell, BindingRow
+    from src.presentation.ui.controls_view import BindingCell, BindingRow
 
     short = _grid_drawn(
         (2560, 1080),
@@ -268,7 +268,7 @@ def test_the_grid_title_is_centred(size, scale) -> None:
     assert title_font is not None and panel is not None
     width = title_font.size("MENU CONTROLS")[0]
 
-    from src.ui.grid_view import _centred_x
+    from src.presentation.ui.grid_view import _centred_x
 
     assert _centred_x(panel, width) == panel.x + (panel.width - width) // 2
     assert abs(_centred_x(panel, width) + width // 2 - panel.centerx) <= 1
@@ -402,7 +402,7 @@ def test_the_title_band_is_reserved_in_the_panel_height() -> None:
     sides -- the numbers add up, and nothing is drawn twice in the same place.
     """
     surface = pygame.Surface((1920, 1080))
-    from src.ui.grid_view import GridView
+    from src.presentation.ui.grid_view import GridView
 
     view = GridView(1.0)
     view.set_surface(surface)
@@ -440,7 +440,7 @@ def test_the_title_band_is_reserved_in_the_panel_height() -> None:
 
 def _rows_with_options(count: int) -> list:
     """``count`` binding rows, then the two options a controls screen ends on."""
-    from src.ui.controls_view import BindingRow, RowKind
+    from src.presentation.ui.controls_view import BindingRow, RowKind
 
     return [
         *_rows(count),

@@ -1,0 +1,550 @@
+"""Combat component: the per-entity orchestrator for all combat mechanics.
+
+``CombatComponent`` coordinates the attack state machine, hitbox manager,
+combo tracker, charge handler, and hurt state. It provides a high-level
+API for starting attacks, charging, and responding to damage.
+
+``NullCombatComponent`` is a no-op stand-in for entities without combat
+capabilities, implementing the same public interface. It lives in
+:mod:`src.simulation.combat.null_combat` and is re-exported here so existing imports keep
+working.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import pygame
+
+from src.simulation.combat.attack_state import AttackStateMachine, AttackStateSnapshot
+from src.simulation.combat.charge_handler import ChargeHandler, ChargeSnapshot
+from src.simulation.combat.combatant_protocol import Combatant
+from src.simulation.combat.combo_tracker import ComboTracker
+from src.simulation.combat.determinism import GeometryDesyncError, geometry_checksum
+from src.simulation.combat.frame_data import AttackDefinition, MoveId, PhaseDefinition
+from src.simulation.combat.hitbox_manager import HitboxManager
+from src.simulation.combat.null_combat import NullCombatComponent as NullCombatComponent
+from src.simulation.combat.refusal import Refusal
+from src.simulation.combat.shapes import ShapePose, SweptShape
+
+
+@dataclass
+class CombatSnapshot:
+    """Lightweight, serializable snapshot of the combat component for rollback.
+
+    Attributes
+    ----------
+    attack_state : AttackStateSnapshot
+        Snapshot of the attack state machine.
+    is_hurt : bool
+        Whether the entity is currently in the hurt state.
+    hurt_timer : float
+        Remaining time for the hurt state.
+    combo_count : int
+        Current combo count.
+    combo_timer : float
+        Remaining time for the combo window.
+    geometry_checksum : str
+        Canonical digest of the live offensive rectangles.
+    """
+
+    attack_state: AttackStateSnapshot
+    is_hurt: bool
+    hurt_timer: float
+    combo_count: int
+    combo_timer: float
+    cooldowns: dict[MoveId, float]
+    charge_state: ChargeSnapshot
+    air_combo_count: int = 0
+    combo_armed: bool = False
+    attacks_started: int = 0
+    geometry_checksum: str = field(default="", compare=False)
+
+
+class CombatComponent:
+    """Orchestrates all combat mechanics for a single entity.
+
+    This component owns sub-modules for attack state, hitbox positioning,
+    combo tracking, and charging, delegating work to each while enforcing
+    high-level rules such as preventing attacks while hurt.
+
+    Parameters
+    ----------
+    entity : Combatant
+        The entity that owns this component.
+    combo_window : float
+        Duration in seconds of the combo window.
+    hurt_duration : float
+        Default duration in seconds of the hurt state when the entity is hit.
+
+    Attributes
+    ----------
+    state : AttackStateMachine
+        The frame-accurate attack state machine.
+    hitbox : HitboxManager
+        The manager responsible for positioning the attack hitbox.
+    combo : ComboTracker
+        The combo counter and window tracker.
+    charging : ChargeHandler
+        The handler for charge attack mechanics.
+    is_hurt : bool
+        Whether the entity is currently in the hurt state.
+    """
+
+    def __init__(
+        self,
+        entity: Combatant,
+        combo_window: float,
+        hurt_duration: float,
+    ) -> None:
+        self._entity: Combatant = entity
+        self._attacks: dict[MoveId, AttackDefinition] = {}
+        self._cooldowns: dict[MoveId, float] = {}
+
+        self.state: AttackStateMachine = AttackStateMachine(self._attacks)
+        self.hitbox: HitboxManager = HitboxManager(entity)
+        self.combo: ComboTracker = ComboTracker(combo_window)
+        self.charging: ChargeHandler = ChargeHandler(self._attacks)
+
+        self.is_hurt: bool = False
+        self._hurt_timer: float = 0.0
+        self._hurt_duration: float = hurt_duration
+        #: Every attack started, chained ones included: how the attack state
+        #: tells a new link of a chain from the move it was already playing.
+        self.attacks_started: int = 0
+
+    def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
+        """Register a new attack definition.
+
+        Parameters
+        ----------
+        name : MoveId
+            Unique name identifying the attack (e.g. "light_attack").
+        definition : AttackDefinition
+            The immutable frame data and properties of the attack.
+        """
+        self._attacks[name] = definition
+        self._cooldowns[name] = 0.0
+
+    def has_attack(self, name: MoveId) -> bool:
+        """Whether ``name`` is registered.
+
+        For callers holding a name from somewhere else -- the button table, the
+        debug bench -- where a typo is indistinguishable from a refusal.
+        ``start_attack`` answers ``False`` for both.
+        """
+        return name in self._attacks
+
+    @property
+    def is_attacking(self) -> bool:
+        """Whether an attack sequence is currently in progress."""
+        return self.state.is_attacking
+
+    @property
+    def current_attack_def(self) -> AttackDefinition | None:
+        """The definition of the move running right now, or ``None``.
+
+        Read by the renderer to learn which sprite clip the move wants, which is
+        why it is on the component rather than reached into from the player.
+        """
+        return self.state.current_attack_def
+
+    @property
+    def attack_box(self) -> pygame.FRect | None:
+        """The current active attack hitbox, or ``None`` if inactive."""
+        return self.hitbox.rect
+
+    @property
+    def attack_boxes(self) -> tuple[pygame.FRect, ...]:
+        """Every live offensive rectangle: primary box first, then extras."""
+        return self.hitbox.rects
+
+    @property
+    def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]:
+        """Per-box swept rectangles (captured origin union current)."""
+        return self.hitbox.swept_rects
+
+    @property
+    def attack_shapes(self) -> tuple[ShapePose, ...]:
+        """Live advanced offensive shapes."""
+        return self.hitbox.shapes
+
+    @property
+    def swept_attack_shapes(self) -> tuple[SweptShape, ...]:
+        """Per-shape boundary/current pairs for advanced CCD."""
+        return self.hitbox.swept_shapes
+
+    @property
+    def attack_anchors(self) -> tuple[tuple[float, float], ...]:
+        """Resolved anchor points corresponding to live attack shapes."""
+        return self.hitbox.anchors
+
+    def capture_attack_origin(self) -> None:
+        """Freeze the live offensive geometry as the next tick's sweep origin."""
+        self.hitbox.capture_origin()
+
+    @property
+    def current_phase(self) -> PhaseDefinition | None:
+        """The ``PhaseDefinition`` for the current active phase, or ``None``."""
+        return self.state.current_phase_def
+
+    @property
+    def charge_multiplier(self) -> float:
+        """Current damage multiplier from the attack state (1.0 if none)."""
+        return self.state.charge_multiplier
+
+    @property
+    def targets_hit(self) -> set[str]:
+        """Set of entity IDs already hit during the current attack sequence."""
+        return self.state.targets_hit
+
+    def can_contact(self, target_id: str) -> bool:
+        """Return whether the active attack may contact this target."""
+        return target_id not in self.state.targets_hit
+
+    def record_contact(self, target_id: str) -> None:
+        """Consume a target contact for the current attack or phase."""
+        self.state.targets_hit.add(target_id)
+
+    @property
+    def hurt_timer(self) -> float:
+        """Remaining hurt duration."""
+        return self._hurt_timer
+
+    @hurt_timer.setter
+    def hurt_timer(self, value: float) -> None:
+        self._hurt_timer = max(0.0, value)
+
+    @property
+    def cooldowns(self) -> dict[MoveId, float]:
+        """Active cooldowns for all registered attacks."""
+        return dict(self._cooldowns)
+
+    @property
+    def combo_count(self) -> int:
+        """Current combo counter."""
+        return self.combo.count
+
+    @property
+    def combo_timer(self) -> float:
+        """Remaining combo window time."""
+        return self.combo.timer
+
+    @property
+    def air_combo_count(self) -> int:
+        """Air-juggle hits landed in the current window."""
+        return self.combo.air_count
+
+    def record_hit_landed(self, airborne: bool) -> bool:
+        """Count a connected hit, tracking air juggles; whether the combo moved."""
+        return self.combo.on_hit_landed(airborne)
+
+    @property
+    def attack_speed(self) -> float:
+        """How fast the running attack's clock goes; 1.0 is the frame data as written."""
+        return self.state.speed
+
+    @attack_speed.setter
+    def attack_speed(self, value: float) -> None:
+        self.state.speed = value
+
+    @property
+    def movement_multiplier(self) -> float:
+        """Movement speed multiplier to apply to the entity this frame."""
+        if self.charging.is_charging:
+            return self.charging.movement_multiplier
+
+        # If attacking, use the attack's movement multiplier
+        if self.state.is_attacking:
+            attack = self.state.current_attack_def
+            if attack is not None:
+                return attack.attack_move_multiplier
+
+        return 1.0
+
+    def start_attack(
+        self,
+        name: MoveId,
+        charge_multiplier: float = 1.0,
+    ) -> Refusal:
+        """Attempt to start a new attack sequence.
+
+        Facing direction is resolved deterministically inside the update loop
+        via the state machine, so it is not passed as a parameter here.
+
+        This is the single place an attack can be refused, so every path is
+        covered by it: input, the input buffer, a charge release, the debug
+        hotkeys and the enemy AI all come through here. A check placed nearer any
+        one of them would be a check the others do not have -- which is how
+        `uppercut` came to be throwable mid-air, and how `crouch` came to allow
+        every move in the table.
+
+        Parameters
+        ----------
+        name : MoveId
+            Name of the attack to start.
+        charge_multiplier : float
+            Damage multiplier from a released charge (default 1.0).
+
+        Returns
+        -------
+        Refusal
+            ``Refusal.NONE`` when the attack started. The value is truthy only
+            in that case, so ``if combat.start_attack(x):`` still reads as
+            "did it start" -- but a caller that needs to know *why* a press was
+            dropped can act on it. See :class:`~src.simulation.combat.refusal.Refusal` for
+            which refusals are worth retrying.
+        """
+        if self.is_hurt:
+            return Refusal.BUSY
+        if self.charging.is_charging:
+            return Refusal.CHARGING
+
+        definition = self._attacks.get(name)
+        if definition is None:
+            return Refusal.UNKNOWN
+
+        # Posture before cooldown: a move the fighter cannot throw right now is
+        # not "on cooldown", and telling a buffer otherwise would have it hold a
+        # press that will still be impossible once the timer runs down.
+        if self._entity.stance not in definition.stances:
+            return Refusal.STANCE
+
+        if self._cooldowns.get(name, 0.0) > 0:
+            return Refusal.COOLDOWN
+
+        if self.state.is_attacking:
+            if self.state.can_cancel_into(name):
+                self.state.end()
+            else:
+                return Refusal.NO_CANCEL
+
+        if not self.state.start(name, charge_multiplier):
+            return Refusal.BUSY
+
+        self._cooldowns[name] = definition.cooldown
+        self.attacks_started += 1
+        self.combo.on_attack_started(definition.combo_reset)
+
+        # P1 starter seed: all starts happen during ``Entity.update``,
+        # i.e. AFTER the tick-frontier capture, so without seeding ``prev``
+        # here the first ACTIVE tick would stay discrete. Position the
+        # startup frame-0 geometry in the pool, then copy it as origin.
+        self.sync_attack_box()
+        self.hitbox.capture_origin()
+
+        return Refusal.NONE
+
+    def start_charge(self, name: MoveId) -> bool:
+        """Begin charging an attack.
+
+        Parameters
+        ----------
+        name : MoveId
+            Name of the attack to charge.
+
+        Returns
+        -------
+        bool
+            ``True`` if the charge started successfully.
+        """
+        if self.is_attacking or self.is_hurt:
+            return False
+        return self.charging.start_charge(name)
+
+    def release_charge(self, full: MoveId | None = None) -> Refusal:
+        """Release the current charge and execute the attack.
+
+        Transactional in the way a charge release has to be. The handler used to
+        be reset *before* ``start_attack`` ran, so a release refused on cooldown
+        destroyed the charge and its multiplier and produced nothing -- the
+        player held a button for a second and the game showed no sign of it. The
+        charge is now restored unless the attack actually starts.
+
+        Parameters
+        ----------
+        Returns
+        -------
+        Refusal
+            ``Refusal.NONE`` if the attack started. ``Refusal.CHARGING`` if
+            there was no charge to release.
+        """
+        pending = self.charging.pending_release()
+        if pending is None:
+            return Refusal.CHARGING
+
+        name, multiplier = pending
+        started, power = name, multiplier
+        if full is not None and self.charging.is_full:
+            # A full charge throws its own move, at the full charge's power:
+            # the tier adds to the charge, never replaces it.
+            started = full
+        # The handler is cleared first because ``start_attack`` refuses outright
+        # while a charge is in progress -- releasing has to make room before it
+        # can be asked. A refusal therefore puts the charge back, which is what
+        # makes the release a transaction rather than a destruction.
+        self.charging.cancel()
+        refusal = self.start_attack(started, power)
+        if refusal is not Refusal.NONE:
+            self.charging.restore_pending(name, multiplier)
+        return refusal
+
+    def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
+        """React to being hit.
+
+        If ``interrupt`` is True, the current attack and charge are
+        cancelled and the entity enters the hurt state for the specified
+        duration.
+
+        Parameters
+        ----------
+        duration : float | None
+            Custom hurt duration in seconds. If ``None``, the default
+            ``hurt_duration`` from the constructor is used. Ignored if
+            ``interrupt`` is False.
+        interrupt : bool
+            Whether the hit interrupts the entity's current action.
+            Set to False for hits absorbed by super armor.
+
+        Notes
+        -----
+        If the entity is currently executing an attack whose definition
+        has ``uninterruptible`` set to True, the interruption is ignored
+        entirely: no hurt state is entered, the attack is not ended, and
+        the charge is not cancelled. Damage itself is unaffected, since
+        it is applied separately via ``receive_damage``.
+        """
+        if not interrupt:
+            return
+
+        if self.state.is_attacking:
+            attack = self.state.current_attack_def
+            if attack is not None and attack.uninterruptible:
+                return
+
+        self.is_hurt = True
+        self._hurt_timer = duration if duration is not None else self._hurt_duration
+
+        self.state.end()
+        self.hitbox.clear()
+        self.charging.cancel()
+        # Taking a hit ends whatever the entity was doing, so a combo that was
+        # still open dies with it: a juggle interrupted by the player losing the
+        # exchange should not keep counting, and neither should the arming left
+        # over from the attack that was cancelled here.
+        self.combo.reset()
+
+    def cancel_attack(self) -> None:
+        self.state.end()
+        self.hitbox.clear()
+        self.charging.cancel()
+        self.combo.disarm()
+
+    def save_state(self) -> CombatSnapshot:
+        """Capture the full combat state for a rollback frame.
+
+        Returns
+        -------
+        CombatSnapshot
+            A serializable snapshot of the combat component's current state.
+        """
+        return CombatSnapshot(
+            attack_state=self.state.save_state(),
+            is_hurt=self.is_hurt,
+            hurt_timer=self._hurt_timer,
+            combo_count=self.combo.count,
+            combo_timer=self.combo.timer,
+            cooldowns=dict(self._cooldowns),
+            charge_state=self.charging.save_state(),
+            air_combo_count=self.combo.air_count,
+            combo_armed=self.combo.is_armed,
+            attacks_started=self.attacks_started,
+            geometry_checksum=geometry_checksum(self.attack_boxes, self.attack_shapes),
+        )
+
+    def load_state(self, snapshot: CombatSnapshot) -> None:
+        """Restore combat state from a rollback frame.
+
+        Parameters
+        ----------
+        snapshot : CombatSnapshot
+            The snapshot to restore.
+        """
+        self.state.load_state(snapshot.attack_state)
+        self.is_hurt = snapshot.is_hurt
+        self._hurt_timer = snapshot.hurt_timer
+        self.combo.restore(
+            snapshot.combo_count,
+            snapshot.combo_timer,
+            snapshot.air_combo_count,
+            snapshot.combo_armed,
+        )
+        self._cooldowns = dict(snapshot.cooldowns)
+        self.attacks_started = snapshot.attacks_started
+        self.charging.load_state(snapshot.charge_state)
+        # P1 (D3, re-derivation): no snapshot field. ``prev`` is re-derived
+        # at the next frontier capture; forgetting it here keeps the restore
+        # deterministic (never read stale geometry across a load).
+        self.hitbox.clear_origin()
+        self.sync_attack_box()
+
+    def verify_geometry_checksum(self, expected: str) -> None:
+        """Raise when live offensive geometry differs from a snapshot digest."""
+        actual = geometry_checksum(self.attack_boxes, self.attack_shapes)
+        if expected and actual != expected:
+            raise GeometryDesyncError(
+                "combat geometry checksum mismatch after rollback: "
+                f"expected {expected}, got {actual}"
+            )
+
+    def update(self, delta_time: float) -> None:
+        """Tick all combat sub-systems.
+
+        Facing direction is read directly from the entity to ensure
+        deterministic state resolution over the network.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
+        if self.is_hurt:
+            self._hurt_timer -= delta_time
+            if self._hurt_timer <= 0.0:
+                self._hurt_timer = 0.0
+                self.is_hurt = False
+
+        for name in self._cooldowns:
+            if self._cooldowns[name] > 0:
+                self._cooldowns[name] -= delta_time
+
+        self.combo.update(delta_time)
+        self.charging.update(delta_time)
+        self.state.resolve_facing(self._entity.facing_right)
+        self.state.update(delta_time)
+        # An attack that has run out of frames without landing is a whiff: the
+        # arming it took is spent here rather than left for the next hit to
+        # claim. Checked off the live state so a hit landing on the attack's own
+        # last active frame still counts, that frame being one where the attack
+        # is still attacking.
+        if not self.state.is_attacking:
+            self.combo.disarm()
+
+    def sync_attack_box(self) -> None:
+        """Synchronize offensive geometry from the owner's final position."""
+        self.hitbox.update(self.state)
+
+    def reset_hurt_state(self) -> None:
+        """Clear only the hurt reaction state."""
+        self.is_hurt = False
+        self._hurt_timer = 0.0
+
+    def reset(self) -> None:
+        """Return all transient combat state to a neutral baseline."""
+        self.reset_hurt_state()
+        self.state.end()
+        self.hitbox.clear()
+        self.charging.cancel()
+        self.combo.restore(0, 0.0, 0)
+        for name in self._cooldowns:
+            self._cooldowns[name] = 0.0

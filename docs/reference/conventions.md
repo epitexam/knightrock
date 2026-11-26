@@ -13,15 +13,15 @@ The conventions below explain the choices that are hardest to see from a single 
 - **Deterministic simulation.** Fixed timestep
   (`Simulation.TICK_RATE = 60`). Nothing may introduce non-determinism into the
   tick.
-- **Centralized tuning.** Gameplay constants live in `src/core/settings.py` — no
+- **Centralized tuning.** Gameplay constants live in `src/simulation/settings.py` — no
   magic numbers in the systems. A constant **shared by two modules has exactly
   one home**, and it belongs to the module that acts on it: HP-bar geometry is
-  defined once in `src/ui/world_overlay/metrics.py`, which every layer that draws
+  defined once in `src/presentation/ui/world_overlay/metrics.py`, which every layer that draws
   a bar reads, and it reaches the renderer through the `WorldOverlay` port rather
   than by `core` importing `ui`. Two copies agree only until someone edits one.
   UI-only constants (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and
   renderer internals (`DASH_STRETCH_*`) stay next to their only user.
-- **One table for the interface.** `src/ui/metrics.py` holds every layout
+- **One table for the interface.** `src/presentation/ui/metrics.py` holds every layout
   dimension of the menus as a `DESIGN_*` constant, and `Metrics` is the only
   thing that multiplies one by a scale. A view may not contain a layout literal.
   The reason is not tidiness: at a window density of 1.889 the grid used to pair a

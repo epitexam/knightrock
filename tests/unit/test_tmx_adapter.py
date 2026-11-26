@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from src.core.level.tmx_adapter import TmxAdapter
+from src.simulation.level.tmx_adapter import TmxAdapter
 
 
 def _map(tiledgidmap: dict, gidmap: dict) -> SimpleNamespace:

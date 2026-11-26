@@ -6,16 +6,16 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.combat.combatant_protocol import DamageResult
-from src.combat.damage_types import DamageType
-from src.combat.frame_data import HitProperties
-from src.combat.hit_resolver import HitResolver
-from src.combat.knockback import KnockbackConfig
-from src.core.settings import Battery as BatterySettings
-from src.core.settings import Combat as CombatSettings
-from src.core.settings import Fury as FurySettings
-from src.entities.entity import Entity
-from src.entities.player import Player
+from src.shared.damage_types import DamageType
+from src.simulation.combat.combatant_protocol import DamageResult
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.hit_resolver import HitResolver
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.player import Player
+from src.simulation.settings import Battery as BatterySettings
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.settings import Fury as FurySettings
 from tests.unit.helpers import AttackerStub, InputStub, SpyCombat, SpyStateMachine
 from tests.unit.helpers import make_entity as build_entity
 

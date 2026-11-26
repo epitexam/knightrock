@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import Locomotion, Physics
-from src.states.player_states import (
+from src.simulation.settings import Locomotion, Physics
+from src.simulation.states.player_states import (
     PlayerChargeState,
     PlayerState,
     _can_attack_interrupt,
@@ -18,7 +18,7 @@ from src.states.player_states import (
     player_ground_return,
     resolve_locomotion_state,
 )
-from src.states.state_machine import StateMachine
+from src.simulation.states.state_machine import StateMachine
 
 
 def _mock_state():

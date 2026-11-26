@@ -1,0 +1,190 @@
+"""Hazard contact damage system (saws, spikes, floor spikes)."""
+
+from collections.abc import Callable, Iterable
+from typing import Protocol
+
+import pygame
+
+from src.simulation.combat.combatant_protocol import Combatant
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.combat.shapes import ShapeKind, ShapePose, SweptShape
+from src.simulation.level.systems.contact_system import ContactSystem, OffensiveBox
+from src.simulation.physics.entity_grid import EntityGrid
+
+
+class Hazard(Protocol):
+    """What the hazard pipeline reads of a hazard sprite.
+
+    Every hazard is a :class:`~src.simulation.sprites.Sprite`, which gives it the
+    contact geometry; the hazard classes add ``damage`` and ``knockback``.
+    """
+
+    damage: float
+    knockback: KnockbackConfig | None
+    contact_shape: ShapePose
+
+    def contact_rect(self) -> pygame.FRect: ...
+
+    def swept_contact_rect(self) -> pygame.FRect: ...
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]: ...
+
+    def capture_contact_origin(self) -> None: ...
+
+
+class HazardDamageSystem:
+    """Apply configured damage to entities overlapping an active hazard.
+
+    A hazard's ``damage`` is its own (set through the TMX ``damage`` object
+    property); its ``knockback`` is ``DEFAULT_KNOCKBACK`` unless it carries one.
+    Contact resolution is delegated to the unified pipeline: hazards
+    carry no faction and no memory, so every overlapping entity is a valid
+    target and the damage never interrupts.
+
+    A hazard does have a memory, though: how recently it damaged each target.
+    A saw re-emits its box every tick, and an ``Enemy`` configures no
+    invincibility window, so without a cooldown a single saw kills in five
+    ticks at twenty damage a tick. The player was spared only by their own
+    0.18s window.
+    """
+
+    DEFAULT_DAMAGE = 20.0
+    DEFAULT_KNOCKBACK = KnockbackConfig(power=(150.0, -60.0))
+    CONTACT_COOLDOWN_TICKS = 24
+
+    def __init__(self, contact_system: ContactSystem | None = None) -> None:
+        self.contact_system: ContactSystem = (
+            contact_system if contact_system is not None else ContactSystem()
+        )
+        #: One live :class:`OffensiveBox` per hazard, keyed by ``id()`` and
+        #: holding the hazard itself so the key cannot be recycled onto a
+        #: different object while the entry lives. See :meth:`produce_boxes`.
+        self._boxes: dict[int, tuple[Hazard, OffensiveBox]] = {}
+        #: ``(id(hazard), target_id) -> ticks left before that hazard may
+        #: damage that target again``.
+        self._cooldowns: dict[tuple[int, str], int] = {}
+        #: Pairs whose contact landed this tick; their cooldown starts once the
+        #: tick is resolved.
+        self._armed: set[tuple[int, str]] = set()
+
+    def _can_contact(self, hazard_key: int) -> Callable[[str], bool]:
+        """The contact gate for one hazard: closed while its cooldown runs.
+
+        Only read here, for the reason given in
+        :meth:`ContactDamageSystem._can_contact`: the pipeline asks every
+        candidate, touching or not, so arming here made a spike wait out its
+        cooldown against a player who had only walked past it (audit C2). The
+        cooldown is armed by :meth:`_record` once a contact has landed.
+        """
+
+        def can_contact(target_id: str) -> bool:
+            return self._cooldowns.get((hazard_key, target_id), 0) <= 0
+
+        return can_contact
+
+    def _record(self, hazard_key: int) -> Callable[[Combatant], None]:
+        """Arm the cooldown of a target this hazard just touched."""
+
+        def record_contact(target: Combatant) -> None:
+            self._armed.add((hazard_key, target.id))
+
+        return record_contact
+
+    def _build_box(self, hazard: Hazard, box: pygame.FRect) -> OffensiveBox:
+        """A hazard's offensive box, built once.
+
+        ``HitProperties`` is a frozen dataclass of fourteen fields with a
+        validating ``__post_init__``, and building one costs about as much as
+        everything else in this function put together. Nothing in it varies
+        per tick -- a hazard's damage and knockback are read from the TMX
+        object property at construction and never written again -- so the box
+        is built the first time a hazard is seen and only its geometry is
+        refreshed afterwards.
+        """
+        knockback = hazard.knockback or self.DEFAULT_KNOCKBACK
+        return OffensiveBox(
+            box=box,
+            swept=(box,),
+            hit=HitProperties(damage=float(hazard.damage), knockback=knockback),
+            swept_shapes=(),
+            faction=None,
+            owner_id="",
+            can_contact=self._can_contact(id(hazard)),
+            record_contact=self._record(id(hazard)),
+            kind="hazard",
+            interrupt=False,
+        )
+
+    def _refresh_geometry(self, entry: OffensiveBox, hazard: Hazard, box: pygame.FRect) -> None:
+        """Point a live box at where the hazard is this tick.
+
+        Run on the tick the box is built as well as on every later one, so a
+        hazard that sweeps is swept on the very first tick it is seen and not
+        only from the second onwards.
+        """
+        entry.box = box
+        entry.swept = (hazard.swept_contact_rect(),)
+        entry.swept_shapes = self._swept_shapes(hazard)
+
+    def produce_boxes(
+        self, entity_sprites: Iterable[Combatant], hazard_sprites: Iterable[Hazard]
+    ) -> tuple[OffensiveBox, ...]:
+        """One offensive box per hazard, damage/knockback from the hazard.
+
+        Only the geometry is recomputed per tick; the hit properties are not,
+        and the boxes themselves are reused across ticks. The cache is pruned
+        to the hazards actually present, so a hazard removed from the level
+        does not keep its box -- or the hazard itself, which the cache holds a
+        reference to -- alive.
+
+        Keyed by ``id()`` rather than by the object, so a producer does not
+        have to be hashable: a duck-typed test double need not be. The entry
+        holds the hazard it was keyed by, so a live id cannot belong to two
+        objects, and the identity check below turns even a stale key into a
+        miss rather than into somebody else's box.
+        """
+        boxes: list[OffensiveBox] = []
+        live: set[int] = set()
+        for hazard in hazard_sprites:
+            box = hazard.contact_rect()
+            key = id(hazard)
+            live.add(key)
+            entry = self._boxes.get(key)
+            if entry is None or entry[0] is not hazard:
+                entry = (hazard, self._build_box(hazard, box))
+                self._boxes[key] = entry
+            self._refresh_geometry(entry[1], hazard, box)
+            boxes.append(entry[1])
+        if len(self._boxes) != len(live):
+            for key in [known for known in self._boxes if known not in live]:
+                del self._boxes[key]
+            for pair in [pair for pair in self._cooldowns if pair[0] not in live]:
+                del self._cooldowns[pair]
+        return tuple(boxes)
+
+    @staticmethod
+    def _swept_shapes(hazard: Hazard) -> tuple[SweptShape, ...]:
+        """The shape sweep for a hazard, or nothing for a plain AABB one."""
+        if hazard.contact_shape.kind is ShapeKind.AABB:
+            return ()
+        return hazard.swept_contact_shapes()
+
+    def process(
+        self,
+        entity_sprites: Iterable[Combatant],
+        hazard_sprites: Iterable[Hazard],
+        entity_grid: EntityGrid | None = None,
+    ) -> None:
+        """Apply damage for every overlap between a hazard and a live entity."""
+        entities = tuple(entity_sprites)
+        self._armed = set()
+        self.contact_system.resolve(
+            self.produce_boxes(entities, hazard_sprites), entities, entity_grid
+        )
+        for pair in self._armed:
+            self._cooldowns[pair] = self.CONTACT_COOLDOWN_TICKS
+        for pair in [pair for pair, left in self._cooldowns.items() if left <= 1]:
+            del self._cooldowns[pair]
+        for pair in self._cooldowns:
+            self._cooldowns[pair] -= 1

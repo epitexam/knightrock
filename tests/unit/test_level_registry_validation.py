@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from src.data.errors import GameplayDataError
-from src.data.levels import read_levels_file
+from src.simulation.data.errors import GameplayDataError
+from src.simulation.data.levels import read_levels_file
 
 
 def _registry(tmp_path: Path, levels: dict[str, str]) -> Path:

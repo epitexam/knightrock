@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pygame
 
-from src.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid, overlapping_pairs
+from src.simulation.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid, overlapping_pairs
 
 
 class GridEntity:

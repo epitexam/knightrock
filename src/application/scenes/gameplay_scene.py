@@ -8,15 +8,17 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
-from src.core.colors import Colors
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.core.level.level import Level
-from src.core.rendering.camera import Camera
-from src.core.settings import Debug, Gameplay
-from src.ui.menu_model import MenuAction
-from src.ui.panel_renderer import compact_panels, set_compact_panels
-from src.ui.ui_manager import UIManager
+from src.platform.input.event_router import InputDevice, RoutedInput
+from src.presentation.fx.adapter import PresentationFx
+from src.presentation.rendering.adapter import build_presentation_renderer
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.menu_model import MenuAction
+from src.presentation.ui.panel_renderer import compact_panels, set_compact_panels
+from src.presentation.ui.ui_manager import UIManager
+from src.shared.colors import Colors
+from src.shared.input_actions import InputAction
+from src.simulation.level.level import Level
+from src.simulation.settings import Debug, Gameplay
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,9 @@ class GameplayScene(Scene):
         # target has a fixed size whatever the player's video settings say.
         target = self.game.render_target
         level_data = self.game.level_manager.get(self.level_id)
+        camera = Camera.for_target(target)
+        overlay = self.game.world_overlay(target)
+        renderer = build_presentation_renderer(target, level_data.config, overlay, camera)
         self.level = Level(
             target,
             level_data,
@@ -103,7 +108,11 @@ class GameplayScene(Scene):
             level_id=self.level_id,
             events=self.game.events,
             gameplay_data=self.game.gameplay_data,
-            overlay=self.game.world_overlay(target),
+            overlay=overlay,
+            renderer=renderer,
+            camera=camera,
+            tuning=self.game.tuning,
+            fx_port=PresentationFx(),
         )
 
     def update(self, delta_time: float) -> None:

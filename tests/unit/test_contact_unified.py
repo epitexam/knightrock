@@ -15,19 +15,19 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.combat.frame_data import HitProperties
-from src.combat.hit_resolver import HitResolver
-from src.combat.knockback import KnockbackConfig
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.contact_damage import ContactDamageSystem
-from src.core.level.systems.contact_system import ContactSystem
-from src.core.level.systems.hazard_damage import HazardDamageSystem
-from src.core.level.systems.projectile_system import ProjectileSystem
-from src.core.settings import Combat as CombatSettings
-from src.core.sprite_groups import SpriteGroups
-from src.entities.hurtbox_zones import HurtboxZoneDef
-from src.entities.projectile import ProjectileConfig
-from src.physics.entity_grid import EntityGrid
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.hit_resolver import HitResolver
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.entities.hurtbox_zones import HurtboxZoneDef
+from src.simulation.entities.projectile import ProjectileConfig
+from src.simulation.level.systems.combat_system import CombatSystem
+from src.simulation.level.systems.contact_damage import ContactDamageSystem
+from src.simulation.level.systems.contact_system import ContactSystem
+from src.simulation.level.systems.hazard_damage import HazardDamageSystem
+from src.simulation.level.systems.projectile_system import ProjectileSystem
+from src.simulation.physics.entity_grid import EntityGrid
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.sprite_groups import SpriteGroups
 from tests.fakes import BodyStub, HazardStub
 from tests.unit.helpers import entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
@@ -341,7 +341,7 @@ def test_the_cached_geometry_is_the_rectangle_the_box_asks_for() -> None:
     :func:`_swept_target_box` would have built, or the narrowphase is testing
     boxes against something else.
     """
-    from src.core.level.systems.contact_system import _swept_target_box
+    from src.simulation.level.systems.contact_system import _swept_target_box
 
     engine = ContactSystem()
     target = _CountingTarget(pygame.FRect(10, 10, 40, 40), "player")

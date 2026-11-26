@@ -5,12 +5,12 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import LocalInputProvider
-from src.entities.player_input import PlayerInputHandler
-from src.entities.player_kit import Direction
+from src.platform.input.input_bindings import InputBindings
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import LocalInputProvider
+from src.shared.input_actions import InputAction
+from src.simulation.entities.player_input import PlayerInputHandler
+from src.simulation.entities.player_kit import Direction
 from tests.headless.test_input_provider import FakeJoystick
 
 

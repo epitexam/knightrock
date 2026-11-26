@@ -1,7 +1,7 @@
 """Dense table identity: recycled slots must not resurrect stale handles."""
 
-from src.core.ecs.table import DenseTable
-from src.entities.id_factory import IdFactory
+from src.simulation.ecs.table import DenseTable
+from src.simulation.entities.id_factory import IdFactory
 
 
 def test_a_released_handle_never_resolves_again() -> None:

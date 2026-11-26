@@ -3,8 +3,8 @@ from dataclasses import FrozenInstanceError
 import pygame
 import pytest
 
-from src.combat.frame_data import HitboxSpec
-from src.combat.shapes import (
+from src.simulation.combat.frame_data import HitboxSpec
+from src.simulation.combat.shapes import (
     EasingKind,
     ShapeKind,
     ShapePose,

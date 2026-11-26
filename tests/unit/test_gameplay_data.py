@@ -6,29 +6,29 @@ from pathlib import Path
 
 import pytest
 
-from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS
-from src.combat.frame_data import AttackDefinition, Stance
-from src.core.input.input_manager import InputManager
-from src.core.paths import PROJECT_ROOT
-from src.data.attacks import (
+from src.platform.input.input_manager import InputManager
+from src.shared.paths import PROJECT_ROOT
+from src.simulation.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS
+from src.simulation.combat.frame_data import AttackDefinition, Stance
+from src.simulation.data.attacks import (
     ATTACKS_FILENAME,
     attack_definition_to_dict,
     attacks_document,
     read_attack_definition,
     read_attacks_file,
 )
-from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemies_file
-from src.data.errors import GameplayDataError
-from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
-from src.data.player import PLAYER_FILENAME, read_player_file
-from src.data.provider import (
+from src.simulation.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemies_file
+from src.simulation.data.errors import GameplayDataError
+from src.simulation.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
+from src.simulation.data.player import PLAYER_FILENAME, read_player_file
+from src.simulation.data.provider import (
     GameplayData,
     gameplay_data_root,
     load_gameplay_data,
     shipped_gameplay_data,
 )
-from src.entities.enemies.schema import EnemyConfig
-from src.entities.player_config import PlayerConfig
+from src.simulation.entities.enemies.schema import EnemyConfig
+from src.simulation.entities.player_config import PlayerConfig
 
 
 def _write(path: Path, payload: dict) -> Path:
@@ -46,7 +46,7 @@ def _grounded_player(input_manager: InputManager):
     """
     import pygame
 
-    from src.entities.player import Player
+    from src.simulation.entities.player import Player
 
     player = Player(
         pos=(0, 0),
@@ -507,7 +507,7 @@ def test_player_file_accepts_every_configurable_field(tmp_path: Path) -> None:
     quietly stop being overridable -- the same silent failure this commit exists
     to remove, one level up.
     """
-    from src.data.player import _player_override_keys
+    from src.simulation.data.player import _player_override_keys
 
     everything = {key: _OVERRIDE_SAMPLES[key] for key in _player_override_keys()}
     path = _write(tmp_path / "player.json", {"version": 1, "player": everything})
@@ -593,7 +593,7 @@ def test_load_gameplay_data_refuses_to_boot_without_its_attacks(
     """A missing ``attacks.json`` is an error, not a fallback to a second copy.
 
     There used to be one: fourteen attacks kept twice, in this data file and in
-    ``src/combat/attack_data.py``, with a CI test asserting the two were equal.
+    ``src/simulation/combat/attack_data.py``, with a CI test asserting the two were equal.
     The Python side is now a shim that reads this file, so there is nothing to
     fall back to -- and booting on a balance nobody reviewed would be worse than
     a game that says why it did not start.
@@ -822,7 +822,7 @@ def test_the_shipped_attacks_file_is_exactly_what_the_serializer_writes(
     monkeypatch.delenv("KNIGHTROCK_DATA_DIR", raising=False)
     data = load_gameplay_data()
 
-    from src.data.roots import gameplay_data_root
+    from src.simulation.data.roots import gameplay_data_root
 
     shipped = gameplay_data_root() / ATTACKS_FILENAME
     assert (
@@ -847,7 +847,7 @@ def test_load_gameplay_data_refuses_to_boot_without_its_fighters(
 
 
 def test_a_named_hit_field_becomes_its_enum_member() -> None:
-    from src.combat.frame_data import Clash, Height, HitProperties
+    from src.simulation.combat.frame_data import Clash, Height, HitProperties
 
     hit = HitProperties(damage=1, clash="clash", height="low")  # type: ignore[arg-type]
 

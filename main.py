@@ -8,6 +8,7 @@ from dataclasses import replace
 
 from src.application.game import Game
 from src.application.runtime_config import RuntimeConfig
+from src.application.runtime_selection import game_class
 
 LOGGING_CONFIG: dict = {
     "version": 1,
@@ -36,7 +37,7 @@ def _setup_logging() -> None:
 def main() -> None:
     """Run the game with INFO console logging."""
     _setup_logging()
-    Game(config=RuntimeConfig.from_environment()).run()
+    game_class(Game)(config=RuntimeConfig.from_environment()).run()
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ def check() -> None:
     to stderr and the exit code says whether the build is sound.
     """
     _setup_logging()
-    game = Game(config=RuntimeConfig.from_environment())
+    game = game_class(Game)(config=RuntimeConfig.from_environment())
     try:
         game.bootstrap()
         game.step()
@@ -69,7 +70,7 @@ def main_debug() -> None:
     # write for them while the application layer uses the explicit config.
     os.environ["DEBUG"] = "1"
     _setup_logging()
-    Game(config=replace(RuntimeConfig.from_environment(), debug=True)).run()
+    game_class(Game)(config=replace(RuntimeConfig.from_environment(), debug=True)).run()
 
 
 def _run_from_argv(argv: list[str]) -> None:

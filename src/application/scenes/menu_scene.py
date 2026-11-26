@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scenes.menu_page import MenuPage
-from src.core.input.event_router import RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.fonts import MENU_FONT_GRID, menu_font_size
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import DESIGN_ITEM, MenuView
-from src.ui.text import t
-from src.ui.title_backdrop import TitleBackdrop
+from src.platform.input.event_router import RoutedInput
+from src.presentation.ui.fonts import MENU_FONT_GRID, menu_font_size
+from src.presentation.ui.menu_model import MenuAction, MenuItem, MenuModel
+from src.presentation.ui.menu_view import DESIGN_ITEM, MenuView
+from src.presentation.ui.text import t
+from src.presentation.ui.title_backdrop import TitleBackdrop
+from src.shared.input_actions import InputAction
 
 if TYPE_CHECKING:
     from src.application.scene_context import SceneContext

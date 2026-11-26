@@ -4,13 +4,13 @@ import inspect
 
 import pygame
 
-from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.combat.combatant_protocol import AttackerPort, Combatant, CombatPort
-from src.combat.frame_data import HitProperties
-from src.combat.hit_resolver import HitResolver
-from src.combat.knockback import KnockbackConfig
-from src.combat.refusal import Refusal
-from src.entities.projectile import Projectile
+from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
+from src.simulation.combat.combatant_protocol import AttackerPort, Combatant, CombatPort
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.hit_resolver import HitResolver
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.combat.refusal import Refusal
+from src.simulation.entities.projectile import Projectile
 from tests.unit.helpers import AttackerStub, make_entity
 
 
@@ -90,8 +90,8 @@ def test_combo_recorded_once_air_only() -> None:
 
 
 def test_neutral_projectile_records_nothing_but_hits() -> None:
-    from src.core.level.systems.projectile_system import ProjectileSystem
-    from src.core.sprite_groups import SpriteGroups
+    from src.simulation.level.systems.projectile_system import ProjectileSystem
+    from src.simulation.sprite_groups import SpriteGroups
 
     target = make_entity(faction="enemy")
     groups = SpriteGroups()
@@ -100,7 +100,7 @@ def test_neutral_projectile_records_nothing_but_hits() -> None:
     system = ProjectileSystem(groups)
     system.spawn(
         __import__(
-            "src.entities.projectile",
+            "src.simulation.entities.projectile",
             fromlist=["ProjectileConfig"],
         ).ProjectileConfig(
             size=(10.0, 10.0),

@@ -7,7 +7,7 @@
 ### Framing
 
 > **The camera shows a fixed rectangle of the world: 1152×648 world units**
-> (`src/core/display/framing.py`). It is render-only, and **the simulation reads
+> (`src/presentation/display/framing.py`). It is render-only, and **the simulation reads
 > it and nothing else** — window size, DPI and desktop dimensions
 > are not observable from it.
 
@@ -30,7 +30,7 @@ once at load; the camera has no zoom, only a density read off the target.
 
 ### Displays
 
-- pygame-ce reports display **sizes** only. `src/core/display/sdl_probe.py` reads
+- pygame-ce reports display **sizes** only. `src/presentation/display/sdl_probe.py` reads
   the bundled SDL2 through `ctypes` for each screen's bounds, usable area,
   platform name, refresh rate and compositor scale.
 - The probe is cross-checked against pygame's numbers and discarded if they

@@ -6,7 +6,7 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.entities.shots import SHOTS
+from src.simulation.entities.shots import SHOTS
 from tests.headless.arena import DT, arena, settle
 
 

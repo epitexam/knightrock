@@ -7,17 +7,13 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.combat.shapes import ShapeKind, ShapePose
-from src.core.colors import Color, Colors
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.core.rendering.render_hints import RenderHints
-from src.entities.components.reaction import ReactionKind, ReactionStatus
-from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
-from src.ui.ui_manager import UIManager
-from src.ui.world_overlay.cards import CardLayer
-from src.ui.world_overlay.geo import GeoLayer
-from src.ui.world_overlay.metrics import (
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
+from src.presentation.ui.ui_manager import UIManager
+from src.presentation.ui.world_overlay.cards import CardLayer
+from src.presentation.ui.world_overlay.geo import GeoLayer
+from src.presentation.ui.world_overlay.metrics import (
     HEALTH_BAR_HEIGHT,
     HEALTH_BAR_LABEL_GAP,
     LABEL_ANCHOR_GAP,
@@ -30,9 +26,13 @@ from src.ui.world_overlay.metrics import (
     VELOCITY_MIN_LENGTH,
     VELOCITY_OUTLINE,
 )
-from src.ui.world_overlay.shared import display_name, hitbox_color
-from src.ui.world_overlay.velocity import arrow_outline
-from src.ui.world_ui import WorldUI
+from src.presentation.ui.world_overlay.shared import display_name, hitbox_color
+from src.presentation.ui.world_overlay.velocity import arrow_outline
+from src.presentation.ui.world_ui import WorldUI
+from src.shared.colors import Color, Colors
+from src.shared.render_hints import RenderHints
+from src.simulation.combat.shapes import ShapeKind, ShapePose
+from src.simulation.entities.components.reaction import ReactionKind, ReactionStatus
 from tests.fakes import game_shape
 from tests.unit.helpers import card_rows, make_overlay
 
@@ -670,7 +670,7 @@ def test_dead_entity_draws_no_health_bar(world_ui: WorldUI, camera: Camera) -> N
 def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera) -> None:
     """UI-7: the player's HP lives on the screen HUD, not above its sprite.
 
-    The gate sits in ``has_health_bar`` (``src/ui/world_overlay/bars.py``), so
+    The gate sits in ``has_health_bar`` (``src/presentation/ui/world_overlay/bars.py``), so
     the bar is neither drawn nor reserved by the debug label cards — and an
     enemy keeps its bar.
     """
@@ -731,7 +731,7 @@ def test_factory_enemy_label_shows_its_type(world_ui: WorldUI) -> None:
     """End to end: a factory-built slime labels itself ``slime``."""
     from pygame.sprite import Group
 
-    from src.entities.enemies.factory import create_enemy
+    from src.simulation.entities.enemies.factory import create_enemy
 
     enemy = create_enemy(
         name="slime",
@@ -762,7 +762,7 @@ def test_disabled_labels_layer_draws_boxes_only(world_ui: WorldUI, camera: Camer
 
 
 def test_help_panel_lists_debug_keys() -> None:
-    from src.ui.ui_manager import UIManager as _UIManager
+    from src.presentation.ui.ui_manager import UIManager as _UIManager
 
     manager = _UIManager(pygame.display.get_surface())
     assert manager.draw_help_panel(10, 10) > 0
@@ -772,7 +772,7 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.ui.ui_manager import UIManager
+    from src.presentation.ui.ui_manager import UIManager
 
     monkeypatch.setenv("DEBUG", "1")
     ui_manager = UIManager(pygame.display.get_surface())
@@ -794,7 +794,7 @@ def test_gameplay_scene_overlay_keys_are_ignored_without_debug(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.ui.ui_manager import UIManager
+    from src.presentation.ui.ui_manager import UIManager
 
     monkeypatch.delenv("DEBUG", raising=False)
     ui_manager = UIManager(pygame.display.get_surface())
@@ -890,8 +890,8 @@ def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch
 def test_replay_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     """F8 flips the attack-replay switch in debug mode, ignored otherwise."""
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.core.level.systems.spawn_system import SpawnSystem
-    from src.core.sprite_groups import SpriteGroups
+    from src.simulation.level.systems.spawn_system import SpawnSystem
+    from src.simulation.sprite_groups import SpriteGroups
 
     spawn = SpawnSystem(SpriteGroups())
     scene = GameplayScene(
@@ -915,7 +915,7 @@ def test_replay_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
 def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: Camera) -> None:
     """The FROZEN tag reads red on black while the sim is held."""
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.core.rendering.renderer import Renderer
+    from src.presentation.rendering.renderer import Renderer
 
     monkeypatch.setenv("DEBUG", "1")
     surface = pygame.display.get_surface()
@@ -936,8 +936,8 @@ def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: C
 
 
 def test_debug_panels_can_be_hidden() -> None:
-    from src.core.rendering.camera import Camera as _Camera
-    from src.core.rendering.renderer import Renderer
+    from src.presentation.rendering.camera import Camera as _Camera
+    from src.presentation.rendering.renderer import Renderer
 
     camera = _Camera(Framing(float(1024), float(768)))
     renderer = Renderer(

@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from src.application.scenes.video_options import _largest_fitting, window_size_options
-from src.core.display.monitors import MIN_WINDOW, Monitor, opening_size
+from src.presentation.display.monitors import MIN_WINDOW, Monitor, opening_size
 
 #: The panels worth checking, as ``(size, usable rect)``: the development
 #: machine's 1080p with a panel at the top, a laptop with nothing to dodge, a 4K

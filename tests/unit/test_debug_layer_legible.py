@@ -26,10 +26,10 @@ import pygame
 import pytest
 
 from src.application.game import Game
-from src.core.settings import Debug
-from src.ui.panel_renderer import PanelRenderer, close_box_rect
-from src.ui.styles import TEXT_MUTED
-from src.ui.world_ui import WorldUI
+from src.presentation.ui.panel_renderer import PanelRenderer, close_box_rect
+from src.presentation.ui.styles import TEXT_MUTED
+from src.presentation.ui.world_ui import WorldUI
+from src.simulation.settings import Debug
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets
@@ -66,7 +66,7 @@ def test_a_sprite_the_camera_is_looking_at_survives_the_overlay_cull(offset) -> 
     With the camera at the world origin the two agree by accident, which is why
     the bug waited for a level with a player who moves.
     """
-    from src.core.rendering.camera import Camera
+    from src.presentation.rendering.camera import Camera
 
     camera = Camera()
     camera.offset.update(offset)
@@ -170,7 +170,7 @@ def test_a_panel_hit_box_is_the_size_of_the_button_it_belongs_to() -> None:
     through both: the drawn glyph's box and the one the click is tested against
     must be the same rect, and both must grow with the panels.
     """
-    from src.ui.panel_renderer import close_box_rect
+    from src.presentation.ui.panel_renderer import close_box_rect
 
     for scale in (1.0, 1.8889, 2.0):
         assert close_box_rect(100, 100, scale).width == max(6, round(14 * scale))

@@ -5,8 +5,8 @@ import os
 import pygame
 import pytest
 
-from src.ui.panel_renderer import PanelLayout, PanelLayoutError, PanelRenderer
-from src.ui.ui_manager import UIManager
+from src.presentation.ui.panel_renderer import PanelLayout, PanelLayoutError, PanelRenderer
+from src.presentation.ui.ui_manager import UIManager
 from tests.fakes import player_shape
 
 
@@ -155,7 +155,7 @@ def test_debug_panels_signal_impossible_small_display_placement() -> None:
     # font at its 8 px design size the whole stack fits there now, so the
     # refusal is exercised on a smaller one.
     ui.renderer.surface = pygame.Surface((400, 200))
-    from src.ui.panel_renderer import PanelLayout as Layout
+    from src.presentation.ui.panel_renderer import PanelLayout as Layout
 
     layout = Layout(400, 200)
     with pytest.warns(RuntimeWarning, match="no free slot|cannot fit"):

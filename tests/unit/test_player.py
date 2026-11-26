@@ -1,13 +1,13 @@
 import pygame
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_state import InputState
-from src.core.settings import Battery as BatterySettings
-from src.core.settings import Physics
-from src.entities.player import Player
-from src.states.player_states import _can_dash
+from src.platform.input.input_manager import InputManager
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.entities.player import Player
+from src.simulation.settings import Battery as BatterySettings
+from src.simulation.settings import Physics
+from src.simulation.states.player_states import _can_dash
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets

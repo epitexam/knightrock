@@ -9,15 +9,15 @@ not the element (they used to be built as large sprites sliding a few px).
 import pygame
 import pytest
 
-from src.core.level.level_data import ObjectData
-from src.core.level.world_builder import (
+from src.simulation.level.level_data import ObjectData
+from src.simulation.level.world_builder import (
     _build_moving_platform,
     _build_span_hazard,
     _explicit_waypoints,
     _rect_path,
 )
-from src.core.settings import World
-from src.core.sprite_groups import SpriteGroups
+from src.simulation.settings import World
+from src.simulation.sprite_groups import SpriteGroups
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets
@@ -107,7 +107,7 @@ def test_span_hazard_launches_centred_and_sweeps_the_full_range(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.core.level.world_builder.build_hazard_animator",
+        "src.simulation.level.world_builder.build_hazard_animator",
         lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError),
     )
     groups = SpriteGroups()
@@ -133,7 +133,7 @@ def test_span_hazard_uses_the_animation_natural_frame_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.core.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
+        "src.simulation.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
     )
     groups = SpriteGroups()
     _build_span_hazard(make_obj("saw", 0.0, 0.0, 300.0, 10.0), groups)
@@ -147,7 +147,7 @@ def test_span_hazard_size_property_overrides_the_frame_size(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.core.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
+        "src.simulation.level.world_builder.build_hazard_animator", lambda *a, **k: _FakeAnimator()
     )
     groups = SpriteGroups()
     _build_span_hazard(make_obj("saw", 0.0, 0.0, 300.0, 10.0, size=32), groups)
@@ -158,7 +158,7 @@ def test_span_hazard_size_property_overrides_the_frame_size(
 
 def test_static_hazard_keeps_its_placed_rect() -> None:
     """Immobile hazards (no span) are unaffected by the range semantics."""
-    from src.core.hazards import SpanHazard
+    from src.simulation.hazards import SpanHazard
 
     surf = pygame.Surface((64, 32))
     hazard = SpanHazard((10.0, 20.0), surf, 0.0, False)

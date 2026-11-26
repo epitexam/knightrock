@@ -15,11 +15,11 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.colors import Colors
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_ui import WorldUI
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.world_ui import WorldUI
+from src.shared.colors import Colors
 
 SIZE = (1024, 768)
 

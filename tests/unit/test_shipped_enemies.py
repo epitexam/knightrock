@@ -19,9 +19,9 @@ import os
 import pygame
 import pytest
 
-from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.enemy import Enemy
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
 
 ASSETS_PRESENT = os.path.isdir(
     os.path.join(os.path.dirname(__file__), "..", "..", "assets", "data")
@@ -38,8 +38,8 @@ def _headless_display() -> None:
 
 @pytest.fixture(scope="module")
 def built_enemies() -> list[Enemy]:
-    from src.core.input.input_manager import InputManager
-    from src.core.level.level import Level
+    from src.platform.input.input_manager import InputManager
+    from src.simulation.level.level import Level
 
     surface = pygame.Surface((1280, 720))
     level = Level(surface, LevelManager(LEVEL_PATHS).get(0), InputManager())

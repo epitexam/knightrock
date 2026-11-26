@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
+from src.simulation.level.systems.combat_trace import CombatTrace, HitCandidate
 
 
 def _candidate(tick: int = 0) -> HitCandidate:

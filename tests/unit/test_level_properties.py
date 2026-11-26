@@ -9,7 +9,7 @@ string ``"false"`` silently switched the thing *on*.
 
 import pytest
 
-from src.core.level import properties as props
+from src.simulation.level import properties as props
 
 
 def test_a_string_number_is_read_as_the_number_it_writes() -> None:

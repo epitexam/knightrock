@@ -7,12 +7,11 @@ import pygame
 import pytest
 
 from src.application.scenes.gameplay_scene import GameplayScene
-from src.combat.frame_data import Stance
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.ui import ui_manager as ui_ids
-from src.ui.panel_renderer import (
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.presentation.ui import ui_manager as ui_ids
+from src.presentation.ui.panel_renderer import (
     PANEL_CLOSE_BOX,
     PANEL_CLOSE_GAP,
     PANEL_CLOSE_INSET,
@@ -23,8 +22,9 @@ from src.ui.panel_renderer import (
     _close_glyph,
     close_box_rect,
 )
-from src.ui.styles import PANEL_BORDER, TEXT_MUTED, TEXT_TITLE
-from src.ui.ui_manager import UIManager
+from src.presentation.ui.styles import PANEL_BORDER, TEXT_MUTED, TEXT_TITLE
+from src.presentation.ui.ui_manager import UIManager
+from src.simulation.combat.frame_data import Stance
 from tests.fakes import player_shape
 from tests.unit.helpers import make_overlay
 

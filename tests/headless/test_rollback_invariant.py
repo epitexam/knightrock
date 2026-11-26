@@ -21,15 +21,15 @@ from typing import Any
 
 import pygame
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import InputProvider
-from src.core.input.input_state import InputState
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.entities.entity import Entity
-from src.entities.player import Player
-from src.entities.player_kit import PromptKind
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import InputProvider
+from src.shared.input_actions import InputAction
+from src.shared.input_state import InputState
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.player import Player
+from src.simulation.entities.player_kit import PromptKind
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from tests.conftest import requires_assets
 from tests.headless.conftest import make_viewport
 

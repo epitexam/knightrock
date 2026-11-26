@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pygame
 from pygame.math import Vector2
 
-from src.physics.movement import move_entity
+from src.simulation.physics.movement import move_entity
 
 
 def make_entity() -> SimpleNamespace:
@@ -45,7 +45,7 @@ def test_move_entity_queries_nearby_sprites_once(monkeypatch) -> None:
         query_count["value"] += 1
         return []
 
-    monkeypatch.setattr("src.physics.movement.get_nearby_sprites", counting_get_nearby)
+    monkeypatch.setattr("src.simulation.physics.movement.get_nearby_sprites", counting_get_nearby)
 
     move_entity(entity, 1 / 60)  # type: ignore[arg-type]
 

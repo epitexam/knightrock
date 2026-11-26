@@ -17,7 +17,7 @@ if __package__ in {None, ""}:
 
 import pygame
 
-from src.core.input.input_bindings import (
+from src.platform.input.input_bindings import (
     XBOX_A,
     XBOX_B,
     XBOX_LB,

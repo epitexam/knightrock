@@ -5,7 +5,7 @@
 ### Physics and assists
 
 Assists are **on**. Set a value to `0` (or `1` for the jump cut) to restore the
-legacy, assist-free behaviour. All of them live in `src/core/settings.py`.
+legacy, assist-free behaviour. All of them live in `src/simulation/settings.py`.
 
 | Class | Constant | Effect |
 |---|---|---|
@@ -22,7 +22,7 @@ legacy, assist-free behaviour. All of them live in `src/core/settings.py`.
 
 Combat is frame-data driven: startup / active / recovery phases feed
 `HitboxManager` and `HitResolver` through the two-pass deterministic
-`CombatSystem` (`src/core/level/systems/combat_system.py`).
+`CombatSystem` (`src/simulation/level/systems/combat_system.py`).
 
 | Constant | Effect |
 |---|---|
@@ -80,7 +80,7 @@ nothing and no snapshot or golden sees it.
   frame is never skipped — a fast swing hits what a slow one would.
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
-> `src/states/reaction_states.py` fires for any entity whose `move_axis` is
+> `src/simulation/states/reaction_states.py` fires for any entity whose `move_axis` is
 > non-zero, and enemies do set `move_axis`. In practice a launched enemy rarely
 > carries a stale axis into the air, but the gate is "has an axis", not "is the
 > player".
@@ -152,7 +152,7 @@ means not that nothing happens but that what happens is over before the eye has 
 repository ships the mechanism, not these entries.
 
 ```python
-# src/core/settings.py — all the enemies take it...
+# src/simulation/settings.py — all the enemies take it...
 PROFILES["enemy"] = TurnProfile(inherits="default", enabled=True)
 # ...except this one, which plants more slowly and leans further.
 PROFILES["enemy_goblin"] = TurnProfile(inherits="enemy", brake_control=12.0, skew_px=28.0)

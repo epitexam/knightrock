@@ -4,10 +4,10 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.factory import create_enemy
-from src.entities.enemies.schema import EnemyConfig
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.enemies.schema import EnemyConfig
 
 
 class MockPlayer:
@@ -165,7 +165,10 @@ class TestNoDirectSubclassUsage:
         """
         import importlib.util
 
-        for module in ("src.entities.enemies.goblin", "src.entities.enemies.training_dummy"):
+        for module in (
+            "src.simulation.entities.enemies.goblin",
+            "src.simulation.entities.enemies.training_dummy",
+        ):
             assert importlib.util.find_spec(module) is None, module
 
     def test_the_enemies_package_re_exports_nothing(self):
@@ -180,7 +183,7 @@ class TestNoDirectSubclassUsage:
         alternative to. What matters is still that no concrete enemy class is
         reachable from the package.
         """
-        from src.entities import enemies
+        from src.simulation.entities import enemies
 
         assert not hasattr(enemies, "__all__")
         for name in ("Enemy", "EnemyConfig", "ENEMY_CONFIGS", "Goblin", "TrainingDummy"):
@@ -205,7 +208,7 @@ class TestPassiveEnemyFriction:
 
     def test_dummy_stops_after_heavy_knockback(self):
         """Regression: passive friction used dt twice, sliding ~40 s."""
-        from src.combat.knockback import KnockbackConfig
+        from src.simulation.combat.knockback import KnockbackConfig
 
         dummy = self._dummy_on_floor()
         dummy.receive_damage(
@@ -222,7 +225,7 @@ class TestPassiveEnemyFriction:
 
     def test_dummy_slows_down_quickly(self):
         """Perceptual stop (< 20 px/s) in under a second, like AI knockback."""
-        from src.combat.knockback import KnockbackConfig
+        from src.simulation.combat.knockback import KnockbackConfig
 
         dummy = self._dummy_on_floor()
         dummy.receive_damage(

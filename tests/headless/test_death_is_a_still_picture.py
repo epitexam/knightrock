@@ -31,7 +31,7 @@ import pytest
 
 from src.application.game import Game
 from src.application.scenes.gameplay_scene import GameplayScene
-from src.core.settings import Debug, Respawn, Simulation
+from src.simulation.settings import Debug, Respawn, Simulation
 from tests.conftest import requires_assets
 
 pytestmark = requires_assets

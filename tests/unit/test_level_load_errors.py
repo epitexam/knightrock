@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.level.level_manager import LevelLoadError, LevelManager
+from src.simulation.level.level_manager import LevelLoadError, LevelManager
 
 _TRUNCATED = '<?xml version="1.0"?><map><oops>'
 
@@ -57,8 +57,8 @@ def test_an_internal_failure_is_logged_with_its_traceback(
     """A bug in the adapter must not be silently filed as a bad map file."""
     import logging
 
-    from src.core.level import level_manager
-    from src.core.level.level_data import LevelData
+    from src.simulation.level import level_manager
+    from src.simulation.level.level_data import LevelData
 
     path = tmp_path / "broken.tmx"
     path.write_text("anything", encoding="utf-8")

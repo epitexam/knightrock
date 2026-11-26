@@ -1,0 +1,775 @@
+import math
+from collections import deque
+from collections.abc import Callable, Iterable
+from itertools import chain
+from time import perf_counter
+from typing import TYPE_CHECKING, Any
+
+import pygame
+
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.overlay import NullOverlay, WorldOverlay
+from src.presentation.rendering.static_layer import BakedStaticLayer
+from src.presentation.rendering.strike_trails import StrikeTrails
+from src.presentation.rendering.tile_chunk_index import TileChunkIndex
+from src.shared.colors import BG_COLORS, Color, Colors
+from src.simulation.ecs.presentation import PresentationSprite
+from src.simulation.level.level_data import LevelConfig
+from src.simulation.settings import Afterimage, HitFlash, Interpolation, ParryFlash
+from src.simulation.sprite_groups import SpriteGroups
+
+if TYPE_CHECKING:
+    from src.simulation.entities.entity import Entity
+
+from src.presentation.rendering.afterimages import (
+    _ghost_alpha as _ghost_alpha,
+)
+from src.presentation.rendering.afterimages import (
+    _ghost_tint as _ghost_tint,
+)
+from src.presentation.rendering.afterimages import (
+    _monochrome as _monochrome,
+)
+from src.presentation.rendering.sprite_transforms import (
+    _SHEAR_CACHE as _SHEAR_CACHE,
+)
+from src.presentation.rendering.sprite_transforms import (
+    _SHEAR_CACHE_MAX as _SHEAR_CACHE_MAX,
+)
+from src.presentation.rendering.sprite_transforms import (
+    DASH_STRETCH_X as DASH_STRETCH_X,
+)
+from src.presentation.rendering.sprite_transforms import (
+    DASH_STRETCH_Y as DASH_STRETCH_Y,
+)
+from src.presentation.rendering.sprite_transforms import (
+    SKEW_STEP as SKEW_STEP,
+)
+from src.presentation.rendering.sprite_transforms import (
+    _evict_half as _evict_half,
+)
+from src.presentation.rendering.sprite_transforms import (
+    _quantize_skew as _quantize_skew,
+)
+from src.presentation.rendering.sprite_transforms import (
+    _sheared as _sheared,
+)
+from src.presentation.rendering.sprite_transforms import (
+    clear_shear_cache as clear_shear_cache,
+)
+from src.presentation.rendering.sprite_transforms import (
+    dash_frame as dash_frame,
+)
+from src.presentation.rendering.sprite_transforms import (
+    is_player_dashing as is_player_dashing,
+)
+from src.presentation.rendering.sprite_transforms import (
+    turn_frame as turn_frame,
+)
+from src.presentation.rendering.sprite_transforms import (
+    turn_offset_px as turn_offset_px,
+)
+from src.presentation.rendering.sprite_transforms import (
+    turn_skew_px as turn_skew_px,
+)
+
+# Scale/flash cache bounds stay with the Renderer that owns those caches.
+SCALE_CACHE_MAX = 512
+FLASH_CACHE_MAX = 512
+
+
+class Renderer:
+    """Draws the world into the render target.
+
+    Every frame is a complete repaint of the target: erase, blit, done. It used
+    to return the rects that changed so the loop could present only those, which
+    bought a partial update and cost a bookkeeping machine that had to stay
+    exactly in step with the drawing -- the erase region, the declared overlay
+    rects, and the previous frame's rects all had to agree or stale pixels
+    survived. With a fixed render target there is nothing left to present
+    partially, so the whole class of bug is gone rather than fixed.
+    """
+
+    def __init__(
+        self,
+        surface: pygame.Surface,
+        camera: Camera,
+        config: LevelConfig | None = None,
+        overlay: WorldOverlay | None = None,
+    ) -> None:
+        self.surface = surface
+        self.camera = camera
+        #: The interface drawn over the world, injected rather than built.
+        #: See :mod:`src.presentation.rendering.overlay` for why the arrow between
+        #: ``core`` and ``ui`` points this way and not the other. Defaults to
+        #: drawing nothing, which is what a renderer built to answer "is this
+        #: tile culled" wants.
+        self.overlay: WorldOverlay = overlay if overlay is not None else NullOverlay()
+        self.background_color = self._resolve_background_color(config)
+        self._ghosts: list[tuple[pygame.Surface, pygame.FRect, float]] = []
+        #: The strikes in flight, drawn from the live attack shapes.
+        self.strike_trails = StrikeTrails()
+        self._ghost_timer: float = 0.0
+        #: Where the last ghost of each dashing fighter was stamped, and how
+        #: many this dash has left: a ghost is stamped only once the fighter
+        #: has moved on, and each is a little more saturated than the last.
+        self._ghost_marks: dict[int, tuple[float, float, int]] = {}
+        # Scaled sprite surfaces: ``id(image) -> (image, scaled)``. Scaling a
+        # surface every frame for every visible sprite is expensive, so each
+        # image is scaled once and reused; the key used to carry the camera zoom
+        # too, and no longer does, because the zoom is gone.
+        # The source is kept *in the cached value* on purpose: a dict key built
+        # from ``id(image)`` alone can be hit by a freed surface whose id was
+        # recycled, which would hand back a stale, wrongly sized blit.
+        self._scaled_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
+        # Flash silhouettes, keyed by ``(id(image), tint)`` like
+        # ``_scaled_cache`` and holding the source for the same reason.
+        self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
+        self._dashing_player: Entity | None = None
+        self._turning_player: Entity | None = None
+        self._dashing_proxy: PresentationSprite | None = None
+        self._turning_proxy: PresentationSprite | None = None
+        #: ``id(fighter) -> (dx, dy)`` this frame: how far behind its simulated
+        #: position a fighter is drawn. Only fighters that moved are in it.
+        self._lag: dict[int, tuple[float, float]] = {}
+        #: Chunked culls over the frozen tile planes, or None when the world
+        #: has none to index. Installed by the level after the world is built;
+        #: a renderer that was handed a bare group (every test that draws a
+        #: couple of sprites) keeps the linear scan, which is the same result
+        #: for a plane small enough not to need an index.
+        self._static_index: TileChunkIndex | None = None
+        self._foreground_index: TileChunkIndex | None = None
+        #: Pre-painted alternatives to the two culls. A plane that was baked
+        #: replaces its cull in the draw pass; the cull is still installed for
+        #: the other plane and as the fallback on oversized levels.
+        self._baked_static: BakedStaticLayer | None = None
+        self._baked_foreground: BakedStaticLayer | None = None
+        self._debug_samples: dict[str, deque[float]] = {
+            "world_ui_ms": deque(maxlen=120),
+            "panels_ms": deque(maxlen=120),
+        }
+
+    def set_static_planes(
+        self, statics: TileChunkIndex | None, foreground: TileChunkIndex | None = None
+    ) -> None:
+        """Adopt chunked culls for the level's frozen tile planes.
+
+        Both indexes are optional and independent: a level with no foreground
+        layer passes nothing for it, and a renderer with neither keeps the
+        linear scan, so nothing about the frame changes either way.
+        """
+        self._static_index = statics
+        self._foreground_index = foreground
+
+    def set_baked_planes(
+        self,
+        static: BakedStaticLayer | None,
+        foreground: BakedStaticLayer | None = None,
+    ) -> None:
+        """Adopt pre-painted planes; ``None`` keeps the existing cull for that plane.
+
+        The renderer's contract with its callers is unchanged: whoever builds
+        the level decides which producer to install. A test with a handful of
+        sprites installs neither and keeps the linear draw path.
+        """
+        self._baked_static = static
+        self._baked_foreground = foreground
+
+    def set_surface(self, surface: pygame.Surface) -> None:
+        """Adopt a new render target, after the render scale changed.
+
+        Nothing else reaches the renderer. A window resize does not come here:
+        the target is the same surface either way, only the way it is presented
+        changes, and that is ``Presentation``'s business.
+        """
+        self.surface = surface
+        # The camera owns the scale, so it has to hear about the new target in
+        # the same breath. Skipping this leaves the rectangles at the old scale
+        # while the images move to the new one, which is the mismatch that draws
+        # a world at the wrong size with no error anywhere.
+        self.camera.set_target(surface)
+        # The camera has just re-read the density, so the interface's two scales
+        # are derived from it here rather than each keeping its own copy.
+        self.overlay.set_surface(surface, self.camera.density)
+        self._scaled_cache.clear()
+        self._flash_cache.clear()
+        self.strike_trails.clear_tints()
+
+    @property
+    def _density(self) -> float:
+        """Target pixels per world unit, as the camera computed it.
+
+        Not derived here as well. Two derivations of the same number is one too
+        many, and this is the one that matters: the camera uses it for the
+        rectangles, so a disagreement would scale the images and not the rects
+        and the frame would show a world half the size it claims to.
+        """
+        return self.camera.density
+
+    def _scaled_image(self, image: pygame.Surface) -> pygame.Surface:
+        """Magnify ``image`` to the density, caching the result.
+
+        Returns the image untouched at a density of exactly 1 so a target that
+        needs no magnification never pays for one.
+        """
+        if self._density == 1.0:
+            return image
+        key = id(image)
+        cached = self._scaled_cache.get(key)
+        if cached is not None:
+            return cached[1]
+        scaled = self._rescale(image)
+        if len(self._scaled_cache) >= SCALE_CACHE_MAX:
+            _evict_half(self._scaled_cache)
+        self._scaled_cache[key] = (image, scaled)
+        return scaled
+
+    def _silhouette(self, image: pygame.Surface, color: Color) -> pygame.Surface:
+        """A copy of ``image`` in ``color``, keeping its alpha, memoised per image.
+
+        Building a mask and converting it to a surface costs 6.8us, and a
+        flashing entity redraws for the whole 0.1s of its flash, so this was
+        the most expensive per-sprite operation on the hit-feedback path. The
+        silhouette only depends on the source image and the tint, never on the
+        flash intensity, so it is built once and the caller copies it to set
+        its own alpha.
+
+        The source is kept in the cached value: an ``id``-keyed dict can be
+        handed a freed surface whose id was recycled, which would return a
+        silhouette of the wrong size.
+        """
+        key = (id(image), color)
+        cached = self._flash_cache.get(key)
+        if cached is not None:
+            return cached[1]
+        mask = pygame.mask.from_surface(image)
+        silhouette = mask.to_surface(setcolor=(*color, 255), unsetcolor=(0, 0, 0, 0))
+        if len(self._flash_cache) >= FLASH_CACHE_MAX:
+            _evict_half(self._flash_cache)
+        self._flash_cache[key] = (image, silhouette)
+        return silhouette
+
+    def _scaled_image_once(self, image: pygame.Surface) -> pygame.Surface:
+        """Magnify a transient surface to the density, without caching it.
+
+        Afterimages and damage flashes build a brand new surface every frame,
+        so caching them by ``id()`` would grow the cache forever. They are
+        short-lived by nature, so scaling them directly is both correct and
+        cheap enough.
+        """
+        if self._density == 1.0:
+            return image
+        return self._rescale(image)
+
+    def _rescale(self, image: pygame.Surface) -> pygame.Surface:
+        """Magnify a surface to the density, nearest neighbour.
+
+        Nearest, and the size asked of the camera rather than computed here:
+        the art is authored at one pixel per world unit, so a magnified sprite
+        stays a block of whole source pixels instead of a smoothed
+        approximation of one, and the destination rectangle the sprite is blitted
+        into is built from the very same number -- which is what keeps
+        ``pygame.blit`` from resampling it behind our back.
+        """
+        return pygame.transform.scale(image, self.camera.scaled_size(image.get_size()))
+
+    def rescale(self, image: pygame.Surface) -> pygame.Surface:
+        """Magnify ``image`` to the target density, for producers that bake planes.
+
+        The same nearest-neighbour rule as every sprite blit, so a pre-painted
+        plane and a moving sprite cannot disagree about the pixel grid.
+        """
+        # The same cache the draw path uses: at density 1 it returns the
+        # original image, and a needless transform.scale there changes alpha
+        # bits on transparent art even though the size does not move.
+        return self._scaled_image(image)
+
+    def _record_debug_sample(self, name: str, elapsed_ms: float) -> None:
+        self._debug_samples[name].append(elapsed_ms)
+
+    def debug_metrics_snapshot(self) -> dict[str, float]:
+        result: dict[str, float] = {}
+        for name, samples in self._debug_samples.items():
+            ordered = sorted(samples)
+            result[name] = ordered[-1] if ordered else 0.0
+            index = min(len(ordered) - 1, int(len(ordered) * 0.95)) if ordered else 0
+            result[f"{name.removesuffix('_ms')}_p95_ms"] = ordered[index] if ordered else 0.0
+        return result
+
+    @staticmethod
+    def _resolve_background_color(config: LevelConfig | None) -> Color:
+        if config is not None and config.bg:
+            color = BG_COLORS.get(config.bg)
+            if color is not None:
+                return color
+        return Colors.sky_blue
+
+    def draw(
+        self,
+        groups: SpriteGroups,
+        debug_enabled: bool = False,
+        dt: float = 0.0,
+        alpha: float = 0.0,
+    ) -> None:
+        """Draw one complete frame of the world into the render target.
+
+        ``alpha`` is the position within the current simulation tick, in
+        [0, 1]. It is passed rather than read from the clock so the blend is
+        a pure function of the loop state and stays reproducible. The camera
+        applies it, so every sprite, the HP bars and the debug overlay read
+        one transform and cannot drift apart.
+
+        Returns nothing: the whole target is repainted every frame, so nothing
+        painted afterwards has to declare its rects a frame ahead for a partial
+        erase to reach them.
+        """
+        self.camera.begin_frame(alpha)
+        self._lag = self._interpolation_lag(groups, alpha)
+        self._dashing_proxy = self._find_dashing_proxy(groups)
+        self._turning_proxy = self._find_turning_proxy(groups)
+        self._dashing_player = (
+            self._entity_of(self._dashing_proxy) if self._dashing_proxy is not None else None
+        )
+        self._turning_player = (
+            self._entity_of(self._turning_proxy) if self._turning_proxy is not None else None
+        )
+        self.surface.fill(self.background_color)
+        debug_sprites: list[pygame.sprite.Sprite] = []
+        blits = self._collect_visible_blits(groups, debug_sprites if debug_enabled else None)
+        for surface, screen_rect in blits:
+            self.surface.blit(surface, screen_rect)
+        self._draw_ghosts(self._update_afterimages(groups, dt))
+        self._draw_flashes(self._collect_flashes(groups))
+        # After the hit flashes: a struck fighter flashes white, and the mark
+        # of the blow that struck it has to show on top of that.
+        self.strike_trails.update(groups.entity_sprites, dt, groups.projectile_sprites)
+        self.strike_trails.draw(self.surface, self.camera)
+        if debug_enabled:
+            overlays = perf_counter()
+            self.overlay.draw_debug_overlays(debug_sprites, self.camera, dt)
+            self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
+
+    @staticmethod
+    def _entity_of(sprite: Any) -> Any:
+        """The simulation object behind a draw proxy, or the sprite itself."""
+        proxy = getattr(sprite, "entity", None)
+        return proxy if proxy is not None else sprite
+
+    @staticmethod
+    def _interpolation_lag(groups: SpriteGroups, alpha: float) -> dict[int, tuple[float, float]]:
+        """How far behind its simulated position each moving fighter is drawn.
+
+        A frame drawn ``alpha`` of the way into the pending tick shows a fighter
+        that far from where the last tick began to where it ended, the same
+        blend the camera makes -- so a fighter and the camera following it
+        move together instead of the fighter stepping at 60 Hz under it.
+        """
+        lag: dict[int, tuple[float, float]] = {}
+        if not Interpolation.ENABLED:
+            return lag
+        behind = 1.0 - min(max(alpha, 0.0), 1.0)
+        if behind <= 0.0:
+            return lag
+        limit = Interpolation.MAX_STEP_PX
+        for proxy in groups.presentation_sprites or groups.entity_sprites:
+            fighter = Renderer._entity_of(proxy)
+            previous = fighter.render_hints.previous_center
+            if previous is None:
+                continue
+            center = fighter.hitbox.center
+            dx, dy = previous[0] - center[0], previous[1] - center[1]
+            if (dx == 0.0 and dy == 0.0) or abs(dx) > limit or abs(dy) > limit:
+                continue
+            lag[id(fighter)] = (dx * behind, dy * behind)
+        return lag
+
+    def _drawn_rect(
+        self, sprite: Any, rect: pygame.FRect | pygame.Rect
+    ) -> pygame.FRect | pygame.Rect:
+        """``rect`` moved to where this frame draws the sprite."""
+        if not self._lag:
+            return rect
+        lag = self._lag.get(id(self._entity_of(sprite)))
+        if lag is None:
+            return rect
+        return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
+
+    def _find_dashing_proxy(self, groups: SpriteGroups) -> Any:
+        """The draw proxy of the dashing player, or None.
+
+        Resolving it once per frame turns a three-attribute lookup on every
+        blitted sprite into an identity comparison in the blit loop.
+        """
+        for sprite in groups.entity_sprites:
+            if is_player_dashing(self._entity_of(sprite)):
+                return sprite
+        return None
+
+    def _find_turning_proxy(self, groups: SpriteGroups) -> Any:
+        """The draw proxy of the fighter mid-pivot, or None."""
+        for sprite in groups.entity_sprites:
+            if self._entity_of(sprite).render_hints.turn_ratio > 0.0:
+                return sprite
+        return None
+
+    def _collect_visible_blits(
+        self,
+        groups: SpriteGroups,
+        visible: list[pygame.sprite.Sprite] | None = None,
+    ) -> list[tuple[pygame.Surface, pygame.Rect]]:
+        """Camera-cull and compute target rects for every visible plane.
+
+        One flat loop over the three sprite draw planes, in paint order: the
+        frozen tile plane (through its chunk index, when one is installed), the
+        moving plane, then the foreground decor. With the index this is ~130
+        sprites instead of the ~970 a single scan of the level cost, and the
+        static sprites it skips are *not* walked at all -- which is why the
+        tile layers live in their own group rather than in ``all_sprites``.
+
+        The exact ``is_visible`` test still runs on every candidate. The index
+        is deliberately a conservative superset, so it decides what is worth
+        asking about and never what gets drawn; ``Camera.is_visible`` is
+        inlined here as ``viewport.colliderect`` because at a few hundred calls
+        per frame the extra Python frame is a measurable share of the loop.
+
+        The FX plane is deliberately *not* scaled through ``_scaled_image``:
+        FX particles rebuild their ``image`` every tick, so each one is a new
+        Surface object and each one would add a permanent entry to the scale
+        cache. Caching them grew the cache by one retained surface per FX
+        sprite per tick, for the whole session, with no eviction. They are
+        short-lived by nature, so they go through ``_scaled_image_once``.
+
+        They are split by a particle's own ``behind`` flag: ground-level marks
+        go in under the moving plane, so a fighter is never painted over by
+        the dust they kicked up, and everything else stays on top where a
+        spark can be seen.
+        """
+        blits: list[tuple[pygame.Surface, pygame.Rect]] = []
+        static_index = self._static_index
+        foreground_index = self._foreground_index
+        # Resolved once: ``begin_frame`` is idempotent within a frame, and
+        # ``colliderect`` is the same intersection ``Camera.is_visible`` makes.
+        viewport = self.camera.viewport
+        colliderect = viewport.colliderect
+        behind_fx, front_fx = self._collect_fx_blits(groups, colliderect)
+
+        baked_static = self._baked_static
+        if baked_static is not None:
+            self._append_baked_slice(baked_static, blits)
+            # DEBUG only: the overlay still labels the terrain. The scan is
+            # the price of that diagnostic, not of drawing the frame.
+            self._visible_for_debug(
+                self._static_plane(groups, None, viewport), colliderect, visible
+            )
+        else:
+            for sprite in self._static_plane(groups, static_index, viewport):
+                if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
+                    visible.append(sprite)
+        blits.extend(behind_fx)
+
+        baked_foreground = self._baked_foreground
+        for sprite in self._sprite_planes(
+            groups, foreground_index, viewport, include_foreground=baked_foreground is None
+        ):
+            if self._append_cached_blit(blits, sprite, colliderect) and visible is not None:
+                visible.append(sprite)
+        if baked_foreground is not None:
+            self._append_baked_slice(baked_foreground, blits)
+            self._visible_for_debug(groups.fg_sprites, colliderect, visible)
+        blits.extend(front_fx)
+        return blits
+
+    def _append_baked_slice(
+        self, layer: BakedStaticLayer, blits: list[tuple[pygame.Surface, pygame.Rect]]
+    ) -> None:
+        """Queue one pre-painted plane's viewport slice, if it covers the view."""
+        part = layer.slice(self.camera.viewport, self.camera.frame_shift)
+        if part is not None:
+            blits.append(part)
+
+    @staticmethod
+    def _visible_for_debug(
+        sprites: Iterable[pygame.sprite.Sprite],
+        colliderect: Callable[[pygame.FRect | pygame.Rect], bool],
+        visible: list[pygame.sprite.Sprite] | None,
+    ) -> None:
+        """Keep the DEBUG overlay's sprite list honest for a baked plane."""
+        if visible is None:
+            return
+        visible.extend(
+            sprite for sprite in sprites if sprite.rect is not None and colliderect(sprite.rect)
+        )
+
+    def _collect_fx_blits(
+        self, groups: SpriteGroups, colliderect: Callable[[pygame.FRect | pygame.Rect], bool]
+    ) -> tuple[list[tuple[pygame.Surface, pygame.Rect]], list[tuple[pygame.Surface, pygame.Rect]]]:
+        """The FX plane, split into the marks that go under the world and the rest."""
+        behind: list[tuple[pygame.Surface, pygame.Rect]] = []
+        front: list[tuple[pygame.Surface, pygame.Rect]] = []
+        for sprite in groups.fx_sprites:
+            rect = sprite.rect
+            image_source = sprite.image
+            if rect is None or image_source is None or not colliderect(rect):
+                continue
+            target = behind if sprite.behind else front
+            target.append((self._scaled_image_once(image_source), self.camera.apply_snapped(rect)))
+        return behind, front
+
+    def _static_plane(
+        self,
+        groups: SpriteGroups,
+        static_index: TileChunkIndex | None,
+        viewport: pygame.FRect,
+    ) -> Iterable[pygame.sprite.Sprite]:
+        """The frozen tile plane, through its chunk index when there is one.
+
+        Without an index the plane falls back to a linear scan. The index is
+        refused by the level when a moving sprite reached the frozen plane, and
+        a chunked plane refused without a fallback draws nothing at all -- the
+        terrain disappears and the player falls through the floor. The scan is
+        the same result, only slower, which for a world with no valid index is
+        the right trade. The exact ``is_visible`` test still runs downstream on
+        every candidate, so the walker hands over the whole plane.
+        """
+        if static_index is None:
+            return groups.static_sprites
+        return static_index.candidates(viewport)
+
+    def _sprite_planes(
+        self,
+        groups: SpriteGroups,
+        foreground_index: TileChunkIndex | None,
+        viewport: pygame.FRect,
+        *,
+        include_foreground: bool = True,
+    ) -> Iterable[pygame.sprite.Sprite]:
+        """The moving plane and the foreground decor, in paint order.
+
+        A ``chain`` rather than a concatenation because the moving plane is a
+        live group: a list would snapshot it, and a sprite added between the
+        planes being walked and the blit loop running would be drawn at a
+        position that does not match the frame it belongs to.
+        """
+        foreground: Iterable[pygame.sprite.Sprite] = ()
+        if include_foreground:
+            foreground = (
+                groups.fg_sprites
+                if foreground_index is None
+                else foreground_index.candidates(viewport)
+            )
+        moving: Iterable[pygame.sprite.Sprite]
+        if groups.presentation_sprites:
+            proxy_ids = {id(proxy) for proxy in groups.presentation_sprites}
+            moving = chain(
+                groups.presentation_sprites,
+                (
+                    sprite
+                    for sprite in groups.all_sprites
+                    if id(sprite) not in proxy_ids and not isinstance(sprite, PresentationSprite)
+                ),
+            )
+        else:
+            moving = groups.all_sprites
+        return chain(moving, foreground)
+
+    def _append_cached_blit(
+        self,
+        blits: list[tuple[pygame.Surface, pygame.Rect]],
+        sprite: pygame.sprite.Sprite,
+        colliderect: Callable[[pygame.FRect | pygame.Rect], bool],
+    ) -> bool:
+        """Cull one sprite through the scale cache and queue its blit.
+
+        A sprite with no rectangle or no image is skipped: ``pygame`` allows
+        both to be unset, and the cull is asked about every sprite in a plane
+        rather than only the ones a caller vouched for.
+        """
+        rect = sprite.rect
+        image_source = sprite.image
+        if rect is None or image_source is None or not colliderect(rect):
+            return False
+        screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, rect))
+        image = self._scaled_image(image_source)
+        # Only a player can be dashing, and a player is an entity, so this
+        # branch is resolved by identity rather than by a ``getattr`` walk
+        # over every tile of the level.
+        if self._dashing_proxy is not None and sprite is self._dashing_proxy:
+            image, screen_rect = dash_frame(image, screen_rect)
+        turning = self._turning_player
+        if turning is not None and sprite is self._turning_proxy:
+            image, screen_rect = turn_frame(
+                image,
+                screen_rect,
+                turn_offset_px(turning),
+                turn_skew_px(turning),  # type: ignore[arg-type]
+            )
+        blits.append((image, screen_rect))
+        return True
+
+    def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
+        """Tint overlays for entities that just took a hit or just parried.
+
+        Only entities carry the timers, so this walks ``entity_sprites``:
+        scanning ``all_sprites`` cost a ``getattr`` on every tile of the level,
+        ~1000 of them, to find at most a handful of flashes.
+
+        The parry wash is the same overlay in gold, and it is the whole
+        difference between a block and a perfect one on the character itself:
+        the reaction animation is already shared, so a parry that also threw
+        its own burst and washed the whole frame was three times the screen
+        coverage of the thing it is a bigger version of.
+        """
+        flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
+        for sprite in groups.entity_sprites:
+            fighter = self._entity_of(sprite)
+            hints = fighter.render_hints
+            hurt = hints.flash_timer
+            parried = hints.parry_flash_timer
+            if hurt <= 0.0 and parried <= 0.0:
+                continue
+            if not self.camera.is_visible(sprite.rect):
+                continue
+            color = Colors.white
+            strength = hurt / HitFlash.DURATION if hurt > 0.0 else 0.0
+            if parried > 0.0:
+                color = Colors.gold
+                strength = max(strength, ParryFlash.ALPHA * min(1.0, parried / ParryFlash.DURATION))
+            overlay = self._silhouette(sprite.image, color).copy()
+            overlay.set_alpha(int(255 * min(1.0, strength)))
+            screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, sprite.rect))
+            overlay = self._scaled_image_once(overlay)
+            if is_player_dashing(fighter):
+                overlay, screen_rect = dash_frame(overlay, screen_rect)
+            # The same slide and lean the body got, or a flash fired mid-pivot
+            # paints a silhouette of a fighter who is not standing there.
+            overlay, screen_rect = turn_frame(
+                overlay, screen_rect, turn_offset_px(fighter), turn_skew_px(fighter)
+            )
+            flashes.append((overlay, screen_rect))
+        return flashes
+
+    def _draw_flashes(self, flashes: list[tuple[pygame.Surface, pygame.Rect]]) -> None:
+        for overlay, screen_rect in flashes:
+            self.surface.blit(overlay, screen_rect)
+
+    def _update_afterimages(
+        self, groups: SpriteGroups, dt: float
+    ) -> list[tuple[pygame.Surface, pygame.Rect]]:
+        """Maintain the dash ghost trail (render-only, capped + fading).
+
+        Each ghost keeps the world rectangle it was spawned over, and its
+        screen position is mapped through the camera again every frame. A
+        screen rect cached at spawn would stay nailed to the window while the
+        world scrolled underneath it, and a dash is exactly when the camera
+        moves far enough for that to show.
+        """
+        live: list[tuple[pygame.Surface, pygame.FRect, float]] = []
+        for surface, world_rect, ttl in self._ghosts:
+            ttl -= dt
+            if ttl > 0.0:
+                surface.set_alpha(_ghost_alpha(ttl))
+                live.append((surface, world_rect, ttl))
+        self._ghosts = live
+        if dt > 0.0:
+            self._ghost_timer += dt
+            if self._ghost_timer >= Afterimage.SPAWN_EVERY:
+                self._ghost_timer = 0.0
+                self._spawn_afterimage(groups)
+        return [
+            (surface, surface.get_rect(center=self._ghost_center(world_rect)))
+            for surface, world_rect, _ in self._ghosts
+        ]
+
+    def _ghost_center(self, world_rect: pygame.FRect) -> tuple[float, float]:
+        """Where a ghost anchored to ``world_rect`` lands on screen this frame.
+
+        The stretched surface was already sized at spawn, so only the centre
+        has to be mapped: reusing the camera transform keeps the shake identical
+        to every other sprite, and costs no rescale per frame.
+        """
+        return self.camera.apply_snapped(world_rect).center
+
+    def _spawn_afterimage(self, groups: SpriteGroups) -> None:
+        """Snapshot dashing players into fading ghosts.
+
+        The dashing player is an entity, so this walks ``entity_sprites``
+        rather than the whole level: ``all_sprites`` meant a full-group
+        ``is_player_dashing`` scan several times a second.
+        """
+        dashing: set[int] = set()
+        for sprite in groups.entity_sprites:
+            if not is_player_dashing(self._entity_of(sprite)):
+                continue
+            dashing.add(id(sprite))
+            if not self.camera.is_visible(sprite.rect):
+                continue
+            # Spaced by the distance covered, not by the clock: stamps a frame
+            # apart on a fighter that moved a few pixels land on one another
+            # and the trail reads as one grey smear.
+            mark = self._ghost_marks.get(id(sprite))
+            center = sprite.rect.center
+            if mark is not None and math.dist(center, mark[:2]) < Afterimage.SPACING:
+                continue
+            count = 0 if mark is None else mark[2] + 1
+            self._ghost_marks[id(sprite)] = (center[0], center[1], count)
+            tint = _ghost_tint(count)
+            # Zoomed for the camera, and deliberately *not* run through
+            # ``dash_frame``. The stretch is what the live sprite is doing --
+            # it is a cue for the movement, read while it happens. Stamping a
+            # frozen copy of it turns every afterimage into a lozenge at
+            # 1.6 wide and 0.6 tall, and six of those in a row is a row of
+            # pancakes rather than a trail of the fighter. A manga afterimage
+            # is the character's own shape; the shape is what the player
+            # recognises, so that is what gets copied.
+            ghost = _monochrome(sprite.image, tint)
+            if count > 0:
+                # A dark sprite multiplied by a tint stays dark: the later
+                # stamps are lifted towards the dash's cyan so the colour shows.
+                lift = min(1.0, count / max(1, Afterimage.TINT_STEPS))
+                ghost.fill(
+                    tuple(round(c * lift) for c in Afterimage.LIFT),
+                    special_flags=pygame.BLEND_RGB_ADD,
+                )
+            ghost = self._scaled_image_once(ghost)
+            # The world rect is copied because the player's own rect is mutated
+            # in place every tick, which would drag the ghost along with it.
+            self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))
+            self._ghosts = self._ghosts[-Afterimage.MAX :]
+        self._ghost_marks = {key: mark for key, mark in self._ghost_marks.items() if key in dashing}
+
+    def _draw_ghosts(self, ghost_draws: list[tuple[pygame.Surface, pygame.Rect]]) -> None:
+        for surface, screen_rect in ghost_draws:
+            self.surface.blit(surface, screen_rect)
+
+    def draw_health_bars(self, entities: Iterable[Any]) -> list[pygame.Rect]:
+        """Draw the HP bars over the world pass; return the rects they occupy.
+
+        The bars are anchored to the rects this frame blitted, not to the
+        simulation position: the world pass interpolates between ticks, so a
+        bar drawn at the simulation position sits half a tick behind its own
+        sprite, which reads as a stripe trailing a moving enemy.
+
+        The chain still returns those rects because
+        ``world_overlay.bars`` computes them anyway, and changing a port
+        signature to drop them would buy nothing. ``Level.draw`` discards the
+        result; the readers are the tests that assert what was painted.
+        """
+        fighters = tuple(entities)
+        screen_rects = {
+            id(entity): self.camera.apply(self._drawn_rect(entity, entity.hitbox))
+            for entity in fighters
+            if id(entity) in self._lag
+        }
+        return self.overlay.draw_health_bars(fighters, self.camera, screen_rects or None)
+
+    def draw_debug_panels(self, **counters: Any) -> None:
+        """Ask the overlay to draw the screen-side debug panels.
+
+        Only the *when* lives here -- the renderer owns the frame, so it is the
+        one that knows a frame is being presented and how long the panels took.
+        The *what* is the overlay's, including the panel layout, which is why
+        ``PanelLayout`` is no longer imported by ``core``.
+        """
+        started = perf_counter()
+        self.overlay.draw_debug_panels(**counters, debug_stats=self.debug_metrics_snapshot())
+        self._record_debug_sample("panels_ms", (perf_counter() - started) * 1000.0)

@@ -14,9 +14,9 @@ from unittest.mock import patch
 import pygame
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.input.input_manager import InputManager
-from src.core.input.input_provider import LocalInputProvider, NullInputProvider
+from src.platform.input.input_manager import InputManager
+from src.platform.input.input_provider import LocalInputProvider, NullInputProvider
+from src.shared.input_actions import InputAction
 
 pytestmark = pytest.mark.usefixtures("_latch_display")
 

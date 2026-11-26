@@ -29,11 +29,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame  # noqa: E402
 from pygame.math import Vector2  # noqa: E402
 
-from src.physics.gravity import apply_entity_gravity  # noqa: E402
-from src.physics.platforms import update_moving_platform  # noqa: E402
-from src.physics.spatial_hash import SpatialHash  # noqa: E402
-from src.physics.spatial_query import make_query  # noqa: E402
-from src.physics.velocity import (  # noqa: E402
+from src.simulation.physics.gravity import apply_entity_gravity  # noqa: E402
+from src.simulation.physics.platforms import update_moving_platform  # noqa: E402
+from src.simulation.physics.spatial_hash import SpatialHash  # noqa: E402
+from src.simulation.physics.spatial_query import make_query  # noqa: E402
+from src.simulation.physics.velocity import (  # noqa: E402
     apply_slide_friction,
     apply_velocity_friction,
     lerp_velocity,

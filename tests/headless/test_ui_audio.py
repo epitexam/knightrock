@@ -17,10 +17,10 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
-from src.core.events import EventBus, UiEffect, UiFeedback
-from src.core.input.event_router import EventRouter
-from src.core.input.input_actions import InputAction
-from src.core.level.level import Level
+from src.platform.input.event_router import EventRouter
+from src.shared.events import EventBus, UiEffect, UiFeedback
+from src.shared.input_actions import InputAction
+from src.simulation.level.level import Level
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
@@ -365,7 +365,7 @@ def test_the_simulation_reports_do_not_reach_the_interface_feedback(
     manager.switch(OptionsScene(manager.game))
 
     game_runtime.events.emit(
-        __import__("src.core.events", fromlist=["x"]).PlayerDied(entity_id="p", deaths=0)
+        __import__("src.shared.events", fromlist=["x"]).PlayerDied(entity_id="p", deaths=0)
     )
 
     assert feedback.cues == []
@@ -405,7 +405,7 @@ def test_one_input_reaches_exactly_one_subscriber_call(
     The audio bus is attached to the same bus, so counting the sounds it would
     play counts the facts, without a mixer in the way.
     """
-    from src.core.audio import AudioBus, cue_for
+    from src.platform.audio import AudioBus, cue_for
 
     bus = AudioBus()
     bus.attach(game_runtime.events)

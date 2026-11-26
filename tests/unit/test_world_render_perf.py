@@ -12,10 +12,10 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.core.sprite_groups import SpriteGroups
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.simulation.sprite_groups import SpriteGroups
 from tests.fakes import FighterSprite
 
 pytestmark = pytest.mark.usefixtures("_world_render_display")
@@ -84,7 +84,7 @@ def test_the_dashing_player_is_resolved_once_not_per_sprite(
         groups.all_sprites.add(Tile((32.0, 32.0)))
 
     calls = 0
-    import src.core.rendering.renderer as module
+    import src.presentation.rendering.renderer as module
 
     original = module.is_player_dashing
 

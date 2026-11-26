@@ -18,13 +18,13 @@ import os
 import pygame
 import pytest
 
-from src.core.colors import Colors
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import (
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import (
     FLASH_CACHE_MAX,
     SCALE_CACHE_MAX,
     Renderer,
 )
+from src.shared.colors import Colors
 
 
 @pytest.fixture(scope="module", autouse=True)

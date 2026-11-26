@@ -1,6 +1,6 @@
 """Generic ObjectPool tests (Phase 3 #1, audit F6.3)."""
 
-from src.core.object_pool import ObjectPool
+from src.simulation.object_pool import ObjectPool
 
 
 class Projectile:

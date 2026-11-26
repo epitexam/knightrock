@@ -9,7 +9,7 @@ future change to the accumulator has to argue with a test.
 
 import pytest
 
-from src.combat.attack_state import AttackStateMachine
+from src.simulation.combat.attack_state import AttackStateMachine
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 

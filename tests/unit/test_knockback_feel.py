@@ -7,12 +7,12 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.combat.frame_data import HitProperties
-from src.combat.knockback import KnockbackConfig
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.core.settings import Combat as CombatSettings
-from src.states.reaction_states import KnockbackState
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.simulation.combat.frame_data import HitProperties
+from src.simulation.combat.knockback import KnockbackConfig
+from src.simulation.settings import Combat as CombatSettings
+from src.simulation.states.reaction_states import KnockbackState
 from tests.unit.helpers import make_active_attacker, make_attack, make_entity, make_phase
 
 
@@ -54,7 +54,7 @@ class KnockedEntity:
 
 
 def test_launched_entity_bounces_off_walls() -> None:
-    from src.physics.collisions import resolve_collisions
+    from src.simulation.physics.collisions import resolve_collisions
 
     entity = KnockedEntity(pygame.FRect(62, 150, 40, 48))
     entity.old_hitbox = pygame.FRect(60, 150, 40, 48)
@@ -68,7 +68,7 @@ def test_launched_entity_bounces_off_walls() -> None:
 
 
 def test_grounded_entity_still_stops_dead() -> None:
-    from src.physics.collisions import resolve_collisions
+    from src.simulation.physics.collisions import resolve_collisions
 
     entity = KnockedEntity(pygame.FRect(62, 150, 40, 48))
     entity.old_hitbox = pygame.FRect(60, 150, 40, 48)
@@ -103,7 +103,7 @@ def test_camera_rests_without_trauma() -> None:
 
 
 def test_heavy_hit_extends_hitstop_and_tracks_impact() -> None:
-    from src.core.level.systems.combat_system import CombatSystem
+    from src.simulation.level.systems.combat_system import CombatSystem
 
     target = make_entity(pos=(100.0, 100.0), faction="player")
     attacker = make_active_attacker(target)
@@ -152,7 +152,7 @@ def test_neutral_stick_does_not_steer_the_flight() -> None:
 
 
 def test_enemy_drops_stale_axis_on_launch() -> None:
-    from src.states.enemy_states import EnemyKnockbackState
+    from src.simulation.states.enemy_states import EnemyKnockbackState
 
     entity = SimpleNamespace(
         velocity=Vector2(0, 0),
@@ -168,7 +168,7 @@ def test_enemy_drops_stale_axis_on_launch() -> None:
 
 
 def test_juggle_damage_decays_with_air_count() -> None:
-    from src.combat.hit_resolver import HitResolver
+    from src.simulation.combat.hit_resolver import HitResolver
 
     attacker = _hitting_attacker()
     for _ in range(3):
@@ -185,7 +185,7 @@ def test_juggle_damage_decays_with_air_count() -> None:
 
 
 def test_grounded_hits_ignore_juggle_scaling() -> None:
-    from src.combat.hit_resolver import HitResolver
+    from src.simulation.combat.hit_resolver import HitResolver
 
     attacker = _hitting_attacker()
     for _ in range(5):
@@ -209,9 +209,9 @@ def test_a_fixed_heavy_launch_goes_where_its_power_points() -> None:
     """
     from pygame.sprite import Group
 
-    from src.combat.knockback import KnockbackConfig
-    from src.data.provider import shipped_gameplay_data
-    from src.entities.enemies.factory import create_enemy
+    from src.simulation.combat.knockback import KnockbackConfig
+    from src.simulation.data.provider import shipped_gameplay_data
+    from src.simulation.entities.enemies.factory import create_enemy
 
     goblin = create_enemy(
         "goblin",
@@ -242,9 +242,9 @@ def test_a_negative_fixed_heavy_launch_reaches_the_state() -> None:
     """
     from pygame.sprite import Group
 
-    from src.combat.knockback import KnockbackConfig
-    from src.data.provider import shipped_gameplay_data
-    from src.entities.enemies.factory import create_enemy
+    from src.simulation.combat.knockback import KnockbackConfig
+    from src.simulation.data.provider import shipped_gameplay_data
+    from src.simulation.entities.enemies.factory import create_enemy
 
     goblin = create_enemy(
         "goblin",

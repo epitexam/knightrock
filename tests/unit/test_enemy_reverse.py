@@ -12,9 +12,9 @@ is a ``bool | None`` and not a ``bool``.
 
 import pygame
 
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.factory import create_enemy
-from src.entities.enemies.schema import EnemyConfig
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.entities.enemies.schema import EnemyConfig
 
 
 def _config(**overrides) -> EnemyConfig:

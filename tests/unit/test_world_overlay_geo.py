@@ -17,14 +17,14 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.combat.shapes import ShapeKind, ShapePose
-from src.core.colors import Colors
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_overlay.geo import GeoLayer
-from src.ui.world_overlay.metrics import SWEEP_DISPLAY_MIN_PX
-from src.ui.world_ui import WorldUI
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.world_overlay.geo import GeoLayer
+from src.presentation.ui.world_overlay.metrics import SWEEP_DISPLAY_MIN_PX
+from src.presentation.ui.world_ui import WorldUI
+from src.shared.colors import Colors
+from src.simulation.combat.shapes import ShapeKind, ShapePose
 from tests.unit.helpers import lit_pixels, overlay_entity
 
 SIZE = (1024, 768)
@@ -360,7 +360,7 @@ def _bare_layer() -> GeoLayer:
     """A layer with no scene behind it, for the pure readers."""
     surface = pygame.Surface(SIZE)
     renderer = PanelRenderer(surface)
-    from src.ui.world_overlay.metrics import MetricsCache
+    from src.presentation.ui.world_overlay.metrics import MetricsCache
 
     return GeoLayer(renderer, MetricsCache(renderer), _NoopSink())
 

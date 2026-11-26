@@ -6,22 +6,22 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.combat.combat_component import NullCombatComponent
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData
-from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
-from src.core.level.systems.hazard_system import HazardSystem
-from src.core.level.systems.physics_system import PhysicsSystem
-from src.core.level.systems.platform_system import PlatformSystem
-from src.core.level.systems.progression_system import ProgressionSystem
-from src.core.level.systems.respawn_system import PlayerRespawnSystem
-from src.core.rendering.render_hints import RenderHints
-from src.core.settings import Physics
-from src.entities.player_config import PlayerConfig
-from src.entities.player_controllers import DashController
-from src.physics.movement import resolve_jump
-from src.states.player_states import GUARD_MOVE_MULT, PlayerDashState, PlayerGuardState
+from src.shared.render_hints import RenderHints
+from src.simulation.combat.combat_component import NullCombatComponent
+from src.simulation.entities.player_config import PlayerConfig
+from src.simulation.entities.player_controllers import DashController
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData
+from src.simulation.level.systems.feedback_system import FeedbackSystem
+from src.simulation.level.systems.gameplay_loop import CombatLoop, GameplayLoop
+from src.simulation.level.systems.hazard_system import HazardSystem
+from src.simulation.level.systems.physics_system import PhysicsSystem
+from src.simulation.level.systems.platform_system import PlatformSystem
+from src.simulation.level.systems.progression_system import ProgressionSystem
+from src.simulation.level.systems.respawn_system import PlayerRespawnSystem
+from src.simulation.physics.movement import resolve_jump
+from src.simulation.settings import Physics
+from src.simulation.states.player_states import GUARD_MOVE_MULT, PlayerDashState, PlayerGuardState
 
 
 class TrackingGroup(list):
@@ -56,7 +56,7 @@ def wire_world_systems(level: Level, groups, player) -> None:
     level.spatial_hash = SimpleNamespace(update_all=Mock())  # type: ignore[assignment]
     # A ``__new__`` level has no renderer; DEBUG=1 makes Level.update update the
     # metrics overlay, so the double needs that dependency too.
-    level.renderer = SimpleNamespace(overlay=Mock())  # type: ignore[assignment]
+    level.renderer = SimpleNamespace(overlay=Mock(), update_metrics=Mock())  # type: ignore[assignment]
     level_data = LevelData(
         width=20,
         height=10,

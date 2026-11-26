@@ -32,9 +32,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((1152, 648))
 
-from src.core.input.input_actions import InputAction  # noqa: E402
-from src.ui.menu_model import MenuItem, MenuModel  # noqa: E402
-from src.ui.menu_view import MenuView  # noqa: E402
+from src.presentation.ui.menu_model import MenuItem, MenuModel  # noqa: E402
+from src.presentation.ui.menu_view import MenuView  # noqa: E402
+from src.shared.input_actions import InputAction  # noqa: E402
 
 ROW = 40
 
@@ -105,7 +105,7 @@ def test_both_devices_report_where_they_are() -> None:
 
     The model already kept them apart -- ``current_index`` for the selection,
     ``hovered_index`` for the pointer -- and nothing drew the second one. This is
-    the fact the outline in :mod:`src.ui.menu_view` is drawn from, so it is worth
+    the fact the outline in :mod:`src.presentation.ui.menu_view` is drawn from, so it is worth
     holding that they are genuinely independent.
     """
     model, rects = _menu(), _rects()
@@ -178,7 +178,7 @@ def test_a_rebuild_to_a_different_list_still_hovers() -> None:
 
 def _bar_rows(view: MenuView, surface: pygame.Surface) -> list[int]:
     """The rows painted with the selection bar, read off the pixels."""
-    from src.ui.styles import SELECTION_BG
+    from src.presentation.ui.styles import SELECTION_BG
 
     return [
         index

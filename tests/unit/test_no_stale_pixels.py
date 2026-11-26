@@ -22,12 +22,12 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import Renderer
-from src.core.sprite_groups import SpriteGroups
-from src.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
-from src.ui.hud import HUD
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.rendering.renderer import Renderer
+from src.presentation.ui.hud import HUD
+from src.simulation.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
+from src.simulation.sprite_groups import SpriteGroups
 from tests.fakes import FighterSprite
 from tests.unit.helpers import make_overlay
 

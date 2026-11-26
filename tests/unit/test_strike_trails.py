@@ -7,8 +7,8 @@ import os
 import pygame
 import pytest
 
-from src.combat.shapes import ShapeKind, ShapePose
-from src.core.rendering import strike_trails as st
+from src.presentation.rendering import strike_trails as st
+from src.simulation.combat.shapes import ShapeKind, ShapePose
 from tests.headless.arena import DT, PLAYER_X, SHOOT, SLASH, arena, foe, settle, tap
 
 
@@ -70,7 +70,7 @@ def test_a_held_button_shows_its_charge_and_lets_it_go() -> None:
 
 
 def test_an_enemy_winding_up_is_warned_at_the_height_of_its_blow() -> None:
-    from src.entities.enemies.schema import EnemyMove
+    from src.simulation.entities.enemies.schema import EnemyMove
 
     level, _pad, player = arena()
     tooth = foe(level, "tooth", PLAYER_X + 60.0)

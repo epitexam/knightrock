@@ -2,10 +2,10 @@
 
 import pytest
 
-from src.core.input.input_actions import InputAction
-from src.core.level.systems.spawn_system import SpawnSystem
-from src.core.sprite_groups import SpriteGroups
-from src.entities.player_input import ATTACK_BUTTONS
+from src.shared.input_actions import InputAction
+from src.simulation.entities.player_input import ATTACK_BUTTONS
+from src.simulation.level.systems.spawn_system import SpawnSystem
+from src.simulation.sprite_groups import SpriteGroups
 
 
 def _system() -> SpawnSystem:

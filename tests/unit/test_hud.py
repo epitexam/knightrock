@@ -8,19 +8,8 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.colors import Colors
-from src.core.display.framing import Framing
-from src.core.settings import Battery as BatterySettings
-from src.core.settings import Clash, Combat, Fury
-from src.entities.player_kit import (
-    Battery,
-    Direction,
-    FuryGauge,
-    PromptController,
-    PromptKind,
-    SlotMachine,
-)
-from src.ui.hud import (
+from src.presentation.display.framing import Framing
+from src.presentation.ui.hud import (
     HUD,
     HUD_BAR_GAP,
     HUD_BAR_HEIGHT,
@@ -41,8 +30,19 @@ from src.ui.hud import (
     fury_color,
     health_color,
 )
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.shared.colors import Colors
+from src.simulation.entities.player_kit import (
+    Battery,
+    Direction,
+    FuryGauge,
+    PromptController,
+    PromptKind,
+    SlotMachine,
+)
+from src.simulation.settings import Battery as BatterySettings
+from src.simulation.settings import Clash, Combat, Fury
 from tests.fakes import game_shape
 from tests.unit.helpers import make_overlay
 
@@ -342,8 +342,8 @@ def test_gameplay_scene_draws_the_hud_even_with_debug_off(
 ) -> None:
     """UI-7: the HUD is player-facing, so it is not gated by ``DEBUG``."""
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.core.rendering.camera import Camera
-    from src.core.rendering.renderer import Renderer
+    from src.presentation.rendering.camera import Camera
+    from src.presentation.rendering.renderer import Renderer
 
     monkeypatch.delenv("DEBUG", raising=False)
     surface = _surface(1024, 768)
@@ -371,8 +371,8 @@ def test_gameplay_scene_hud_survives_a_level_without_a_player(
 ) -> None:
     """Duck-typed levels (overlays, tests) may not expose ``player``."""
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.core.rendering.camera import Camera
-    from src.core.rendering.renderer import Renderer
+    from src.presentation.rendering.camera import Camera
+    from src.presentation.rendering.renderer import Renderer
 
     monkeypatch.delenv("DEBUG", raising=False)
     renderer = Renderer(

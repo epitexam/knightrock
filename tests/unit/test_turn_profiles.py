@@ -15,14 +15,14 @@ import dataclasses
 import pygame
 import pytest
 
-from src.core.settings import (
+from src.simulation.data.provider import shipped_gameplay_data
+from src.simulation.entities.enemies.enemy import Enemy
+from src.simulation.settings import (
     PROFILES,
     Turn,
     TurnProfile,
     resolve_turn_profile,
 )
-from src.data.provider import shipped_gameplay_data
-from src.entities.enemies.enemy import Enemy
 
 
 @pytest.fixture

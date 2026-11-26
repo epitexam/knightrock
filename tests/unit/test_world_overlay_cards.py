@@ -13,10 +13,10 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.core.display.framing import Framing
-from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelRenderer
-from src.ui.world_ui import WorldUI
+from src.presentation.display.framing import Framing
+from src.presentation.rendering.camera import Camera
+from src.presentation.ui.panel_renderer import PanelRenderer
+from src.presentation.ui.world_ui import WorldUI
 from tests.unit.helpers import card_rows
 
 SIZE = (1024, 768)
@@ -112,13 +112,13 @@ def test_an_idle_sprite_gets_no_attack_row(world_ui) -> None:
 
 
 def _flags(sprite: SimpleNamespace) -> list[str]:
-    from src.ui.world_overlay.cards import CardLayer
+    from src.presentation.ui.world_overlay.cards import CardLayer
 
     return [text for text, _ in CardLayer.status_flag_tokens(sprite)]
 
 
 def _flag_colours(sprite: SimpleNamespace) -> dict[str, object]:
-    from src.ui.world_overlay.cards import CardLayer
+    from src.presentation.ui.world_overlay.cards import CardLayer
 
     return dict(CardLayer.status_flag_tokens(sprite))
 
@@ -145,7 +145,7 @@ def test_a_dizzy_flag_is_gold_while_stagger_is_orange() -> None:
     names are actually distinct entries in the colour table rather than one
     string written twice.
     """
-    from src.core.colors import Colors
+    from src.shared.colors import Colors
 
     sprite = _entity(
         "Dazed",
@@ -174,7 +174,7 @@ def test_a_ledge_is_flagged_only_while_the_probe_says_so() -> None:
     Standing on a ledge is a per-frame fact and a cached boolean would go stale
     the moment the entity walked off -- which is the frame you care about.
     """
-    from src.core.colors import Colors
+    from src.shared.colors import Colors
 
     on_ledge = _entity("Watcher", is_at_ledge=lambda: True)
     assert _flag_colours(on_ledge)["LEDGE"] == Colors.yellow

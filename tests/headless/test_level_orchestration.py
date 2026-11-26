@@ -7,8 +7,8 @@ TMX asset required — and advanced tick by tick.
 import pygame
 import pytest
 
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.sprites import Sprite
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.simulation.sprites import Sprite
 from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data
 
@@ -63,7 +63,7 @@ def test_level_respawns_the_player_after_death_delay(build_level) -> None:
 
 
 def test_level_data_round_trips_through_world_builder(build_level) -> None:
-    from src.core.level.level_data import LevelConfig
+    from src.simulation.level.level_data import LevelConfig
 
     level = build_level()
 

@@ -1,4 +1,4 @@
-from src.states.state_machine import State, StateMachine
+from src.simulation.states.state_machine import State, StateMachine
 
 
 class MockState(State):

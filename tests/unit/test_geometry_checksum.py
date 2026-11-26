@@ -2,7 +2,7 @@
 
 import pygame
 
-from src.combat.determinism import geometry_checksum
+from src.simulation.combat.determinism import geometry_checksum
 
 
 def test_geometry_checksum_is_stable_and_order_sensitive() -> None:

@@ -10,11 +10,11 @@ import os
 import pygame
 import pytest
 
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import picture
-from src.core.display.viewport import Viewport
-from src.core.level.level import Level
-from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from src.presentation.display.framing import DEFAULT_FRAMING
+from src.presentation.display.letterbox import picture
+from src.presentation.display.viewport import Viewport
+from src.simulation.level.level import Level
+from src.simulation.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 
 #: A window shape with nothing awkward about it: 16:9, so the letterbox adds no
 #: bars, and big enough that the density is a fraction rather than an integer --

@@ -14,19 +14,19 @@ import pytest
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.core.input.input_actions import InputAction
-from src.entities.entity import Entity
-from src.entities.player import Player
-from src.entities.player_controllers import (
+from src.shared.input_actions import InputAction
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.player import Player
+from src.simulation.entities.player_controllers import (
     DashController,
     DashSnapshot,
     JumpController,
     JumpSnapshot,
 )
-from src.entities.player_kit import PromptKind
-from src.entities.vitals import Vitals
-from src.states.null_state_machine import NullStateMachine
-from src.states.state_machine import State, StateMachine, StateMachineSnapshot
+from src.simulation.entities.player_kit import PromptKind
+from src.simulation.entities.vitals import Vitals
+from src.simulation.states.null_state_machine import NullStateMachine
+from src.simulation.states.state_machine import State, StateMachine, StateMachineSnapshot
 from tests.unit.helpers import InputStub
 
 
@@ -299,6 +299,6 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
 
 
 def _fake_player_config():
-    from src.data.provider import shipped_gameplay_data
+    from src.simulation.data.provider import shipped_gameplay_data
 
     return shipped_gameplay_data().player

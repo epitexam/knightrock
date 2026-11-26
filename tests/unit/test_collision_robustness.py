@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import Collision, Combat, PlatformRide
-from src.physics.collisions import resolve_collisions
-from src.physics.movement import _revert_carry_crush, apply_moving_platform, move_entity
+from src.simulation.physics.collisions import resolve_collisions
+from src.simulation.physics.movement import _revert_carry_crush, apply_moving_platform, move_entity
+from src.simulation.settings import Collision, Combat, PlatformRide
 
 
 class RobustEntity:

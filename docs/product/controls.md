@@ -63,7 +63,7 @@ flowchart LR
 - Axis numbers are the joystick API's and vary by platform: on Windows axis `2`
   is the right stick's X. Dash can be rebound from *Options → Controls*.
 
-Three details of the menu navigation, all in `src/core/settings.py` under
+Three details of the menu navigation, all in `src/simulation/settings.py` under
 `Input`:
 
 - **A stick is a position, not a press.** A quarter of its travel moves one row;
@@ -77,7 +77,7 @@ Three details of the menu navigation, all in `src/core/settings.py` under
 **Moves.** Three attack buttons -- the blade, the body and the shot -- the
 first two thrown high, or low with Down held, and all three charged when held.
 What a press throws depends on what the fighter is doing
-(`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
+(`src/simulation/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
 
 - **Phase** — one movement: its timing, one hitbox, one effect.
 - **Move** — a chain of phases that follow on frame data. A phase may name an
@@ -117,7 +117,7 @@ What a press throws depends on what the fighter is doing
   starts later, freezes longer on hit, pushes hard, stuns and goes through
   guards (`tests/headless/test_charge_and_buttons.py`).
 - **Launched shots.** A phase can fire as it turns active (`launches` in
-  `src/entities/shots.py`): bolt, piercing bolt, charged crescent, slime glob.
+  `src/simulation/entities/shots.py`): bolt, piercing bolt, charged crescent, slime glob.
   The box marks the hand and does not touch; the crescent is its own move,
   reached by `auto_into`.
 
@@ -132,7 +132,7 @@ Each type has its own moves:
 
 ### What is drawn
 
-Render-only cues (`src/core/rendering/strike_trails.py`):
+Render-only cues (`src/presentation/rendering/strike_trails.py`):
 
 - **Blade** — thin crescent; heavier cuts are wider.
 - **Body** — short streak with a knuckle or heel.
@@ -153,7 +153,7 @@ for `Input.ATTACK_BUFFER_WINDOW`.
 
 ### The combat loop
 
-Modelled on No More Heroes 2, in 2D. The tuning lives in `src/core/settings.py`:
+Modelled on No More Heroes 2, in 2D. The tuning lives in `src/simulation/settings.py`:
 `Battery`, `Fury`, `Finisher`, `Throw`, `Clash`, `Slot`, `Stun`, `Rush`, `Guard`.
 `Battery`, `Fury`, `Finisher`, `Throw`, `Clash`, `Slot`, `Stun`, `Rush`, `Guard`):
 
