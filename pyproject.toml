@@ -52,8 +52,21 @@ disallow_incomplete_defs = true
 # reason -- a partially annotated signature is a lie mypy cannot check.
 # mypy is blocking in CI (`uv run mypy src`).
 
+[tool.importlinter]
+root_package = "src"
+
+# Phase 0 contract: only rules that are already true today. Each migration
+# tranche adds a rule and removes the corresponding import; exceptions are
+# never added to make a contract pass (ADR 0001).
+[[tool.importlinter.contracts]]
+name = "the simulation does not depend on the interface or the composition root"
+type = "forbidden"
+source_modules = ["src.core"]
+forbidden_modules = ["src.ui", "src.application"]
+
 [dependency-groups]
 dev = [
+    "import-linter>=2.9",
     "mypy>=1.18.0",
     "pre-commit>=4.3.0",
     "pytest>=9.1.1",
