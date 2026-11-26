@@ -98,5 +98,6 @@ dans le périmètre d'une tranche.
   restante consignées dans [l'ADR 0002](0002-cloture.md).
 - **Lot final** (fait) : injection des ports de rendu, caméra, assets et FX,
   `Tuning` possédé par `Game`, snapshots extensibles et headless sans
-  présentation. L'ADR 0002 a été réécrite : il ne reste aucune dette issue de
-  cette migration.
+  présentation. L'ADR 0002 a été réécrite : il ne reste aucune dette
+  fonctionnelle issue de cette migration ; deux défauts de compatibilité y
+  sont documentés explicitement.

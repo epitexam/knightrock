@@ -11,7 +11,29 @@ paquets : `application`, `presentation`, `platform`, `shared` et
 de parité temporaire a été retirée après la bascule. Les quatre points laissés
 en suspens dans la première version de cet ADR ont été réglés dans un dernier
 lot : ports de rendu/caméra/assets/FX injectés, configuration possédée par
-monde, snapshots extensibles et headless réel.
+monde, snapshots extensibles et headless réel. Les documents vivants ont été
+mis à jour ; les documents d'audit restent des archives historiques, comme
+le dit l'index de `docs/`.
+
+## Choix assumés — pas de la dette
+
+Deux mécanismes de compatibilité subsistent volontairement :
+
+- Quatre imports paresseux de `src.presentation` dans la simulation
+  (`level.py`, `feedback_system.py`) servent de défaut aux tests et outils qui
+  construisent un `Level` ou un `FeedbackSystem` sans injecter de port. Le
+  chemin headless prouvé injecte les null objects et ne charge aucun module de
+  présentation ; la composition root injecte les adaptateurs réels. Supprimer
+  ces défauts obligerait à modifier les ~67 appelants directs, sans gain de
+  comportement.
+- `shared_library()` reste le défaut d'assets pour un appelant qui n'injecte
+  rien. Tous les chemins de simulation concernés acceptent désormais un
+  `AssetPort` : les combattants et les hazards peuvent être construits sans
+  singleton, ce que le test headless vérifie.
+
+Ces deux points sont des décisions de compatibilité documentées, pas des
+travaux en attente : ils ne modifient aucune règle de jeu et aucune frontière
+vérifiée en CI.
 
 ## Résultats mesurés
 

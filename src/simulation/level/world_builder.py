@@ -140,7 +140,9 @@ def _rect_path(obj: ObjectData) -> tuple[pygame.math.Vector2, pygame.math.Vector
     )
 
 
-def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
+def _build_moving_platform(
+    obj: ObjectData, groups: SpriteGroups, asset_port: AssetPort | None = None
+) -> None:
     """Create a MovingPlatform patrolling the object rectangle.
 
     The Tiled rectangle is the travel range (back and forth), not the
@@ -187,7 +189,9 @@ SAW_ART = "assets/graphics/enemies/saw/animation"
 FLOOR_SPIKES_ART = "assets/graphics/enemies/floor_spikes"
 
 
-def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+def _build_span_hazard(
+    obj: ObjectData, groups: SpriteGroups, asset_port: AssetPort | None = None
+) -> None:
     """Create a linearly moving hazard (saw) patrolling the object rectangle.
 
     The Tiled rectangle is the travel range, not the hazard: the saw sprite
@@ -200,7 +204,7 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     flip = props.flag(obj.properties, "flip", False, where=where)
     damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
-        animator = build_hazard_animator({"spin": SAW_ART}, "spin")
+        animator = build_hazard_animator({"spin": SAW_ART}, "spin", asset_port)
     except FileNotFoundError:
         animator = None
     if "size" in obj.properties:
@@ -227,13 +231,15 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         span=(span_a, span_b),
     )
     # The blade is a disc in a square frame: it cuts with the disc.
-    library = shared_library()
+    library = asset_port if asset_port is not None else shared_library()
     frames = library.frames(SAW_ART) if animator is not None else [surf]
     hazard.fit_contact(art_bounds(frames, hazard.rect.size), round_shape=True)
     groups.hazard_sprites.add(hazard)
 
 
-def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+def _build_orbiting_hazard(
+    obj: ObjectData, groups: SpriteGroups, asset_port: AssetPort | None = None
+) -> None:
     """Create a circularly moving hazard (spike)."""
     size = max(obj.width, obj.height, 1)
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -259,7 +265,9 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     groups.hazard_sprites.add(hazard)
 
 
-def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+def _build_static_hazard(
+    obj: ObjectData, groups: SpriteGroups, asset_port: AssetPort | None = None
+) -> None:
     """Create an immobile hazard (e.g. floor spikes) from a placed image."""
     surf = obj.image
     if surf is None:
@@ -272,10 +280,10 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
     damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
-        animator = build_hazard_animator({"spikes": FLOOR_SPIKES_ART}, "spikes")
+        animator = build_hazard_animator({"spikes": FLOOR_SPIKES_ART}, "spikes", asset_port)
     except FileNotFoundError:
         animator = None
-    library = shared_library()
+    library = asset_port if asset_port is not None else shared_library()
     hazard = SpanHazard(
         (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
     )
@@ -291,7 +299,7 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     groups.hazard_sprites.add(hazard)
 
 
-def _build_exit(obj: ObjectData, groups: SpriteGroups) -> None:
+def _build_exit(obj: ObjectData, groups: SpriteGroups, asset_port: AssetPort | None = None) -> None:
     """Create the level exit flag.
 
     The trigger follows the object's own rectangle rather than a fixed tile
@@ -475,7 +483,7 @@ class WorldBuilder:
             )
             groups.add_fighter(entity)
         elif OBJECT_FACTORIES.has(obj.name):
-            OBJECT_FACTORIES.dispatch(obj.name, obj, groups)
+            OBJECT_FACTORIES.dispatch(obj.name, obj, groups, asset_port=self.asset_port)
         elif obj.image is not None:
             layer = self.level_data.object_layers.get(layer_name)
             target = _decor_group(layer, groups) if layer else groups.all_sprites

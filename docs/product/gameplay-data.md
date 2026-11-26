@@ -41,4 +41,4 @@ data problem.
 
 - [Architecture and rendering](../architecture/overview.md) — how these values reach the
   simulation and the renderer.
-- [Development](../guides/development.md) — the module map, including `src/data/`.
+- [Development](../guides/development.md) — the module map, including `src/simulation/data/`.

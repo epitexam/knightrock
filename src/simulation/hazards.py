@@ -4,7 +4,7 @@ from typing import Protocol
 
 import pygame
 
-from src.platform.assets import shared_library
+from src.shared.contracts import AssetPort
 from src.simulation.animation.animator import AnimationSpec, Animator
 from src.simulation.combat.knockback import KnockbackConfig
 from src.simulation.level.systems.hazard_damage import HazardDamageSystem
@@ -56,13 +56,19 @@ def mirrored(frames: Iterable[pygame.Surface], flip_x: bool, flip_y: bool) -> li
     return [pygame.transform.flip(frame, flip_x, flip_y) for frame in frames]
 
 
-def build_hazard_animator(animations: Mapping[str, str], default: str) -> Animator:
+def build_hazard_animator(
+    animations: Mapping[str, str], default: str, asset_port: AssetPort | None = None
+) -> Animator:
     """Create an Animator for hazard sprite sheets."""
     specs = {
         name: AnimationSpec(name, directory, frame_duration=0.12, loop=True)
         for name, directory in animations.items()
     }
-    return Animator(shared_library(), specs, default=default)
+    if asset_port is None:
+        from src.platform.assets import shared_library
+
+        asset_port = shared_library()
+    return Animator(asset_port, specs, default=default)
 
 
 def _tick_animation(sprite: AnimatedSprite, delta_time: float, facing_right: bool = True) -> None:

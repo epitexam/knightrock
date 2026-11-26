@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import pygame
 
-from src.platform.assets import AssetLibrary
+from src.shared.contracts import AssetPort
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class Animator:
 
     def __init__(
         self,
-        library: AssetLibrary,
+        library: AssetPort,
         specs: Mapping[str, AnimationSpec],
         default: str = "",
     ) -> None:

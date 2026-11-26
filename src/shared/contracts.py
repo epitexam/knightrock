@@ -28,6 +28,8 @@ __all__ = [
 class AssetPort(Protocol):
     """Surface source for animations and art-driven world objects."""
 
+    generation: int
+
     def image(self, relative_path: str, *, alpha: bool = True) -> pygame.Surface: ...
 
     def frames(self, relative_path: str) -> list[pygame.Surface]: ...
