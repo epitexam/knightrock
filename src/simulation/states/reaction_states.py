@@ -26,7 +26,7 @@ both name the state through it.
 """
 
 from collections.abc import Callable
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from src.simulation.physics import apply_slide_friction, apply_velocity_friction
 from src.simulation.settings import Combat, Physics
@@ -87,7 +87,7 @@ class HurtState(State[EntityT]):
         self.exit_resolver = exit_resolver
         self.on_enter = on_enter
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Run the optional setup hook with the transition kwargs."""
         if self.on_enter is not None:
             self.on_enter(**kwargs)
@@ -121,15 +121,15 @@ class KnockbackState(State[EntityT]):
         self._elapsed = 0.0
         self._launch_vx = 0.0
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Run the optional setup hook, then apply the launch velocity."""
         self._elapsed = 0.0
         if self.on_enter is not None:
             self.on_enter(**kwargs)
 
-        knockback_dir = kwargs.get("knockback_direction", 0)
-        knockback_force = kwargs.get("knockback_force", 0)
-        knockback_up = kwargs.get("knockback_up_force", 0)
+        knockback_dir = cast("int", kwargs.get("knockback_direction", 0))
+        knockback_force = cast("float", kwargs.get("knockback_force", 0))
+        knockback_up = cast("float", kwargs.get("knockback_up_force", 0))
 
         if knockback_dir != 0 and knockback_force > 0:
             self.entity.velocity.x = knockback_dir * knockback_force

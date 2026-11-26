@@ -1,7 +1,7 @@
 """State machine states for enemies (AI)."""
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from src.simulation.combat.frame_data import move_id
 from src.simulation.settings import AI, EnemyJump
@@ -81,7 +81,7 @@ class EnemyIdleState(State["Enemy"]):
 
     """Idle state: the enemy stands still for a short duration."""
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state and initialize the idle timer."""
         self.timer = self.entity.idle_duration
 
@@ -101,7 +101,7 @@ class EnemyPatrolState(State["Enemy"]):
 
     """Patrol state: the enemy moves back and forth in a single direction."""
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state and initialize patrol direction, timer, speed."""
         self.patrol_timer = self.entity.patrol_interval
         self.direction = self.entity.patrol_direction
@@ -153,14 +153,14 @@ class EnemyChaseState(State["Enemy"]):
         # The attack this chase closes in for, chosen on entry.
         self.planned_move = ""
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state, face the player, pick up chase speed and choose the attack."""
         self.entity.face_player()
         self.entity.speed = self.entity.chase_speed
         self.leap_glide_timer = 0.0
         self.planned_move = self.entity.plan_move() or ""
 
-    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, object]] | None:
         """Close in for the chosen attack and throw it once in range and a slot is free.
 
         In range with every slot taken, the enemy holds where it is, facing
@@ -388,13 +388,13 @@ class EnemyAttackState(State["Enemy"]):
         """Initialize the EnemyAttackState instance."""
         super().__init__(entity, tags or ["attack", "busy"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state, face the player, and start the chosen attack.
 
         ``move`` is the chase's choice; without one, the type's ``attack_name``.
         """
         self.entity.face_player()
-        name = kwargs.get("move") or self.entity.attack_name
+        name = str(kwargs["move"]) if "move" in kwargs else self.entity.attack_name
         if name is not None:
             self.entity.combat.start_attack(move_id(name))
 
@@ -444,7 +444,7 @@ class EnemyKnockbackState(KnockbackState["Enemy"]):
             on_enter=self._clear_steering,
         )
 
-    def _clear_steering(self, **kwargs: Any) -> None:
+    def _clear_steering(self, **kwargs: object) -> None:
         """Drop the stale chase axis so corpses don't steer their own flight."""
         self.entity.move_axis = 0.0
 
@@ -466,7 +466,7 @@ class EnemyDownedState(State["Enemy"]):
     def __init__(self, entity: Enemy):
         super().__init__(entity, tags=["downed", "busy"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.move_axis = 0.0
         self.entity.combat.reset_hurt_state()
         self.entity.stagger_timer = CombatSettings.DOWNED_DURATION
@@ -484,9 +484,9 @@ class EnemyDoomedState(State["Enemy"]):
     def __init__(self, entity: Enemy):
         super().__init__(entity, tags=["doomed", "busy"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.move_axis = 0.0
-        self.entity.stagger_timer = kwargs.get("duration", 0.0)
+        self.entity.stagger_timer = cast("float", kwargs.get("duration", 0.0))
 
     def update(self, delta_time: float) -> str | None:
         apply_reaction_drag(self.entity, delta_time)
@@ -501,9 +501,9 @@ class EnemyDizzyState(State["Enemy"]):
     def __init__(self, entity: Enemy):
         super().__init__(entity, tags=["dizzy", "busy"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.move_axis = 0.0
-        duration = kwargs.get("duration", 0.0)
+        duration = cast("float", kwargs.get("duration", 0.0))
         if duration > 0:
             self.entity.stagger_timer = duration
 

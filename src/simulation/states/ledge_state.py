@@ -8,7 +8,6 @@ shared reaction states in :mod:`src.simulation.states.reaction_states`.
 """
 
 from collections.abc import Callable
-from typing import Any
 
 from src.simulation.physics import lerp_velocity
 from src.simulation.settings import Ledge
@@ -37,7 +36,7 @@ class LedgeState(State[EntityT]):
         self.friction = friction
         self.hold_timer = 0.0
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Cut locomotion and turn from the void (no re-entry side effects)."""
         self.hold_timer = self.hold_duration
         self.entity.move_axis = 0.0

@@ -1,9 +1,11 @@
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from src.simulation.settings import StateMachineConfig
+
+__all__ = ["MachineState", "State", "StateMachine", "StateMachineSnapshot"]
 
 if TYPE_CHECKING:
     from src.simulation.entities.entity import Entity
@@ -11,6 +13,21 @@ if TYPE_CHECKING:
 #: The fighter a state drives. Bound to ``Entity`` so a state shared by every
 #: fighter reads the base class, and a player or enemy state reads its own.
 EntityT = TypeVar("EntityT", bound="Entity")
+
+
+class MachineState(Protocol):
+    """The surface a state machine needs from a state, independent of its fighter."""
+
+    tags: list[str]
+
+    @property
+    def snapshot_fields(self) -> tuple[str, ...]: ...
+
+    def enter(self, previous: str | None = None, **kwargs: object) -> None: ...
+
+    def exit(self, next_state: str | None = None) -> None: ...
+
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, object]] | None: ...
 
 
 @dataclass(frozen=True)
@@ -26,7 +43,7 @@ class StateMachineSnapshot:
     current_state_name: str | None
     previous_state_name: str | None
     input_buffer: dict[str, float]
-    state_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    state_attrs: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 class State(Generic[EntityT]):
@@ -44,7 +61,7 @@ class State(Generic[EntityT]):
         self.entity: EntityT = entity
         self.tags: list[str] = tags or []
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state. Accepts extra data (e.g., knockback direction)."""
         pass
 
@@ -52,12 +69,12 @@ class State(Generic[EntityT]):
         """Exit the state."""
         pass
 
-    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, object]] | None:
         """Update the current state. Can return a string or a tuple (state_name, kwargs)."""
         return None
 
 
-def _capture_state_attrs(state: State[Any]) -> dict[str, Any]:
+def _capture_state_attrs(state: MachineState) -> dict[str, object]:
     """Copy the declared fields a state has already set.
 
     Several states create their transient fields in ``enter()`` rather than in
@@ -70,12 +87,12 @@ def _capture_state_attrs(state: State[Any]) -> dict[str, Any]:
 class StateMachine:
     """Represent a StateMachine optimized for Hack 'n' Slash."""
 
-    def __init__(self, entity: Any) -> None:
+    def __init__(self, entity: object) -> None:
         """Initialize the StateMachine instance."""
-        self.entity: Any = entity
-        self.states: dict[str, State[Any]] = {}
+        self.entity: object = entity
+        self.states: dict[str, MachineState] = {}
 
-        self.current_state: State[Any] | None = None
+        self.current_state: MachineState | None = None
         self.current_state_name: str | None = None
         self.previous_state_name: str | None = None
 
@@ -86,7 +103,7 @@ class StateMachine:
 
         self.on_state_change: Callable[[str | None, str], None] | None = None
 
-    def add_state(self, name: str, state: State[Any]) -> None:
+    def add_state(self, name: str, state: MachineState) -> None:
         """Add state."""
         self.states[name] = state
 
@@ -144,13 +161,16 @@ class StateMachine:
                 if isinstance(next_state_info, tuple):
                     next_name, kwargs = next_state_info
                     if next_name in self.states:
-                        self.change_state(next_name, **kwargs)
+                        self._change(next_name, False, kwargs)
                 else:
                     if next_state_info in self.states:
                         self.change_state(next_state_info)
 
-    def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None:
+    def change_state(self, name: str, force: bool = False, **kwargs: object) -> None:
         """Perform change state. 'force' allows reloading an identical state."""
+        self._change(name, force, kwargs)
+
+    def _change(self, name: str, force: bool, kwargs: dict[str, object]) -> None:
         if name == self.current_state_name and not force:
             return
 
