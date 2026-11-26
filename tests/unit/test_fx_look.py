@@ -39,10 +39,10 @@ from src.presentation.fx import (
     spawners,
 )
 from src.presentation.fx.draw import snap
-from src.presentation.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, FxGuard
 from src.presentation.rendering.camera import Camera
 from src.presentation.rendering.renderer import Renderer
 from src.shared.colors import Color, Colors, FXColors
+from src.simulation.fx_tuning import DashDust, Dust, DustGrain, FootstepDust, FxGuard
 from src.simulation.level.systems.feedback_system import _spawn_guard_fx
 from src.simulation.sprite_groups import SpriteGroups
 from src.simulation.states.player_states import PlayerState

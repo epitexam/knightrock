@@ -10,11 +10,13 @@ from typing import Any
 import pygame
 
 from src.platform.input.input_manager import InputManager
-from src.presentation.rendering.camera import Camera
-from src.presentation.rendering.overlay import WorldOverlay
-from src.presentation.rendering.renderer import Renderer
-from src.presentation.rendering.static_layer import BakedStaticLayer, bake_static_layer
-from src.presentation.rendering.tile_chunk_index import TileChunkIndex
+from src.shared.contracts import (
+    AssetPort,
+    CameraPort,
+    FxPort,
+    SnapshotPort,
+    WorldRendererPort,
+)
 from src.shared.events import EventBus, LevelStarted
 from src.simulation.data.provider import GameplayData
 from src.simulation.entities.entity import EntitySnapshot
@@ -77,7 +79,12 @@ class Level:
         events: EventBus | None = None,
         rollback_enabled: bool = False,
         gameplay_data: GameplayData | None = None,
-        overlay: WorldOverlay | None = None,
+        overlay: Any = None,
+        renderer: WorldRendererPort | None = None,
+        camera: CameraPort | None = None,
+        asset_port: AssetPort | None = None,
+        tuning: Any = None,
+        fx_port: FxPort | None = None,
     ) -> None:
         """
         Initialize the level from parsed TMX data and build the world.
@@ -125,8 +132,22 @@ class Level:
         # it is handed. That is what stops a resolution from widening what the
         # player sees -- the viewport is the same on a 1366x768 laptop and on a
         # 4K screen.
-        self.camera = Camera.for_target(surface)
-        self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
+        if renderer is None:
+            # Compatibility default: the composition root injects the adapter,
+            # a headless caller injects NullWorldRenderer and imports nothing
+            # from presentation.
+            from src.presentation.rendering.adapter import build_presentation_renderer
+
+            selected: WorldRendererPort = build_presentation_renderer(
+                surface, level_data.config, overlay
+            )
+        else:
+            selected = renderer
+        self.renderer = selected
+        self.camera = camera if camera is not None else selected.camera
+        set_world_size = getattr(self.camera, "set_world_size", None)
+        if set_world_size is not None:
+            set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the
         # systems assembled below and are re-exposed as properties.
@@ -139,15 +160,21 @@ class Level:
         self.tick = 0
         self.rollback_enabled = rollback_enabled
         self.rollback = RollbackSystem()
+        self.snapshot_providers: dict[str, SnapshotPort] = {}
 
-        self.renderer = Renderer(self.surface, self.camera, level_data.config, overlay)
         # Spatial hash for O(1) collision lookups. Created before
         # the world build, not before the spawner: what the build needs is the
         # grid, so that every entity it creates is wired into it from the start.
         self.spatial_hash = SpatialHash(cell_size=World.HASH_CELL_SIZE)
 
         self.id_factory = IdFactory()
-        self.world_builder = WorldBuilder(level_data, gameplay_data, id_factory=self.id_factory)
+        self.world_builder = WorldBuilder(
+            level_data,
+            gameplay_data,
+            id_factory=self.id_factory,
+            asset_port=asset_port,
+            tuning=tuning,
+        )
         # The grid is bound *before* the build so every entity comes out of the
         # world builder already wired. Entities created by a registry or object
         # factory behind the builder's back are still swept up by the pass
@@ -182,7 +209,11 @@ class Level:
         self.contact_system = ContactSystem()
         self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
         self.physics_system = PhysicsSystem(self.groups)
-        self.feedback_system = FeedbackSystem(self.groups)
+        if fx_port is None:
+            from src.presentation.fx.adapter import PresentationFx
+
+            fx_port = PresentationFx()
+        self.feedback_system = FeedbackSystem(self.groups, fx_port)
         self.hazard_system = HazardSystem(self.groups)
         self.contact_damage_system = ContactDamageSystem(contact_system=self.contact_system)
         self.hazard_damage_system = HazardDamageSystem(contact_system=self.contact_system)
@@ -235,23 +266,8 @@ class Level:
             self.events.emit(LevelStarted(level_id=self.level_id))
 
     def reconvert_tiles(self) -> None:
-        """Convert the tile planes' images to the display's current format.
-
-        PyTMX converted them when the level was read; a window rebuilt with
-        another format leaves them in the old one, and every blit of a tile
-        then converts it again on the fly. Without a display (headless) there
-        is no format to follow.
-        """
-        if pygame.display.get_surface() is None:
-            return
-        for sprite in (*self.groups.static_sprites, *self.groups.fg_sprites):
-            image = sprite.image
-            if image is None:
-                continue
-            if image.get_flags() & pygame.SRCALPHA:
-                sprite.image = image.convert_alpha()
-            else:
-                sprite.image = image.convert()
+        """Convert the frozen planes to the display format, if there is one."""
+        self.renderer.reconvert_tiles(self.groups.static_sprites, self.groups.fg_sprites)
 
     def _install_static_culls(self) -> None:
         """Hand the renderer a chunked cull for the frozen tile planes.
@@ -295,10 +311,8 @@ class Level:
             statics, foreground, enabled=self._bake_override
         )
         self.renderer.set_static_planes(
-            None if baked_static is not None else TileChunkIndex(statics),
-            None
-            if baked_foreground is not None
-            else (TileChunkIndex(foreground) if foreground else None),
+            None if baked_static is not None else self.renderer.chunk_index(statics),
+            None if baked_foreground is not None else self.renderer.chunk_index(foreground),
         )
         self.renderer.set_baked_planes(baked_static, baked_foreground)
 
@@ -308,23 +322,12 @@ class Level:
         foreground: tuple[Any, ...],
         *,
         enabled: bool | None = None,
-    ) -> tuple[BakedStaticLayer | None, BakedStaticLayer | None]:
+    ) -> tuple[Any, Any]:
         """Bake each frozen plane when its target-sized surface fits the cap."""
         data = self.level_data
-        density = self.renderer.camera.density
-        background = self.renderer.background_color
-
-        def bake(sprites: tuple[Any, ...]) -> BakedStaticLayer | None:
-            return bake_static_layer(
-                sprites,
-                size=(data.pixel_width, data.pixel_height),
-                density=density,
-                background=background,
-                scale=self.renderer.rescale,
-                enabled=enabled,
-            )
-
-        return bake(statics), bake(foreground)
+        return self.renderer.bake_planes(
+            statics, foreground, (data.pixel_width, data.pixel_height), enabled
+        )
 
     def invalidate_baked_layers(self) -> None:
         """Drop pre-painted planes after the display format changed.
@@ -427,7 +430,11 @@ class Level:
             self.input_manager.update()
         self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
         if Debug.is_enabled():
-            self.renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
+            self.renderer.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
+
+    def register_snapshot_provider(self, name: str, provider: SnapshotPort) -> None:
+        """Add a subsystem to rollback without editing the snapshot dataclass."""
+        self.snapshot_providers[name] = provider
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback.
@@ -486,7 +493,16 @@ class Level:
             entities=entities,
             platforms=platforms,
             projectiles=projectiles,
+            parts={
+                name: provider.save_state() for name, provider in self.snapshot_providers.items()
+            },
         )
+
+    def _restore_snapshot_parts(self, snapshot: LevelSnapshot) -> None:
+        """Restore state contributed by registered subsystems."""
+        for name, provider in self.snapshot_providers.items():
+            if name in snapshot.parts:
+                provider.load_state(snapshot.parts[name])
 
     def load_state(self, snapshot: LevelSnapshot) -> None:
         """Rewind the level to a captured tick.
@@ -497,6 +513,7 @@ class Level:
         loaded.  The entity grid is left untouched — it is rebuilt from
         entity positions at the start of the next tick.
         """
+        self._restore_snapshot_parts(snapshot)
         self.tick = snapshot.tick
         self.gameplay_loop.combat_system.hit_stop_timer = snapshot.hit_stop_timer
         self.respawn_timer = snapshot.respawn_timer
@@ -585,37 +602,16 @@ class Level:
             frame_time: Last frame duration in ms (debug PERFORMANCE panel).
             alpha: Position within the pending simulation tick, in [0, 1].
         """
-        debug_enabled = Debug.is_enabled()
-        self.renderer.draw(self.groups, debug_enabled, dt=frame_time / 1000.0, alpha=alpha)
-        # Painted after the world pass, over it. Nothing has to be declared or
-        # merged: the next frame erases the whole target, so a bar that moves or
-        # vanishes cannot leave anything behind.
-        self.renderer.draw_health_bars(self.groups.entity_sprites)
-        for event in self.gameplay_loop.combat_system.guard_events:
-            if event.kind == "clash":
-                self.renderer.overlay.note_clash(self.gameplay_loop.combat_system.last_clash)
-        self.renderer.overlay.draw_metrics_panel(
-            player=self.player,
-            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
-        )
-
-        if not debug_enabled:
-            return
-
-        # Bars painted over the debug overlays: stamp the clash ring again so
-        # a clash never hides behind an HP bar (this stamp spends no TTL).
-        self.renderer.overlay.stamp_clash_marker(self.renderer.camera)
-        self.renderer.draw_debug_panels(
+        self.renderer.present(
+            self.groups,
             player=self.player,
             fps=fps,
-            sprite_count=len(self.groups.static_sprites)
-            + len(self.groups.all_sprites)
-            + len(self.groups.fg_sprites),
-            combat_count=len(self.groups.combat_sprites),
-            entity_count=len(self.groups.entity_sprites),
-            collision_count=len(self.groups.collision_sprites),
-            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
-            spawn_cooldown=self.spawn_system.spawn_cooldown_max,
-            scene_host=scene_host,
             frame_time=frame_time,
+            alpha=alpha,
+            scene_host=scene_host,
+            spawn_cooldown=self.spawn_system.spawn_cooldown_max,
+            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
+            guard_events=self.gameplay_loop.combat_system.guard_events,
+            last_clash=self.gameplay_loop.combat_system.last_clash,
+            debug_enabled=Debug.is_enabled(),
         )

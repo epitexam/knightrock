@@ -19,22 +19,9 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.presentation.fx import (
-    spawn_corpse,
-    spawn_dash_dust,
-    spawn_dash_grains,
-    spawn_dizzy_stars,
-    spawn_dizzy_vortex,
-    spawn_footstep_dust,
-    spawn_footstep_grains,
-    spawn_guard_arc,
-    spawn_impact_decal,
-    spawn_landing_dust,
-    spawn_landing_grains,
-    spawn_sweat_drops,
-)
-from src.presentation.fx.tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
+from src.shared.contracts import FxPort
 from src.simulation.entities.entity import Entity
+from src.simulation.fx_tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
 from src.simulation.level.systems.contact_system import GuardEvent, ImpactEvent
 from src.simulation.settings import CameraShake
 from src.simulation.settings import Clash as ClashSettings
@@ -132,8 +119,13 @@ def _footstep_tier(entity: Entity) -> FootstepTier | None:
 class FeedbackSystem:
     """Turn the facts of a tick into FX and camera shake."""
 
-    def __init__(self, groups: SpriteGroups) -> None:
+    def __init__(self, groups: SpriteGroups, fx: FxPort | None = None) -> None:
         self.groups = groups
+        if fx is None:
+            from src.presentation.fx.adapter import PresentationFx
+
+            fx = PresentationFx()
+        self.fx = fx
         # Per-entity sweat emission countdown (droplets every SPAWN_EVERY).
         self._sweat_timers: dict[int, float] = {}
         # Per-entity dash trail countdown; also marks that the burst is spent.
@@ -188,7 +180,7 @@ class FeedbackSystem:
             trauma = 0.0
             for event in guard_events:
                 trauma = max(trauma, _trauma_for(event))
-                _spawn_guard_fx(event, self.groups.fx_sprites)
+                _spawn_guard_fx(event, self.groups.fx_sprites, self.fx)
             if trauma > 0.0:
                 camera.add_trauma(trauma)
         if player.dash_started_this_frame:
@@ -202,7 +194,7 @@ class FeedbackSystem:
         one at which the fighter can still be read: its image, where it
         stood, and the push of the hit that killed it.
         """
-        spawn_corpse(self.groups.fx_sprites, entity)
+        self.fx.spawn_corpse(self.groups.fx_sprites, entity)
 
     def _spawn_movement_fx(
         self, delta_time: float, fighters: Sequence[Entity] | None = None
@@ -273,9 +265,9 @@ class FeedbackSystem:
         impact = entity.render_hints.landed_impact
         landed = impact >= Dust.MIN_FALL_SPEED
         if landed:
-            spawn_landing_dust(self.groups.fx_sprites, entity, impact)
-            spawn_landing_grains(self.groups.fx_sprites, entity, impact)
-            spawn_impact_decal(self.groups.fx_sprites, entity, impact)
+            self.fx.spawn_landing_dust(self.groups.fx_sprites, entity, impact)
+            self.fx.spawn_landing_grains(self.groups.fx_sprites, entity, impact)
+            self.fx.spawn_impact_decal(self.groups.fx_sprites, entity, impact)
         if _in_dash_penalty(entity):
             sweating_ids.add(id(entity))
             self._tick_sweat(entity, delta_time)
@@ -360,8 +352,8 @@ class FeedbackSystem:
         if not first:
             timer -= delta_time
         if (first or timer <= 0.0) and _is_grounded(entity):
-            spawn_dash_dust(self.groups.fx_sprites, entity, burst=first)
-            spawn_dash_grains(self.groups.fx_sprites, entity, burst=first)
+            self.fx.spawn_dash_dust(self.groups.fx_sprites, entity, burst=first)
+            self.fx.spawn_dash_grains(self.groups.fx_sprites, entity, burst=first)
         self._dash_timers[entity_id] = DashDust.SPAWN_EVERY if timer <= 0.0 else timer
 
     def _tick_footsteps(self, entity: Entity, delta_time: float, tier: FootstepTier) -> None:
@@ -407,15 +399,15 @@ class FeedbackSystem:
             clock.walked -= tier.step_distance
             clock.cooldown = FootstepDust.MIN_STEP_EVERY
             clock.foot = not clock.foot
-            spawn_footstep_dust(self.groups.fx_sprites, entity, foot=clock.foot, tier=tier)
-            spawn_footstep_grains(self.groups.fx_sprites, entity, foot=clock.foot)
+            self.fx.spawn_footstep_dust(self.groups.fx_sprites, entity, foot=clock.foot, tier=tier)
+            self.fx.spawn_footstep_grains(self.groups.fx_sprites, entity, foot=clock.foot)
         self._step_clocks[id(entity)] = clock
 
     def _tick_sweat(self, entity: Entity, delta_time: float) -> None:
         """Emit sweat droplets on the ``Sweat.SPAWN_EVERY`` cadence."""
         timer = self._sweat_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            spawn_sweat_drops(self.groups.fx_sprites, entity)
+            self.fx.spawn_sweat_drops(self.groups.fx_sprites, entity)
             timer = Sweat.SPAWN_EVERY
         self._sweat_timers[id(entity)] = timer
 
@@ -423,7 +415,7 @@ class FeedbackSystem:
         """Emit purple vortex swirls on the ``FxDizzy.VORTEX_SPAWN_EVERY`` cadence."""
         timer = self._dizzy_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            spawn_dizzy_vortex(self.groups.fx_sprites, entity)
+            self.fx.spawn_dizzy_vortex(self.groups.fx_sprites, entity)
             timer = FxDizzy.VORTEX_SPAWN_EVERY
         self._dizzy_timers[id(entity)] = timer
 
@@ -431,7 +423,9 @@ class FeedbackSystem:
         """Emit circling stars on the ``FxDizzy.STAR_SPAWN_EVERY`` cadence."""
         timer = self._dizzy_star_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            spawn_dizzy_stars(self.groups.fx_sprites, entity, FxDizzy.STAR_BATCH, FxDizzy.STAR_TTL)
+            self.fx.spawn_dizzy_stars(
+                self.groups.fx_sprites, entity, FxDizzy.STAR_BATCH, FxDizzy.STAR_TTL
+            )
             timer = FxDizzy.STAR_SPAWN_EVERY
         self._dizzy_star_timers[id(entity)] = timer
 
@@ -451,7 +445,13 @@ def _trauma_for(event: GuardEvent) -> float:
     return _TRAUMA.get(event.kind, GuardSettings.GUARD_TRAUMA)
 
 
-def _spawn_guard_fx(event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
+def _spawn_guard_fx(
+    event: GuardEvent, fx_group: pygame.sprite.Group, fx: FxPort | None = None
+) -> None:
     """The ring of a guard that stopped a blow; a stun has its own swirl, drawn while it lasts."""
+    if fx is None:
+        from src.presentation.fx.adapter import PresentationFx
+
+        fx = PresentationFx()
     if event.kind == "guard":
-        spawn_guard_arc(fx_group, event.target, contact=event.point)
+        fx.spawn_guard_arc(fx_group, event.target, contact=event.point)

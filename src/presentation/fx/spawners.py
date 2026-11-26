@@ -39,7 +39,8 @@ from src.presentation.fx.particles import (
     puff_tint,
     puff_variant,
 )
-from src.presentation.fx.tuning import (
+from src.shared.colors import Color, Colors, FXColors
+from src.simulation.fx_tuning import (
     Corpse,
     DashDust,
     Dust,
@@ -51,7 +52,6 @@ from src.presentation.fx.tuning import (
     FxGuard,
     Sweat,
 )
-from src.shared.colors import Color, Colors, FXColors
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one

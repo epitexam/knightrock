@@ -12,9 +12,9 @@ from src.presentation.fx import (
     spawn_guard_arc,
     spawn_shatter_arc,
 )
-from src.presentation.fx.tuning import FxGuard
 from src.shared.colors import FXColors
 from src.simulation.entities.player import Player
+from src.simulation.fx_tuning import FxGuard
 from src.simulation.level.systems.combat_system import CombatSystem
 from src.simulation.level.systems.contact_system import GuardEvent
 from src.simulation.level.systems.feedback_system import FeedbackSystem

@@ -46,7 +46,8 @@ from src.presentation.fx.frames import (
 from src.presentation.fx.frames import (
     shard_frames as shard_frames,
 )
-from src.presentation.fx.tuning import (
+from src.shared.colors import Color, Colors, FXColors
+from src.simulation.fx_tuning import (
     Corpse,
     DashDust,
     Dust,
@@ -57,7 +58,6 @@ from src.presentation.fx.tuning import (
     FxGuard,
     Sweat,
 )
-from src.shared.colors import Color, Colors, FXColors
 
 
 class FxParticle(pygame.sprite.Sprite):

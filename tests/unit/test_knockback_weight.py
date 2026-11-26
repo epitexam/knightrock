@@ -9,12 +9,12 @@ from pygame.math import Vector2
 from pygame.sprite import Group
 
 from src.presentation.fx import FX_FAMILY_BUDGETS, CorpseParticle, spawn_corpse
-from src.presentation.fx.tuning import Corpse
 from src.simulation.combat.knockback import KnockbackConfig
 from src.simulation.data.enemies import read_enemy_config
 from src.simulation.data.errors import GameplayDataError
 from src.simulation.data.provider import shipped_gameplay_data
 from src.simulation.entities.enemies.factory import create_enemy
+from src.simulation.fx_tuning import Corpse
 from src.simulation.level.systems.feedback_system import FeedbackSystem
 from src.simulation.level.systems.gameplay_loop import CombatLoop
 from src.simulation.settings import Combat as CombatSettings

@@ -40,7 +40,7 @@ from src.presentation.ui.ui_manager import UIManager
 from src.shared.events import AppExitRequested, EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.simulation.data.provider import GameplayData, load_gameplay_data
 from src.simulation.level.level_manager import LEVEL_PATHS, LevelManager
-from src.simulation.settings import Display, Simulation
+from src.simulation.settings import Display, Simulation, Tuning
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,7 @@ class Game:
         # configs, player config and level registry. Falls back to the
         # historical in-code values when the JSON assets are absent.
         self.gameplay_data: GameplayData = load_gameplay_data()
+        self.tuning = Tuning()
         # Owned here rather than fetched from a module-level singleton, so the
         # scene stack, the input dispatcher and every later audio subscriber
         # share one bus that a test can replace. Constructed before the mixer

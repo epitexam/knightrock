@@ -4,6 +4,7 @@ Centralized game configuration and constants.
 
 import os
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 
@@ -927,7 +928,7 @@ class Locomotion:
     ENEMY_PATROL_SPEED_MULT = 0.5
 
 
-def resolve_turn_profile(name: str) -> TurnProfile:
+def resolve_turn_profile(name: str, tuning: Tuning | None = None) -> TurnProfile:
     """Flatten ``name``'s inheritance chain into one fully-populated profile.
 
     Nearest layer wins, and the chain is walked root-first so a sub-group only
@@ -944,7 +945,7 @@ def resolve_turn_profile(name: str) -> TurnProfile:
     and the argument was a second code path through this function that nothing
     in the game ever took.
     """
-    profiles = PROFILES
+    profiles = tuning.profiles if tuning is not None else PROFILES
     if name not in profiles:
         return TurnProfile(
             enabled=False,
@@ -976,7 +977,7 @@ def resolve_turn_profile(name: str) -> TurnProfile:
         "skew_px": Turn.SKEW_PX,
     }
     for profile in chain:
-        for field in (
+        for field_name in (
             "enabled",
             "delay_s",
             "brake_control",
@@ -985,9 +986,9 @@ def resolve_turn_profile(name: str) -> TurnProfile:
             "lead_px",
             "skew_px",
         ):
-            value = getattr(profile, field)
+            value = getattr(profile, field_name)
             if value is not None:
-                merged[field] = value
+                merged[field_name] = value
     return TurnProfile(**merged)
 
 
@@ -1056,3 +1057,16 @@ class Gameplay:
     """App-level gameplay rules."""
 
     MAX_DEATHS = 3
+
+
+@dataclass(frozen=True)
+class Tuning:
+    """An owned set of named tuning layers, injectable per world.
+
+    The module-level ``PROFILES`` remains the shipped default for callers that
+    build a fighter outside a level; a level owns a ``Tuning`` instance and
+    passes it to every entity it creates, so two worlds can disagree without
+    touching global state.
+    """
+
+    profiles: dict[str, TurnProfile] = field(default_factory=lambda: dict(PROFILES))

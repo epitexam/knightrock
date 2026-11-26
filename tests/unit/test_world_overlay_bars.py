@@ -67,10 +67,10 @@ def test_level_draws_health_bars_before_it_checks_debug() -> None:
     someone moving the call below the `if not debug_enabled: return`, which
     would look like a tidy-up and would silently delete the bars from the game.
     """
-    source = (SRC / "simulation/level/level.py").read_text(encoding="utf-8")
-    body = source[source.index("    def draw(") :]
+    source = (SRC / "presentation/rendering/adapter.py").read_text(encoding="utf-8")
+    body = source[source.index("    def present(") :]
     bars = body.index("draw_health_bars")
-    gate = body.index("if not debug_enabled")
+    gate = body.index("if not debug_enabled:")
 
     assert bars < gate, "the bars must be painted before the debug gate returns"
 

@@ -26,10 +26,8 @@ from src.presentation.fx import (
     spawn_sweat_drops,
     spawners,
 )
-from src.presentation.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, Sweat
-from src.presentation.fx.tuning import Sweat as SweatSettings
+from src.presentation.fx.adapter import PresentationFx
 from src.presentation.rendering.camera import Camera
-from src.presentation.rendering.render_hints import RenderHints
 from src.presentation.rendering.renderer import (
     DASH_STRETCH_X,
     DASH_STRETCH_Y,
@@ -39,10 +37,12 @@ from src.presentation.rendering.renderer import (
 )
 from src.presentation.rendering.renderer import _ghost_alpha as renderer_alpha
 from src.shared.colors import FXColors
+from src.shared.render_hints import RenderHints
 from src.simulation.combat.attack_data import PLAYER_ATTACKS
 from src.simulation.combat.frame_data import move_id
 from src.simulation.combat.refusal import Refusal
-from src.simulation.level.systems import feedback_system
+from src.simulation.fx_tuning import DashDust, Dust, DustGrain, FootstepDust, Sweat
+from src.simulation.fx_tuning import Sweat as SweatSettings
 from src.simulation.level.systems.feedback_system import FeedbackSystem
 from src.simulation.settings import Afterimage, HitFlash, Locomotion, Physics, Simulation
 from src.simulation.sprite_groups import SpriteGroups
@@ -734,7 +734,7 @@ def _spy_on_steps(monkeypatch: pytest.MonkeyPatch) -> _StepSpy:
     cadence from a budget.
     """
     spy = _StepSpy()
-    monkeypatch.setattr(feedback_system, "spawn_footstep_dust", spy)
+    monkeypatch.setattr(PresentationFx, "spawn_footstep_dust", spy)
     return spy
 
 

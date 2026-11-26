@@ -26,7 +26,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 
 from src.simulation.combat.frame_data import AttackDefinition, MoveId
@@ -89,7 +88,6 @@ def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
     return GameplayData(attack_sets=attack_sets, enemies=enemies, player=player, levels=levels)
 
 
-@cache
 def shipped_gameplay_data() -> GameplayData:
     """The gameplay data under :func:`gameplay_data_root`, loaded once.
 

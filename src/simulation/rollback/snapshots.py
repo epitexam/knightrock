@@ -81,3 +81,5 @@ class LevelSnapshot:
     entities: dict[str, EntitySnapshot] = field(default_factory=dict)
     platforms: list[PlatformSnapshot] = field(default_factory=list)
     projectiles: list[ProjectileSnapshot] = field(default_factory=list)
+    #: State contributed by subsystems registered through ``SnapshotPort``.
+    parts: dict[str, Any] = field(default_factory=dict)

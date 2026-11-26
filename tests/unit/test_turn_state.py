@@ -23,7 +23,6 @@ import pytest
 
 from src.platform.input.input_manager import InputManager
 from src.presentation.display.framing import Framing
-from src.presentation.fx.tuning import FootstepDust
 from src.presentation.rendering.camera import Camera
 from src.presentation.rendering.renderer import (
     Renderer,
@@ -35,6 +34,7 @@ from src.presentation.rendering.renderer import (
 from src.shared.input_actions import InputAction
 from src.shared.input_state import InputState
 from src.simulation.entities.player import Player
+from src.simulation.fx_tuning import FootstepDust
 from src.simulation.settings import Turn
 from src.simulation.states.player_states import PlayerState
 from src.simulation.states.state_machine import StateMachine

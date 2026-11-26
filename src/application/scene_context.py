@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from src.shared.events import EventBus
     from src.simulation.data.provider import GameplayData
     from src.simulation.level.level_manager import LevelManager
+    from src.simulation.settings import Tuning
 
 
 class SceneContext(Protocol):
@@ -36,6 +37,9 @@ class SceneContext(Protocol):
 
     @property
     def settings(self) -> UserSettings: ...
+
+    @property
+    def tuning(self) -> Tuning: ...
 
     @property
     def scene_manager(self) -> SceneManager: ...

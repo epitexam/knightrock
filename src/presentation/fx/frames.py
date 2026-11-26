@@ -13,8 +13,8 @@ import random
 import pygame
 
 from src.presentation.fx.draw import draw_arc_stroke, snap
-from src.presentation.fx.tuning import FxGuard
 from src.shared.colors import Color, FXColors
+from src.simulation.fx_tuning import FxGuard
 
 _shard_cache: dict[tuple[int, int], list[pygame.Surface]] = {}
 """The break geometry, keyed on ``(side, layout)``.

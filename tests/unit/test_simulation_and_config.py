@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.presentation.rendering.render_hints import RenderHints
+from src.shared.render_hints import RenderHints
 from src.simulation.combat.combat_component import NullCombatComponent
 from src.simulation.entities.player_config import PlayerConfig
 from src.simulation.entities.player_controllers import DashController

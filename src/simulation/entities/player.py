@@ -98,6 +98,8 @@ class Player(Entity):
         config: PlayerConfig | None = None,
         spatial_hash: SpatialHash | None = None,
         id_factory: IdFactory | None = None,
+        tuning: Any = None,
+        asset_port: Any = None,
     ) -> None:
         """Initialise the player.
 
@@ -156,6 +158,7 @@ class Player(Entity):
             invincibility_duration=config.invincibility_duration,
             spatial_hash=spatial_hash,
             id_factory=id_factory,
+            tuning=tuning,
         )
 
         self.speed = config.speed
@@ -195,7 +198,11 @@ class Player(Entity):
         self.input_manager = input_manager
         self.input_handler = PlayerInputHandler(self)
 
-        self.animator = Animator(shared_library(), PLAYER_ANIMATIONS, default="idle")
+        self.animator = Animator(
+            asset_port if asset_port is not None else shared_library(),
+            PLAYER_ANIMATIONS,
+            default="idle",
+        )
         self._setup_state_machine()
 
     def _setup_state_machine(self) -> None:

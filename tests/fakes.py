@@ -12,7 +12,7 @@ from typing import Any
 
 import pygame
 
-from src.presentation.rendering.render_hints import RenderHints
+from src.shared.render_hints import RenderHints
 from src.simulation.combat.combat_component import NullCombatComponent
 from src.simulation.combat.knockback import KnockbackConfig
 from src.simulation.combat.shapes import ShapeKind, ShapePose, SweptShape

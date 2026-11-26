@@ -92,7 +92,11 @@ def _fx_reexports() -> set[str]:
     reached: set[str] = set()
     submodules = {path.stem for path in FX_MODULES}
     for path in _python_files():
-        if FX_PACKAGE in path.parents or ("core" in path.parts and "fx" in path.parts):
+        if (
+            FX_PACKAGE in path.parents
+            and path.name != "adapter.py"
+            or ("core" in path.parts and "fx" in path.parts)
+        ):
             continue
         source = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(source):
@@ -405,7 +409,7 @@ def test_every_footstep_tier_is_a_player_state_and_nothing_else() -> None:
     ``walk_slow``, which is silent on purpose, so the assertion names it rather
     than banning it.
     """
-    from src.presentation.fx.tuning import FootstepDust
+    from src.simulation.fx_tuning import FootstepDust
     from src.simulation.states.player_states import PlayerState
 
     states = {state.value for state in PlayerState}
@@ -438,7 +442,7 @@ def test_the_default_footstep_tier_is_the_run_row() -> None:
     Compared by value on both fields, because a row that matched on one and not
     the other would be a worse bug than either.
     """
-    from src.presentation.fx.tuning import FootstepDust
+    from src.simulation.fx_tuning import FootstepDust
     from src.simulation.states.player_states import PlayerState
 
     assert FootstepDust.TIER[PlayerState.RUN.value] == FootstepDust.DEFAULT_TIER, (
@@ -460,7 +464,7 @@ def test_the_walk_and_run_combs_are_far_enough_apart_to_read_as_gaits() -> None:
     too far apart and the walk is not marking the floor at all, which is the
     ``walk_slow`` behaviour wearing the wrong state's name.
     """
-    from src.presentation.fx.tuning import FootstepDust
+    from src.simulation.fx_tuning import FootstepDust
     from src.simulation.settings import Physics
     from src.simulation.states.player_states import PlayerState
 

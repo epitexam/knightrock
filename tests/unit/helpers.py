@@ -104,6 +104,7 @@ def make_entity(
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
     hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
     floor: bool = True,
+    tuning: Any = None,
 ) -> Entity:
     """Build a bare :class:`Entity` in isolated sprite groups.
 
@@ -125,6 +126,7 @@ def make_entity(
         invincibility_duration=invincibility,
         hurtbox_inflate=hurtbox_inflate,
         hurtbox_zones=hurtbox_zones,
+        tuning=tuning,
     )
     entity.on_surface["floor"] = floor
     return entity

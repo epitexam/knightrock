@@ -25,9 +25,9 @@ from collections.abc import Iterable
 
 import pygame
 
-from src.presentation.rendering.render_hints import RenderHints
 from src.presentation.ui.world_overlay.metrics import ANNOTATION_MAX_DODGES
 from src.shared.colors import Color, Colors
+from src.shared.render_hints import RenderHints
 
 __all__ = [
     "AnnotationSink",

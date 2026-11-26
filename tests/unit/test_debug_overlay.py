@@ -9,7 +9,6 @@ from pygame.math import Vector2
 
 from src.presentation.display.framing import Framing
 from src.presentation.rendering.camera import Camera
-from src.presentation.rendering.render_hints import RenderHints
 from src.presentation.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.presentation.ui.ui_manager import UIManager
 from src.presentation.ui.world_overlay.cards import CardLayer
@@ -31,6 +30,7 @@ from src.presentation.ui.world_overlay.shared import display_name, hitbox_color
 from src.presentation.ui.world_overlay.velocity import arrow_outline
 from src.presentation.ui.world_ui import WorldUI
 from src.shared.colors import Color, Colors
+from src.shared.render_hints import RenderHints
 from src.simulation.combat.shapes import ShapeKind, ShapePose
 from src.simulation.entities.components.reaction import ReactionKind, ReactionStatus
 from tests.fakes import game_shape

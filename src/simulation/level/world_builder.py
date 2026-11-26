@@ -12,6 +12,7 @@ from pygame.sprite import Group
 from src.platform.assets import shared_library
 from src.platform.input.input_manager import InputManager
 from src.shared.colors import Colors
+from src.shared.contracts import AssetPort
 from src.simulation.data.provider import GameplayData, shipped_gameplay_data
 from src.simulation.entities.enemies.factory import create_enemy
 from src.simulation.entities.id_factory import IdFactory
@@ -28,7 +29,7 @@ from src.simulation.level.level_data import DATA_LAYER_NAME, LevelData, ObjectDa
 from src.simulation.level.level_registry import Registry
 from src.simulation.level.systems.hazard_damage import HazardDamageSystem
 from src.simulation.physics.spatial_hash import SpatialHash
-from src.simulation.settings import World
+from src.simulation.settings import Tuning, World
 from src.simulation.sprite_groups import SpriteGroups
 from src.simulation.sprites import LevelExit, MovingPlatform, Sprite
 
@@ -226,7 +227,8 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         span=(span_a, span_b),
     )
     # The blade is a disc in a square frame: it cuts with the disc.
-    frames = shared_library().frames(SAW_ART) if animator is not None else [surf]
+    library = shared_library()
+    frames = library.frames(SAW_ART) if animator is not None else [surf]
     hazard.fit_contact(art_bounds(frames, hazard.rect.size), round_shape=True)
     groups.hazard_sprites.add(hazard)
 
@@ -273,6 +275,7 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         animator = build_hazard_animator({"spikes": FLOOR_SPIKES_ART}, "spikes")
     except FileNotFoundError:
         animator = None
+    library = shared_library()
     hazard = SpanHazard(
         (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
     )
@@ -280,7 +283,7 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     # The spikes fill half of their tile -- the bottom half, or the top one for
     # a mirrored ceiling spike: only they hurt, not the air beside them.
     frames = (
-        mirrored(shared_library().frames(FLOOR_SPIKES_ART), obj.flip_x, obj.flip_y)
+        mirrored(library.frames(FLOOR_SPIKES_ART), obj.flip_x, obj.flip_y)
         if animator is not None
         else [surf]
     )
@@ -351,6 +354,8 @@ class WorldBuilder:
         level_data: LevelData,
         gameplay_data: GameplayData | None = None,
         id_factory: IdFactory | None = None,
+        asset_port: AssetPort | None = None,
+        tuning: Tuning | None = None,
     ) -> None:
         self.level_data = level_data
         self.id_factory = id_factory if id_factory is not None else IdFactory()
@@ -363,6 +368,8 @@ class WorldBuilder:
         #: Set by :meth:`bind_spatial_hash` before :meth:`build`; an entity
         #: born without it falls back to a linear scan of every collidable in
         #: the level (correct, but a measured x2.4 on the whole simulation).
+        self.asset_port: AssetPort = asset_port if asset_port is not None else shared_library()
+        self.tuning = tuning
         self.spatial_hash: SpatialHash | None = None
 
     def bind_spatial_hash(self, spatial_hash: SpatialHash) -> None:
@@ -420,6 +427,8 @@ class WorldBuilder:
                         config=config,
                         spatial_hash=self.spatial_hash,
                         id_factory=self.id_factory,
+                        tuning=self.tuning,
+                        asset_port=self.asset_port,
                     )
                     groups.add_fighter(player)
                     return player
@@ -461,6 +470,8 @@ class WorldBuilder:
                 spatial_hash=self.spatial_hash,
                 reverse=reverse,
                 id_factory=self.id_factory,
+                tuning=self.tuning,
+                asset_port=self.asset_port,
             )
             groups.add_fighter(entity)
         elif OBJECT_FACTORIES.has(obj.name):

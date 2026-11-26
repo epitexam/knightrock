@@ -9,8 +9,8 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.presentation.rendering.render_hints import RenderHints
 from src.shared.damage_types import DamageType
+from src.shared.render_hints import RenderHints
 from src.simulation.animation.animator import Animator
 from src.simulation.combat.attack_loading import load_attacks
 from src.simulation.combat.combat_component import (
@@ -55,6 +55,7 @@ from src.simulation.settings import (
     HitFlash,
     Locomotion,
     Physics,
+    Tuning,
     Turn,
     resolve_turn_profile,
 )
@@ -184,6 +185,7 @@ class Entity:
         entity_id: str | None = None,
         spatial_hash: SpatialHash | None = None,
         id_factory: IdFactory | None = None,
+        tuning: Tuning | None = None,
     ) -> None:
         """Initialize the entity.
 
@@ -231,6 +233,7 @@ class Entity:
         # The sprite *proxy* is what pygame groups hold; the simulation
         # itself is a plain object backed by dense tables.
         factory = id_factory if id_factory is not None else shared_id_factory()
+        self.tuning = tuning
         self.id: str = entity_id if entity_id is not None else factory.entity_id()
         self.pushable: bool = True
         self.faction: str = faction
@@ -957,7 +960,7 @@ class Entity:
         class can still say a number outright -- that is the layer above the
         named profiles, and the reason they are partial.
         """
-        resolved = resolve_turn_profile(self.turn_profile if name is None else name)
+        resolved = resolve_turn_profile(self.turn_profile if name is None else name, self.tuning)
         self.turn_profile = self.turn_profile if name is None else name
         self.turn_enabled = bool(resolved.enabled)
         self.turn_delay_s = float(resolved.delay_s or 0.0)

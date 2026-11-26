@@ -69,9 +69,9 @@ from src.presentation.fx import (
     spawners,
 )
 from src.presentation.fx import particles as particles
-from src.presentation.fx.tuning import Dust, FootstepDust, FxGuard
-from src.presentation.rendering.render_hints import RenderHints
 from src.shared.colors import FXColors
+from src.shared.render_hints import RenderHints
+from src.simulation.fx_tuning import Dust, FootstepDust, FxGuard
 
 #: The frame this plane has to fit inside, at 60 Hz.
 FRAME_BUDGET_US = 1000.0 / 60.0 * 1000.0

@@ -2,7 +2,7 @@
 
 import random
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -131,6 +131,8 @@ class Enemy(Entity):
         enemy_type: str | None = None,
         spatial_hash: SpatialHash | None = None,
         id_factory: IdFactory | None = None,
+        tuning: Any = None,
+        asset_port: Any = None,
     ) -> None:
         """Initialize an enemy from its configuration.
 
@@ -175,6 +177,7 @@ class Enemy(Entity):
             rng=rng,
             spatial_hash=spatial_hash,
             id_factory=id_factory,
+            tuning=tuning,
         )
 
         self.config = config
@@ -255,7 +258,11 @@ class Enemy(Entity):
                 name: AnimationSpec(name, directory, AnimationSettings.FRAME_DURATION, loop=True)
                 for name, directory in config.animations.items()
             }
-            self.animator = Animator(shared_library(), specs, default=next(iter(specs)))
+            self.animator = Animator(
+                asset_port if asset_port is not None else shared_library(),
+                specs,
+                default=next(iter(specs)),
+            )
 
         if self.player is not None:
             self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx

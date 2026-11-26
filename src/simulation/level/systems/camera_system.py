@@ -9,7 +9,7 @@ shake keeps decaying, and the pending-tick interpolation the last
 ``follow`` left behind is settled instead of left standing.
 """
 
-from src.presentation.rendering.camera import Camera
+from src.shared.contracts import CameraPort
 from src.simulation.entities.player import Player
 
 __all__ = ["CameraSystem"]
@@ -18,7 +18,7 @@ __all__ = ["CameraSystem"]
 class CameraSystem:
     """Follow the living player with the level camera."""
 
-    def __init__(self, camera: Camera) -> None:
+    def __init__(self, camera: CameraPort) -> None:
         self.camera = camera
 
     def process(self, delta_time: float, player: Player) -> None:

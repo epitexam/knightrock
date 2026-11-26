@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pygame
 from pygame.math import Vector2
 
-from src.presentation.rendering.render_hints import RenderHints
+from src.shared.render_hints import RenderHints
 from src.simulation.combat.knockback import KnockbackConfig
 from src.simulation.entities.components.reaction import (
     ReactionComponent,

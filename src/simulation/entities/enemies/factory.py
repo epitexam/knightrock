@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import replace
+from typing import Any
 
 from pygame.math import Vector2
 from pygame.sprite import Group
@@ -22,6 +23,8 @@ def create_enemy(
     spatial_hash: SpatialHash | None = None,
     reverse: bool | None = None,
     id_factory: IdFactory | None = None,
+    tuning: Any = None,
+    asset_port: Any = None,
 ) -> Enemy:
     """Create the enemy called ``name``.
 
@@ -68,4 +71,6 @@ def create_enemy(
         enemy_type=name,
         spatial_hash=spatial_hash,
         id_factory=id_factory,
+        tuning=tuning,
+        asset_port=asset_port,
     )
