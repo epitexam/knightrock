@@ -31,9 +31,9 @@ uv run python tests/benchmarks/native_benchmark.py # after tools/build_native.py
 > report a speedup unless the checksums agree.
 
 Full measurements, including the Phase E results, are in
-[the performance audit](audit/performance-2026-11.md).
+[the performance audit](../audit/performance-2026-11.md).
 
 ## See also
 
 - [Debugging](debugging.md) — the in-game diagnostics these scripts replace.
-- [Architecture and rendering](architecture.md) — the pipeline being measured.
+- [Architecture and rendering](../architecture/overview.md) — the pipeline being measured.

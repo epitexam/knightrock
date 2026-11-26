@@ -8,7 +8,7 @@ combat, rendering or settings.
 uv run pytest
 ```
 
-> **Current baseline:** 3841 tests · 94 % instruction coverage · 84 % branch
+> **Current baseline:** 3864 tests · 94 % instruction coverage · 84 % branch
 > coverage · Ruff clean · mypy clean (218 files across `src main.py tools`;
 > `mypy src` alone is 212).[^coverage]
 

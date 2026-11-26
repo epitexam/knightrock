@@ -81,4 +81,4 @@ hazards and contact damage stay **discrete**.
 ## See also
 
 - [Benchmarks](benchmarks.md) — the standalone measurements behind these numbers.
-- [Architecture and rendering](architecture.md) — what the overlay is describing.
+- [Architecture and rendering](../architecture/overview.md) — what the overlay is describing.

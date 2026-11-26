@@ -198,6 +198,6 @@ overwritten is kept as `settings.json.bak`.
 
 ## See also
 
-- [Architecture and rendering](architecture.md) — how input reaches the fixed-tick
+- [Architecture and rendering](../architecture/overview.md) — how input reaches the fixed-tick
   simulation.
-- [Debugging](debugging.md) — the F-key bench, including the prompt showcase.
+- [Debugging](../guides/debugging.md) — the F-key bench, including the prompt showcase.
