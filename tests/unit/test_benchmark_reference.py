@@ -38,14 +38,14 @@ def report() -> dict[str, object]:
 def test_enemy_warnings_are_exact(report: dict[str, object]) -> None:
     """Pure data, no RNG: a startup change must fail loudly."""
     assert report["enemy_warning_ms"] == {
-        "goblin.claw_swipe": 267,
-        "goblin.claw_reach": 367,
-        "slime.body_slam": 333,
-        "slime.slime_spit": 400,
-        "tooth.bite": 200,
-        "tooth.snap": 267,
-        "shell.shell_bash": 367,
-        "shell.shell_roll": 433,
+        "goblin.claw_swipe": 400,
+        "goblin.claw_reach": 550,
+        "slime.body_slam": 500,
+        "slime.slime_spit": 600,
+        "tooth.bite": 300,
+        "tooth.snap": 400,
+        "shell.shell_bash": 550,
+        "shell.shell_roll": 650,
     }
 
 
@@ -76,5 +76,6 @@ def test_frame_advantage_and_dodge_window_are_in_band(report: dict[str, object])
     assert isinstance(duel, dict)
     advantage = duel["frame_advantage"]
     assert isinstance(advantage, dict)
-    assert advantage["hit"] == pytest.approx(18, abs=3)
-    assert 0 <= report["perfect_dodge_ticks"] <= 3
+    assert advantage["hit"] == pytest.approx(14, abs=3)
+    # The slower catalogue gives the dodge a longer lead before a blow lands.
+    assert 0 <= report["perfect_dodge_ticks"] <= 12

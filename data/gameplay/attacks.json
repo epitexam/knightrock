@@ -5,9 +5,9 @@
       "slash_high_1": {
         "phases": [
           {
-            "startup_frames": 3,
-            "active_frames": 4,
-            "recovery_frames": 5,
+            "startup_frames": 4,
+            "active_frames": 6,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -65,7 +65,7 @@
                     "angle": -75.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       28.0,
                       5.0
@@ -77,7 +77,7 @@
                     "angle": -70.0
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       28.0,
                       5.0
@@ -89,7 +89,7 @@
                     "angle": -65.0
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       28.0,
                       5.0
@@ -101,7 +101,7 @@
                     "angle": -60.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       28.0,
                       5.0
@@ -113,7 +113,7 @@
                     "angle": -25.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       28.0,
                       5.0
@@ -124,7 +124,7 @@
                     ]
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       28.0,
                       5.0
@@ -136,7 +136,7 @@
                     "angle": 15.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       28.0,
                       5.0
@@ -179,9 +179,9 @@
       "slash_high_2": {
         "phases": [
           {
-            "startup_frames": 3,
-            "active_frames": 4,
-            "recovery_frames": 5,
+            "startup_frames": 4,
+            "active_frames": 6,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -239,7 +239,7 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       28.0,
                       5.0
@@ -251,7 +251,7 @@
                     "angle": 31.67
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       28.0,
                       5.0
@@ -263,7 +263,7 @@
                     "angle": 28.33
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       28.0,
                       5.0
@@ -275,7 +275,7 @@
                     "angle": 25.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       28.0,
                       5.0
@@ -287,7 +287,7 @@
                     "angle": -5.62
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       28.0,
                       5.0
@@ -299,7 +299,7 @@
                     "angle": -27.5
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       28.0,
                       5.0
@@ -311,7 +311,7 @@
                     "angle": -40.62
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       28.0,
                       5.0
@@ -354,9 +354,9 @@
       "slash_high_3": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 3,
-            "recovery_frames": 7,
+            "startup_frames": 8,
+            "active_frames": 4,
+            "recovery_frames": 10,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -414,18 +414,6 @@
                     "angle": -4.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      12.0,
-                      5.0
-                    ],
-                    "offset": [
-                      11.99,
-                      1.58
-                    ],
-                    "angle": -4.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       12.0,
@@ -462,7 +450,7 @@
                     "angle": -4.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
                     "size": [
                       12.0,
                       5.0
@@ -474,7 +462,19 @@
                     "angle": -4.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 8,
+                    "size": [
+                      12.0,
+                      5.0
+                    ],
+                    "offset": [
+                      11.99,
+                      1.58
+                    ],
+                    "angle": -4.0
+                  },
+                  {
+                    "frame": 9,
                     "size": [
                       24.22,
                       5.0
@@ -486,7 +486,7 @@
                     "angle": -4.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       31.56,
                       5.0
@@ -498,7 +498,7 @@
                     "angle": -4.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       34.0,
                       5.0
@@ -541,9 +541,9 @@
       "slash_high_4": {
         "phases": [
           {
-            "startup_frames": 7,
-            "active_frames": 4,
-            "recovery_frames": 11,
+            "startup_frames": 10,
+            "active_frames": 6,
+            "recovery_frames": 16,
             "hit": {
               "damage": 13.0,
               "knockback": {
@@ -598,7 +598,7 @@
                     "angle": -110.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       32.0,
                       6.0
@@ -610,7 +610,7 @@
                     "angle": -107.86
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       32.0,
                       6.0
@@ -622,7 +622,7 @@
                     "angle": -105.71
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       32.0,
                       6.0
@@ -634,7 +634,7 @@
                     "angle": -103.57
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       32.0,
                       6.0
@@ -646,7 +646,7 @@
                     "angle": -101.43
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       32.0,
                       6.0
@@ -658,7 +658,7 @@
                     "angle": -99.29
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       32.0,
                       6.0
@@ -670,7 +670,7 @@
                     "angle": -97.14
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       32.0,
                       6.0
@@ -682,7 +682,7 @@
                     "angle": -95.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       32.0,
                       6.0
@@ -694,7 +694,7 @@
                     "angle": -38.12
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       32.0,
                       6.0
@@ -706,7 +706,7 @@
                     "angle": 2.5
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       32.0,
                       6.0
@@ -718,7 +718,7 @@
                     "angle": 26.88
                   },
                   {
-                    "frame": 11,
+                    "frame": 16,
                     "size": [
                       32.0,
                       6.0
@@ -759,9 +759,9 @@
       "slash_low_1": {
         "phases": [
           {
-            "startup_frames": 3,
-            "active_frames": 4,
-            "recovery_frames": 5,
+            "startup_frames": 4,
+            "active_frames": 6,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -819,7 +819,7 @@
                     "angle": -5.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       26.0,
                       5.0
@@ -831,7 +831,7 @@
                     "angle": -1.67
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       26.0,
                       5.0
@@ -843,7 +843,7 @@
                     "angle": 1.67
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       26.0,
                       5.0
@@ -855,7 +855,7 @@
                     "angle": 5.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       26.0,
                       5.0
@@ -867,7 +867,7 @@
                     "angle": 22.5
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       26.0,
                       5.0
@@ -879,7 +879,7 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       26.0,
                       5.0
@@ -891,7 +891,7 @@
                     "angle": 42.5
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       26.0,
                       5.0
@@ -934,9 +934,9 @@
       "slash_low_2": {
         "phases": [
           {
-            "startup_frames": 3,
-            "active_frames": 4,
-            "recovery_frames": 5,
+            "startup_frames": 4,
+            "active_frames": 6,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -994,7 +994,7 @@
                     "angle": 60.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       26.0,
                       5.0
@@ -1006,7 +1006,7 @@
                     "angle": 56.67
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       26.0,
                       5.0
@@ -1018,7 +1018,7 @@
                     "angle": 53.33
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       26.0,
                       5.0
@@ -1030,7 +1030,7 @@
                     "angle": 50.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       26.0,
                       5.0
@@ -1042,7 +1042,7 @@
                     "angle": 32.5
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       26.0,
                       5.0
@@ -1054,7 +1054,7 @@
                     "angle": 20.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       26.0,
                       5.0
@@ -1066,7 +1066,7 @@
                     "angle": 12.5
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       26.0,
                       5.0
@@ -1109,9 +1109,9 @@
       "slash_low_3": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 3,
-            "recovery_frames": 7,
+            "startup_frames": 8,
+            "active_frames": 4,
+            "recovery_frames": 10,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -1169,18 +1169,6 @@
                     "angle": 22.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      12.0,
-                      5.0
-                    ],
-                    "offset": [
-                      11.56,
-                      12.25
-                    ],
-                    "angle": 22.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       12.0,
@@ -1217,7 +1205,7 @@
                     "angle": 22.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
                     "size": [
                       12.0,
                       5.0
@@ -1229,7 +1217,19 @@
                     "angle": 22.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 8,
+                    "size": [
+                      12.0,
+                      5.0
+                    ],
+                    "offset": [
+                      11.56,
+                      12.25
+                    ],
+                    "angle": 22.0
+                  },
+                  {
+                    "frame": 9,
                     "size": [
                       23.11,
                       5.0
@@ -1241,7 +1241,7 @@
                     "angle": 22.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       29.78,
                       5.0
@@ -1253,7 +1253,7 @@
                     "angle": 22.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       32.0,
                       5.0
@@ -1296,9 +1296,9 @@
       "slash_low_4": {
         "phases": [
           {
-            "startup_frames": 6,
-            "active_frames": 5,
-            "recovery_frames": 11,
+            "startup_frames": 9,
+            "active_frames": 8,
+            "recovery_frames": 16,
             "hit": {
               "damage": 11.0,
               "knockback": {
@@ -1353,7 +1353,7 @@
                     "angle": 70.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       30.0,
                       6.0
@@ -1365,7 +1365,7 @@
                     "angle": 68.33
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       30.0,
                       6.0
@@ -1377,7 +1377,7 @@
                     "angle": 66.67
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       30.0,
                       6.0
@@ -1389,7 +1389,7 @@
                     "angle": 65.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       30.0,
                       6.0
@@ -1401,7 +1401,7 @@
                     "angle": 63.33
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       30.0,
                       6.0
@@ -1413,7 +1413,7 @@
                     "angle": 61.67
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       30.0,
                       6.0
@@ -1425,7 +1425,7 @@
                     "angle": 60.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       30.0,
                       6.0
@@ -1437,7 +1437,7 @@
                     "angle": 13.2
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       30.0,
                       6.0
@@ -1449,7 +1449,7 @@
                     "angle": -23.2
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       30.0,
                       6.0
@@ -1461,7 +1461,7 @@
                     "angle": -49.2
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       30.0,
                       6.0
@@ -1473,7 +1473,7 @@
                     "angle": -64.8
                   },
                   {
-                    "frame": 11,
+                    "frame": 16,
                     "size": [
                       30.0,
                       6.0
@@ -1514,9 +1514,9 @@
       "punch_1": {
         "phases": [
           {
-            "startup_frames": 4,
-            "active_frames": 2,
-            "recovery_frames": 8,
+            "startup_frames": 6,
+            "active_frames": 3,
+            "recovery_frames": 12,
             "hit": {
               "damage": 5.0,
               "knockback": {
@@ -1571,17 +1571,6 @@
                     ]
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      8.0,
-                      8.0
-                    ],
-                    "offset": [
-                      8.0,
-                      4.0
-                    ]
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       8.0,
@@ -1615,7 +1604,18 @@
                     ]
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
+                    "size": [
+                      8.0,
+                      8.0
+                    ],
+                    "offset": [
+                      8.0,
+                      4.0
+                    ]
+                  },
+                  {
+                    "frame": 8,
                     "size": [
                       18.5,
                       8.0
@@ -1626,7 +1626,7 @@
                     ]
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       22.0,
                       8.0
@@ -1665,9 +1665,9 @@
       "punch_2": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 3,
-            "recovery_frames": 10,
+            "startup_frames": 8,
+            "active_frames": 4,
+            "recovery_frames": 15,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -1723,18 +1723,6 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      8.0,
-                      9.0
-                    ],
-                    "offset": [
-                      9.99,
-                      4.28
-                    ],
-                    "angle": 4.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       8.0,
@@ -1771,7 +1759,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
                     "size": [
                       8.0,
                       9.0
@@ -1783,7 +1771,19 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 8,
+                    "size": [
+                      8.0,
+                      9.0
+                    ],
+                    "offset": [
+                      9.99,
+                      4.28
+                    ],
+                    "angle": 4.0
+                  },
+                  {
+                    "frame": 9,
                     "size": [
                       18.0,
                       9.0
@@ -1795,7 +1795,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       24.0,
                       9.0
@@ -1807,7 +1807,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       26.0,
                       9.0
@@ -1848,9 +1848,9 @@
       "punch_3": {
         "phases": [
           {
-            "startup_frames": 6,
-            "active_frames": 4,
-            "recovery_frames": 16,
+            "startup_frames": 9,
+            "active_frames": 6,
+            "recovery_frames": 24,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -1901,7 +1901,7 @@
                     "angle": 50.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       20.0,
                       9.0
@@ -1913,7 +1913,7 @@
                     "angle": 46.67
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       20.0,
                       9.0
@@ -1925,7 +1925,7 @@
                     "angle": 43.33
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       20.0,
                       9.0
@@ -1937,7 +1937,7 @@
                     "angle": 40.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       20.0,
                       9.0
@@ -1949,7 +1949,7 @@
                     "angle": 36.67
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       20.0,
                       9.0
@@ -1961,7 +1961,7 @@
                     "angle": 33.33
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       20.0,
                       9.0
@@ -1973,7 +1973,7 @@
                     "angle": 30.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       20.0,
                       9.0
@@ -1985,7 +1985,7 @@
                     "angle": -18.12
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       20.0,
                       9.0
@@ -1997,7 +1997,7 @@
                     "angle": -52.5
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       20.0,
                       9.0
@@ -2009,7 +2009,7 @@
                     "angle": -73.12
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       20.0,
                       9.0
@@ -2045,9 +2045,9 @@
       "kick_1": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 4,
-            "recovery_frames": 10,
+            "startup_frames": 8,
+            "active_frames": 6,
+            "recovery_frames": 15,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -2103,7 +2103,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       26.0,
                       9.0
@@ -2115,7 +2115,7 @@
                     "angle": 42.0
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       26.0,
                       9.0
@@ -2127,7 +2127,7 @@
                     "angle": 39.0
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       26.0,
                       9.0
@@ -2139,7 +2139,7 @@
                     "angle": 36.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       26.0,
                       9.0
@@ -2151,7 +2151,7 @@
                     "angle": 33.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       26.0,
                       9.0
@@ -2163,7 +2163,7 @@
                     "angle": 30.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       26.0,
                       9.0
@@ -2175,7 +2175,7 @@
                     "angle": 19.06
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       26.0,
                       9.0
@@ -2187,7 +2187,7 @@
                     "angle": 11.25
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       26.0,
                       9.0
@@ -2199,7 +2199,7 @@
                     "angle": 6.56
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       26.0,
                       9.0
@@ -2240,9 +2240,9 @@
       "kick_2": {
         "phases": [
           {
-            "startup_frames": 7,
-            "active_frames": 4,
-            "recovery_frames": 16,
+            "startup_frames": 10,
+            "active_frames": 6,
+            "recovery_frames": 24,
             "hit": {
               "damage": 9.0,
               "knockback": {
@@ -2293,7 +2293,7 @@
                     "angle": 70.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       30.0,
                       10.0
@@ -2305,7 +2305,7 @@
                     "angle": 67.14
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       30.0,
                       10.0
@@ -2317,7 +2317,7 @@
                     "angle": 64.29
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       30.0,
                       10.0
@@ -2329,7 +2329,7 @@
                     "angle": 61.43
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       30.0,
                       10.0
@@ -2341,7 +2341,7 @@
                     "angle": 58.57
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       30.0,
                       10.0
@@ -2353,7 +2353,7 @@
                     "angle": 55.71
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       30.0,
                       10.0
@@ -2365,7 +2365,7 @@
                     "angle": 52.86
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       30.0,
                       10.0
@@ -2377,7 +2377,7 @@
                     "angle": 50.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       30.0,
                       10.0
@@ -2389,7 +2389,7 @@
                     "angle": 17.19
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       30.0,
                       10.0
@@ -2401,7 +2401,7 @@
                     "angle": -6.25
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       30.0,
                       10.0
@@ -2413,7 +2413,7 @@
                     "angle": -20.31
                   },
                   {
-                    "frame": 11,
+                    "frame": 16,
                     "size": [
                       30.0,
                       10.0
@@ -2449,9 +2449,9 @@
       "charged_slash": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 5,
-            "recovery_frames": 14,
+            "startup_frames": 8,
+            "active_frames": 8,
+            "recovery_frames": 21,
             "hit": {
               "damage": 12.0,
               "knockback": {
@@ -2501,7 +2501,7 @@
                     "angle": -85.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       34.0,
                       7.0
@@ -2513,7 +2513,7 @@
                     "angle": -82.0
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       34.0,
                       7.0
@@ -2525,7 +2525,7 @@
                     "angle": -79.0
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       34.0,
                       7.0
@@ -2537,7 +2537,7 @@
                     "angle": -76.0
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       34.0,
                       7.0
@@ -2549,7 +2549,7 @@
                     "angle": -73.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       34.0,
                       7.0
@@ -2561,7 +2561,7 @@
                     "angle": -70.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       34.0,
                       7.0
@@ -2573,7 +2573,7 @@
                     "angle": -30.4
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       34.0,
                       7.0
@@ -2585,7 +2585,7 @@
                     "angle": 0.4
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       34.0,
                       7.0
@@ -2597,7 +2597,7 @@
                     "angle": 22.4
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       34.0,
                       7.0
@@ -2609,7 +2609,7 @@
                     "angle": 35.6
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       34.0,
                       7.0
@@ -2645,9 +2645,9 @@
       "charged_slash_full": {
         "phases": [
           {
-            "startup_frames": 4,
-            "active_frames": 4,
-            "recovery_frames": 2,
+            "startup_frames": 6,
+            "active_frames": 6,
+            "recovery_frames": 3,
             "hit": {
               "damage": 12.0,
               "knockback": {
@@ -2698,7 +2698,7 @@
                     "angle": -115.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       34.0,
                       8.0
@@ -2710,7 +2710,7 @@
                     "angle": -111.25
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       34.0,
                       8.0
@@ -2722,7 +2722,7 @@
                     "angle": -107.5
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       34.0,
                       8.0
@@ -2734,7 +2734,7 @@
                     "angle": -103.75
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       34.0,
                       8.0
@@ -2746,7 +2746,7 @@
                     "angle": -100.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       34.0,
                       8.0
@@ -2758,7 +2758,7 @@
                     "angle": -34.38
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       34.0,
                       8.0
@@ -2770,7 +2770,7 @@
                     "angle": 12.5
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       34.0,
                       8.0
@@ -2782,7 +2782,7 @@
                     "angle": 40.62
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       34.0,
                       8.0
@@ -2818,9 +2818,9 @@
       "charged_kick": {
         "phases": [
           {
-            "startup_frames": 6,
-            "active_frames": 4,
-            "recovery_frames": 16,
+            "startup_frames": 9,
+            "active_frames": 6,
+            "recovery_frames": 24,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -2871,18 +2871,6 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      12.0,
-                      12.0
-                    ],
-                    "offset": [
-                      7.99,
-                      8.42
-                    ],
-                    "angle": 4.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       12.0,
@@ -2919,18 +2907,6 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      12.0,
-                      12.0
-                    ],
-                    "offset": [
-                      7.99,
-                      8.42
-                    ],
-                    "angle": 4.0
-                  },
-                  {
                     "frame": 6,
                     "size": [
                       12.0,
@@ -2943,7 +2919,31 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 8,
+                    "size": [
+                      12.0,
+                      12.0
+                    ],
+                    "offset": [
+                      7.99,
+                      8.42
+                    ],
+                    "angle": 4.0
+                  },
+                  {
+                    "frame": 9,
+                    "size": [
+                      12.0,
+                      12.0
+                    ],
+                    "offset": [
+                      7.99,
+                      8.42
+                    ],
+                    "angle": 4.0
+                  },
+                  {
+                    "frame": 10,
                     "size": [
                       21.62,
                       12.0
@@ -2955,7 +2955,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       28.5,
                       12.0
@@ -2967,7 +2967,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       32.62,
                       12.0
@@ -2979,7 +2979,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       34.0,
                       12.0
@@ -3015,9 +3015,9 @@
       "dash_slash": {
         "phases": [
           {
-            "startup_frames": 2,
-            "active_frames": 5,
-            "recovery_frames": 12,
+            "startup_frames": 3,
+            "active_frames": 8,
+            "recovery_frames": 18,
             "hit": {
               "damage": 9.0,
               "knockback": {
@@ -3073,7 +3073,7 @@
                     "angle": -35.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       32.0,
                       6.0
@@ -3085,7 +3085,7 @@
                     "angle": -30.0
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       32.0,
                       6.0
@@ -3097,7 +3097,7 @@
                     "angle": -25.0
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       32.0,
                       6.0
@@ -3109,7 +3109,7 @@
                     "angle": -5.2
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       32.0,
                       6.0
@@ -3121,7 +3121,7 @@
                     "angle": 10.2
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       32.0,
                       6.0
@@ -3133,7 +3133,7 @@
                     "angle": 21.2
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       32.0,
                       6.0
@@ -3145,7 +3145,7 @@
                     "angle": 27.8
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       32.0,
                       6.0
@@ -3186,9 +3186,9 @@
       "stab": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 3,
-            "recovery_frames": 12,
+            "startup_frames": 8,
+            "active_frames": 4,
+            "recovery_frames": 18,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -3238,18 +3238,6 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      12.0,
-                      5.0
-                    ],
-                    "offset": [
-                      12.91,
-                      11.44
-                    ],
-                    "angle": 35.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       12.0,
@@ -3286,7 +3274,7 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
                     "size": [
                       12.0,
                       5.0
@@ -3298,7 +3286,19 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 8,
+                    "size": [
+                      12.0,
+                      5.0
+                    ],
+                    "offset": [
+                      12.91,
+                      11.44
+                    ],
+                    "angle": 35.0
+                  },
+                  {
+                    "frame": 9,
                     "size": [
                       22.0,
                       5.0
@@ -3310,7 +3310,7 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       28.0,
                       5.0
@@ -3322,7 +3322,7 @@
                     "angle": 35.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       30.0,
                       5.0
@@ -3358,9 +3358,9 @@
       "death_blow": {
         "phases": [
           {
-            "startup_frames": 2,
-            "active_frames": 6,
-            "recovery_frames": 20,
+            "startup_frames": 3,
+            "active_frames": 9,
+            "recovery_frames": 30,
             "hit": {
               "damage": 50.0,
               "knockback": {
@@ -3410,7 +3410,7 @@
                     "angle": -60.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       36.0,
                       6.0
@@ -3422,7 +3422,7 @@
                     "angle": -55.0
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       36.0,
                       6.0
@@ -3434,7 +3434,7 @@
                     "angle": -50.0
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       36.0,
                       6.0
@@ -3446,7 +3446,7 @@
                     "angle": -20.97
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       36.0,
                       6.0
@@ -3458,7 +3458,7 @@
                     "angle": 2.78
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       36.0,
                       6.0
@@ -3470,7 +3470,7 @@
                     "angle": 21.25
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       36.0,
                       6.0
@@ -3482,7 +3482,7 @@
                     "angle": 34.44
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       36.0,
                       6.0
@@ -3494,7 +3494,7 @@
                     "angle": 42.36
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       36.0,
                       6.0
@@ -3532,7 +3532,7 @@
                     "angle": 60.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       36.0,
                       6.0
@@ -3544,7 +3544,7 @@
                     "angle": 52.5
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       36.0,
                       6.0
@@ -3556,7 +3556,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       36.0,
                       6.0
@@ -3568,7 +3568,7 @@
                     "angle": 15.97
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       36.0,
                       6.0
@@ -3580,7 +3580,7 @@
                     "angle": -7.78
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       36.0,
                       6.0
@@ -3592,7 +3592,7 @@
                     "angle": -26.25
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       36.0,
                       6.0
@@ -3604,7 +3604,7 @@
                     "angle": -39.44
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       36.0,
                       6.0
@@ -3616,7 +3616,7 @@
                     "angle": -47.36
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       36.0,
                       6.0
@@ -3653,9 +3653,9 @@
       "throw": {
         "phases": [
           {
-            "startup_frames": 6,
-            "active_frames": 8,
-            "recovery_frames": 0,
+            "startup_frames": 9,
+            "active_frames": 12,
+            "recovery_frames": 1,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -3703,17 +3703,6 @@
                     ]
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      20.0,
-                      8.0
-                    ],
-                    "offset": [
-                      14.0,
-                      4.0
-                    ]
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       20.0,
@@ -3747,17 +3736,6 @@
                     ]
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      20.0,
-                      8.0
-                    ],
-                    "offset": [
-                      14.0,
-                      4.0
-                    ]
-                  },
-                  {
                     "frame": 6,
                     "size": [
                       20.0,
@@ -3769,7 +3747,29 @@
                     ]
                   },
                   {
-                    "frame": 7,
+                    "frame": 8,
+                    "size": [
+                      20.0,
+                      8.0
+                    ],
+                    "offset": [
+                      14.0,
+                      4.0
+                    ]
+                  },
+                  {
+                    "frame": 9,
+                    "size": [
+                      20.0,
+                      8.0
+                    ],
+                    "offset": [
+                      14.0,
+                      4.0
+                    ]
+                  },
+                  {
+                    "frame": 10,
                     "size": [
                       20.0,
                       8.0
@@ -3781,7 +3781,7 @@
                     "angle": -16.41
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       20.0,
                       8.0
@@ -3793,7 +3793,7 @@
                     "angle": -30.62
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       20.0,
                       8.0
@@ -3805,7 +3805,7 @@
                     "angle": -42.66
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       20.0,
                       8.0
@@ -3817,7 +3817,7 @@
                     "angle": -52.5
                   },
                   {
-                    "frame": 11,
+                    "frame": 16,
                     "size": [
                       20.0,
                       8.0
@@ -3829,7 +3829,7 @@
                     "angle": -60.16
                   },
                   {
-                    "frame": 12,
+                    "frame": 18,
                     "size": [
                       20.0,
                       8.0
@@ -3841,7 +3841,7 @@
                     "angle": -65.62
                   },
                   {
-                    "frame": 13,
+                    "frame": 20,
                     "size": [
                       20.0,
                       8.0
@@ -3853,7 +3853,7 @@
                     "angle": -68.91
                   },
                   {
-                    "frame": 14,
+                    "frame": 21,
                     "size": [
                       20.0,
                       8.0
@@ -3870,9 +3870,9 @@
             ]
           },
           {
-            "startup_frames": 0,
-            "active_frames": 8,
-            "recovery_frames": 20,
+            "startup_frames": 1,
+            "active_frames": 12,
+            "recovery_frames": 30,
             "hit": {
               "damage": 60.0,
               "knockback": {
@@ -3921,7 +3921,7 @@
                     ]
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       21.62,
                       21.62
@@ -3932,7 +3932,7 @@
                     ]
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       26.5,
                       26.5
@@ -3943,7 +3943,7 @@
                     ]
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       30.62,
                       30.62
@@ -3954,7 +3954,7 @@
                     ]
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       34.0,
                       34.0
@@ -3965,7 +3965,7 @@
                     ]
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       36.62,
                       36.62
@@ -3976,7 +3976,7 @@
                     ]
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       38.5,
                       38.5
@@ -3987,7 +3987,7 @@
                     ]
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       39.62,
                       39.62
@@ -3998,7 +3998,7 @@
                     ]
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       40.0,
                       40.0
@@ -4033,9 +4033,9 @@
       "air_slash": {
         "phases": [
           {
-            "startup_frames": 4,
-            "active_frames": 5,
-            "recovery_frames": 7,
+            "startup_frames": 6,
+            "active_frames": 8,
+            "recovery_frames": 10,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -4090,7 +4090,7 @@
                     "angle": -65.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       26.0,
                       5.0
@@ -4102,7 +4102,7 @@
                     "angle": -61.25
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       26.0,
                       5.0
@@ -4114,7 +4114,7 @@
                     "angle": -57.5
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       26.0,
                       5.0
@@ -4126,7 +4126,7 @@
                     "angle": -53.75
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       26.0,
                       5.0
@@ -4138,7 +4138,7 @@
                     "angle": -50.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       26.0,
                       5.0
@@ -4150,7 +4150,7 @@
                     "angle": -23.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       26.0,
                       5.0
@@ -4162,7 +4162,7 @@
                     "angle": -2.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       26.0,
                       5.0
@@ -4174,7 +4174,7 @@
                     "angle": 13.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       26.0,
                       5.0
@@ -4186,7 +4186,7 @@
                     "angle": 22.0
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       26.0,
                       5.0
@@ -4228,9 +4228,9 @@
       "air_kick": {
         "phases": [
           {
-            "startup_frames": 4,
-            "active_frames": 12,
-            "recovery_frames": 8,
+            "startup_frames": 6,
+            "active_frames": 18,
+            "recovery_frames": 12,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -4280,18 +4280,6 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      14.0,
-                      10.0
-                    ],
-                    "offset": [
-                      6.95,
-                      18.95
-                    ],
-                    "angle": 45.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       14.0,
@@ -4328,7 +4316,19 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
+                    "size": [
+                      14.0,
+                      10.0
+                    ],
+                    "offset": [
+                      6.95,
+                      18.95
+                    ],
+                    "angle": 45.0
+                  },
+                  {
+                    "frame": 8,
                     "size": [
                       15.92,
                       10.0
@@ -4340,7 +4340,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       17.67,
                       10.0
@@ -4352,7 +4352,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       19.25,
                       10.0
@@ -4364,7 +4364,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       20.67,
                       10.0
@@ -4376,7 +4376,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       21.92,
                       10.0
@@ -4388,7 +4388,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       23.0,
                       10.0
@@ -4400,7 +4400,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 11,
+                    "frame": 16,
                     "size": [
                       23.92,
                       10.0
@@ -4412,7 +4412,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 12,
+                    "frame": 18,
                     "size": [
                       24.67,
                       10.0
@@ -4424,7 +4424,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 13,
+                    "frame": 20,
                     "size": [
                       25.25,
                       10.0
@@ -4436,7 +4436,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 14,
+                    "frame": 21,
                     "size": [
                       25.67,
                       10.0
@@ -4448,7 +4448,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 15,
+                    "frame": 22,
                     "size": [
                       25.92,
                       10.0
@@ -4460,7 +4460,7 @@
                     "angle": 45.0
                   },
                   {
-                    "frame": 16,
+                    "frame": 24,
                     "size": [
                       26.0,
                       10.0
@@ -4496,9 +4496,9 @@
       "shot": {
         "phases": [
           {
-            "startup_frames": 3,
-            "active_frames": 1,
-            "recovery_frames": 9,
+            "startup_frames": 4,
+            "active_frames": 2,
+            "recovery_frames": 14,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4557,9 +4557,9 @@
       "air_shot": {
         "phases": [
           {
-            "startup_frames": 3,
-            "active_frames": 1,
-            "recovery_frames": 10,
+            "startup_frames": 4,
+            "active_frames": 2,
+            "recovery_frames": 15,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4618,9 +4618,9 @@
       "piercing_shot": {
         "phases": [
           {
-            "startup_frames": 5,
-            "active_frames": 1,
-            "recovery_frames": 16,
+            "startup_frames": 8,
+            "active_frames": 2,
+            "recovery_frames": 24,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4679,9 +4679,9 @@
       "crescent_wave": {
         "phases": [
           {
-            "startup_frames": 0,
-            "active_frames": 1,
-            "recovery_frames": 16,
+            "startup_frames": 1,
+            "active_frames": 2,
+            "recovery_frames": 24,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4742,9 +4742,9 @@
       "claw_swipe": {
         "phases": [
           {
-            "startup_frames": 16,
-            "active_frames": 5,
-            "recovery_frames": 6,
+            "startup_frames": 24,
+            "active_frames": 8,
+            "recovery_frames": 9,
             "hit": {
               "damage": 12.0,
               "knockback": {
@@ -4793,7 +4793,7 @@
                     "angle": -95.0
                   },
                   {
-                    "frame": 1,
+                    "frame": 2,
                     "size": [
                       22.0,
                       8.0
@@ -4805,7 +4805,7 @@
                     "angle": -93.75
                   },
                   {
-                    "frame": 2,
+                    "frame": 3,
                     "size": [
                       22.0,
                       8.0
@@ -4817,7 +4817,7 @@
                     "angle": -92.5
                   },
                   {
-                    "frame": 3,
+                    "frame": 4,
                     "size": [
                       22.0,
                       8.0
@@ -4829,7 +4829,7 @@
                     "angle": -91.25
                   },
                   {
-                    "frame": 4,
+                    "frame": 6,
                     "size": [
                       22.0,
                       8.0
@@ -4841,7 +4841,7 @@
                     "angle": -90.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 8,
                     "size": [
                       22.0,
                       8.0
@@ -4853,7 +4853,7 @@
                     "angle": -88.75
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       22.0,
                       8.0
@@ -4865,7 +4865,7 @@
                     "angle": -87.5
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       22.0,
                       8.0
@@ -4877,7 +4877,7 @@
                     "angle": -86.25
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       22.0,
                       8.0
@@ -4889,7 +4889,7 @@
                     "angle": -85.0
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       22.0,
                       8.0
@@ -4901,7 +4901,7 @@
                     "angle": -83.75
                   },
                   {
-                    "frame": 10,
+                    "frame": 15,
                     "size": [
                       22.0,
                       8.0
@@ -4913,7 +4913,7 @@
                     "angle": -82.5
                   },
                   {
-                    "frame": 11,
+                    "frame": 16,
                     "size": [
                       22.0,
                       8.0
@@ -4925,7 +4925,7 @@
                     "angle": -81.25
                   },
                   {
-                    "frame": 12,
+                    "frame": 18,
                     "size": [
                       22.0,
                       8.0
@@ -4937,7 +4937,7 @@
                     "angle": -80.0
                   },
                   {
-                    "frame": 13,
+                    "frame": 20,
                     "size": [
                       22.0,
                       8.0
@@ -4949,7 +4949,7 @@
                     "angle": -78.75
                   },
                   {
-                    "frame": 14,
+                    "frame": 21,
                     "size": [
                       22.0,
                       8.0
@@ -4961,7 +4961,7 @@
                     "angle": -77.5
                   },
                   {
-                    "frame": 15,
+                    "frame": 22,
                     "size": [
                       22.0,
                       8.0
@@ -4973,7 +4973,7 @@
                     "angle": -76.25
                   },
                   {
-                    "frame": 16,
+                    "frame": 24,
                     "size": [
                       22.0,
                       8.0
@@ -4985,7 +4985,7 @@
                     "angle": -75.0
                   },
                   {
-                    "frame": 17,
+                    "frame": 26,
                     "size": [
                       22.0,
                       8.0
@@ -4997,7 +4997,7 @@
                     "angle": -40.8
                   },
                   {
-                    "frame": 18,
+                    "frame": 27,
                     "size": [
                       22.0,
                       8.0
@@ -5009,7 +5009,7 @@
                     "angle": -14.2
                   },
                   {
-                    "frame": 19,
+                    "frame": 28,
                     "size": [
                       22.0,
                       8.0
@@ -5021,7 +5021,7 @@
                     "angle": 4.8
                   },
                   {
-                    "frame": 20,
+                    "frame": 30,
                     "size": [
                       22.0,
                       8.0
@@ -5033,7 +5033,7 @@
                     "angle": 16.2
                   },
                   {
-                    "frame": 21,
+                    "frame": 32,
                     "size": [
                       22.0,
                       8.0
@@ -5051,9 +5051,9 @@
             ]
           },
           {
-            "startup_frames": 4,
-            "active_frames": 5,
-            "recovery_frames": 16,
+            "startup_frames": 6,
+            "active_frames": 8,
+            "recovery_frames": 24,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -5102,18 +5102,6 @@
                     "angle": 25.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      22.0,
-                      8.0
-                    ],
-                    "offset": [
-                      11.97,
-                      8.65
-                    ],
-                    "angle": 25.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       22.0,
@@ -5150,7 +5138,19 @@
                     "angle": 25.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
+                    "size": [
+                      22.0,
+                      8.0
+                    ],
+                    "offset": [
+                      11.97,
+                      8.65
+                    ],
+                    "angle": 25.0
+                  },
+                  {
+                    "frame": 8,
                     "size": [
                       22.0,
                       8.0
@@ -5162,7 +5162,7 @@
                     "angle": 5.2
                   },
                   {
-                    "frame": 6,
+                    "frame": 9,
                     "size": [
                       22.0,
                       8.0
@@ -5174,7 +5174,7 @@
                     "angle": -10.2
                   },
                   {
-                    "frame": 7,
+                    "frame": 10,
                     "size": [
                       22.0,
                       8.0
@@ -5186,7 +5186,7 @@
                     "angle": -21.2
                   },
                   {
-                    "frame": 8,
+                    "frame": 12,
                     "size": [
                       22.0,
                       8.0
@@ -5198,7 +5198,7 @@
                     "angle": -27.8
                   },
                   {
-                    "frame": 9,
+                    "frame": 14,
                     "size": [
                       22.0,
                       8.0
@@ -5234,9 +5234,9 @@
       "claw_reach": {
         "phases": [
           {
-            "startup_frames": 22,
-            "active_frames": 5,
-            "recovery_frames": 24,
+            "startup_frames": 33,
+            "active_frames": 8,
+            "recovery_frames": 36,
             "hit": {
               "damage": 14.0,
               "knockback": {
@@ -5285,18 +5285,6 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       10.0,
@@ -5333,31 +5321,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
                     "frame": 6,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
-                    "frame": 7,
                     "size": [
                       10.0,
                       9.0
@@ -5405,31 +5369,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 11,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
                     "frame": 12,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
-                    "frame": 13,
                     "size": [
                       10.0,
                       9.0
@@ -5477,31 +5417,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 17,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
                     "frame": 18,
-                    "size": [
-                      10.0,
-                      9.0
-                    ],
-                    "offset": [
-                      8.89,
-                      13.04
-                    ],
-                    "angle": 12.0
-                  },
-                  {
-                    "frame": 19,
                     "size": [
                       10.0,
                       9.0
@@ -5549,7 +5465,91 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 23,
+                    "frame": 24,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 26,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 27,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 28,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 30,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 32,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 33,
+                    "size": [
+                      10.0,
+                      9.0
+                    ],
+                    "offset": [
+                      8.89,
+                      13.04
+                    ],
+                    "angle": 12.0
+                  },
+                  {
+                    "frame": 34,
                     "size": [
                       17.92,
                       9.0
@@ -5561,7 +5561,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 24,
+                    "frame": 36,
                     "size": [
                       24.08,
                       9.0
@@ -5573,7 +5573,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 25,
+                    "frame": 38,
                     "size": [
                       28.48,
                       9.0
@@ -5585,7 +5585,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 26,
+                    "frame": 39,
                     "size": [
                       31.12,
                       9.0
@@ -5597,7 +5597,7 @@
                     "angle": 12.0
                   },
                   {
-                    "frame": 27,
+                    "frame": 40,
                     "size": [
                       32.0,
                       9.0
@@ -5635,9 +5635,9 @@
       "body_slam": {
         "phases": [
           {
-            "startup_frames": 20,
-            "active_frames": 5,
-            "recovery_frames": 18,
+            "startup_frames": 30,
+            "active_frames": 8,
+            "recovery_frames": 27,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -5685,17 +5685,6 @@
                     ]
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       18.0,
@@ -5729,29 +5718,7 @@
                     ]
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
                     "frame": 6,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
-                    "frame": 7,
                     "size": [
                       18.0,
                       18.0
@@ -5795,29 +5762,7 @@
                     ]
                   },
                   {
-                    "frame": 11,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
                     "frame": 12,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
-                    "frame": 13,
                     "size": [
                       18.0,
                       18.0
@@ -5861,29 +5806,7 @@
                     ]
                   },
                   {
-                    "frame": 17,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
                     "frame": 18,
-                    "size": [
-                      18.0,
-                      18.0
-                    ],
-                    "offset": [
-                      6.0,
-                      8.0
-                    ]
-                  },
-                  {
-                    "frame": 19,
                     "size": [
                       18.0,
                       18.0
@@ -5907,6 +5830,83 @@
                   {
                     "frame": 21,
                     "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 22,
+                    "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 24,
+                    "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 26,
+                    "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 27,
+                    "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 28,
+                    "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 30,
+                    "size": [
+                      18.0,
+                      18.0
+                    ],
+                    "offset": [
+                      6.0,
+                      8.0
+                    ]
+                  },
+                  {
+                    "frame": 32,
+                    "size": [
                       23.76,
                       23.76
                     ],
@@ -5916,7 +5916,7 @@
                     ]
                   },
                   {
-                    "frame": 22,
+                    "frame": 33,
                     "size": [
                       28.24,
                       28.24
@@ -5927,7 +5927,7 @@
                     ]
                   },
                   {
-                    "frame": 23,
+                    "frame": 34,
                     "size": [
                       31.44,
                       31.44
@@ -5938,7 +5938,7 @@
                     ]
                   },
                   {
-                    "frame": 24,
+                    "frame": 36,
                     "size": [
                       33.36,
                       33.36
@@ -5949,7 +5949,7 @@
                     ]
                   },
                   {
-                    "frame": 25,
+                    "frame": 38,
                     "size": [
                       34.0,
                       34.0
@@ -5983,9 +5983,9 @@
       "slime_spit": {
         "phases": [
           {
-            "startup_frames": 24,
-            "active_frames": 1,
-            "recovery_frames": 22,
+            "startup_frames": 36,
+            "active_frames": 2,
+            "recovery_frames": 33,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -6046,9 +6046,9 @@
       "bite": {
         "phases": [
           {
-            "startup_frames": 12,
-            "active_frames": 3,
-            "recovery_frames": 18,
+            "startup_frames": 18,
+            "active_frames": 4,
+            "recovery_frames": 27,
             "hit": {
               "damage": 16.0,
               "knockback": {
@@ -6097,18 +6097,6 @@
                     "angle": -10.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      8.0,
-                      14.0
-                    ],
-                    "offset": [
-                      9.94,
-                      -6.69
-                    ],
-                    "angle": -10.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       8.0,
@@ -6145,31 +6133,7 @@
                     "angle": -10.0
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      8.0,
-                      14.0
-                    ],
-                    "offset": [
-                      9.94,
-                      -6.69
-                    ],
-                    "angle": -10.0
-                  },
-                  {
                     "frame": 6,
-                    "size": [
-                      8.0,
-                      14.0
-                    ],
-                    "offset": [
-                      9.94,
-                      -6.69
-                    ],
-                    "angle": -10.0
-                  },
-                  {
-                    "frame": 7,
                     "size": [
                       8.0,
                       14.0
@@ -6217,18 +6181,6 @@
                     "angle": -10.0
                   },
                   {
-                    "frame": 11,
-                    "size": [
-                      8.0,
-                      14.0
-                    ],
-                    "offset": [
-                      9.94,
-                      -6.69
-                    ],
-                    "angle": -10.0
-                  },
-                  {
                     "frame": 12,
                     "size": [
                       8.0,
@@ -6241,7 +6193,55 @@
                     "angle": -10.0
                   },
                   {
-                    "frame": 13,
+                    "frame": 14,
+                    "size": [
+                      8.0,
+                      14.0
+                    ],
+                    "offset": [
+                      9.94,
+                      -6.69
+                    ],
+                    "angle": -10.0
+                  },
+                  {
+                    "frame": 15,
+                    "size": [
+                      8.0,
+                      14.0
+                    ],
+                    "offset": [
+                      9.94,
+                      -6.69
+                    ],
+                    "angle": -10.0
+                  },
+                  {
+                    "frame": 16,
+                    "size": [
+                      8.0,
+                      14.0
+                    ],
+                    "offset": [
+                      9.94,
+                      -6.69
+                    ],
+                    "angle": -10.0
+                  },
+                  {
+                    "frame": 18,
+                    "size": [
+                      8.0,
+                      14.0
+                    ],
+                    "offset": [
+                      9.94,
+                      -6.69
+                    ],
+                    "angle": -10.0
+                  },
+                  {
+                    "frame": 20,
                     "size": [
                       15.78,
                       14.0
@@ -6253,7 +6253,7 @@
                     "angle": -10.0
                   },
                   {
-                    "frame": 14,
+                    "frame": 21,
                     "size": [
                       20.44,
                       14.0
@@ -6265,7 +6265,7 @@
                     "angle": -10.0
                   },
                   {
-                    "frame": 15,
+                    "frame": 22,
                     "size": [
                       22.0,
                       14.0
@@ -6301,9 +6301,9 @@
       "snap": {
         "phases": [
           {
-            "startup_frames": 16,
-            "active_frames": 3,
-            "recovery_frames": 20,
+            "startup_frames": 24,
+            "active_frames": 4,
+            "recovery_frames": 30,
             "hit": {
               "damage": 13.0,
               "knockback": {
@@ -6352,18 +6352,6 @@
                     "angle": 10.0
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      8.0,
-                      12.0
-                    ],
-                    "offset": [
-                      9.94,
-                      14.69
-                    ],
-                    "angle": 10.0
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       8.0,
@@ -6400,31 +6388,7 @@
                     "angle": 10.0
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      8.0,
-                      12.0
-                    ],
-                    "offset": [
-                      9.94,
-                      14.69
-                    ],
-                    "angle": 10.0
-                  },
-                  {
                     "frame": 6,
-                    "size": [
-                      8.0,
-                      12.0
-                    ],
-                    "offset": [
-                      9.94,
-                      14.69
-                    ],
-                    "angle": 10.0
-                  },
-                  {
-                    "frame": 7,
                     "size": [
                       8.0,
                       12.0
@@ -6472,31 +6436,7 @@
                     "angle": 10.0
                   },
                   {
-                    "frame": 11,
-                    "size": [
-                      8.0,
-                      12.0
-                    ],
-                    "offset": [
-                      9.94,
-                      14.69
-                    ],
-                    "angle": 10.0
-                  },
-                  {
                     "frame": 12,
-                    "size": [
-                      8.0,
-                      12.0
-                    ],
-                    "offset": [
-                      9.94,
-                      14.69
-                    ],
-                    "angle": 10.0
-                  },
-                  {
-                    "frame": 13,
                     "size": [
                       8.0,
                       12.0
@@ -6544,7 +6484,67 @@
                     "angle": 10.0
                   },
                   {
-                    "frame": 17,
+                    "frame": 18,
+                    "size": [
+                      8.0,
+                      12.0
+                    ],
+                    "offset": [
+                      9.94,
+                      14.69
+                    ],
+                    "angle": 10.0
+                  },
+                  {
+                    "frame": 20,
+                    "size": [
+                      8.0,
+                      12.0
+                    ],
+                    "offset": [
+                      9.94,
+                      14.69
+                    ],
+                    "angle": 10.0
+                  },
+                  {
+                    "frame": 21,
+                    "size": [
+                      8.0,
+                      12.0
+                    ],
+                    "offset": [
+                      9.94,
+                      14.69
+                    ],
+                    "angle": 10.0
+                  },
+                  {
+                    "frame": 22,
+                    "size": [
+                      8.0,
+                      12.0
+                    ],
+                    "offset": [
+                      9.94,
+                      14.69
+                    ],
+                    "angle": 10.0
+                  },
+                  {
+                    "frame": 24,
+                    "size": [
+                      8.0,
+                      12.0
+                    ],
+                    "offset": [
+                      9.94,
+                      14.69
+                    ],
+                    "angle": 10.0
+                  },
+                  {
+                    "frame": 26,
                     "size": [
                       16.89,
                       12.0
@@ -6556,7 +6556,7 @@
                     "angle": 10.0
                   },
                   {
-                    "frame": 18,
+                    "frame": 27,
                     "size": [
                       22.22,
                       12.0
@@ -6568,7 +6568,7 @@
                     "angle": 10.0
                   },
                   {
-                    "frame": 19,
+                    "frame": 28,
                     "size": [
                       24.0,
                       12.0
@@ -6606,9 +6606,9 @@
       "shell_bash": {
         "phases": [
           {
-            "startup_frames": 22,
-            "active_frames": 4,
-            "recovery_frames": 22,
+            "startup_frames": 33,
+            "active_frames": 6,
+            "recovery_frames": 33,
             "hit": {
               "damage": 14.0,
               "knockback": {
@@ -6656,17 +6656,6 @@
                     ]
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       14.0,
@@ -6700,29 +6689,7 @@
                     ]
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
                     "frame": 6,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
-                    "frame": 7,
                     "size": [
                       14.0,
                       18.0
@@ -6766,29 +6733,7 @@
                     ]
                   },
                   {
-                    "frame": 11,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
                     "frame": 12,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
-                    "frame": 13,
                     "size": [
                       14.0,
                       18.0
@@ -6832,29 +6777,7 @@
                     ]
                   },
                   {
-                    "frame": 17,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
                     "frame": 18,
-                    "size": [
-                      14.0,
-                      18.0
-                    ],
-                    "offset": [
-                      11.0,
-                      2.0
-                    ]
-                  },
-                  {
-                    "frame": 19,
                     "size": [
                       14.0,
                       18.0
@@ -6898,7 +6821,84 @@
                     ]
                   },
                   {
-                    "frame": 23,
+                    "frame": 24,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 26,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 27,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 28,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 30,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 32,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 33,
+                    "size": [
+                      14.0,
+                      18.0
+                    ],
+                    "offset": [
+                      11.0,
+                      2.0
+                    ]
+                  },
+                  {
+                    "frame": 34,
                     "size": [
                       20.12,
                       18.0
@@ -6909,7 +6909,7 @@
                     ]
                   },
                   {
-                    "frame": 24,
+                    "frame": 36,
                     "size": [
                       24.5,
                       18.0
@@ -6920,7 +6920,7 @@
                     ]
                   },
                   {
-                    "frame": 25,
+                    "frame": 38,
                     "size": [
                       27.12,
                       18.0
@@ -6931,7 +6931,7 @@
                     ]
                   },
                   {
-                    "frame": 26,
+                    "frame": 39,
                     "size": [
                       28.0,
                       18.0
@@ -6965,9 +6965,9 @@
       "shell_roll": {
         "phases": [
           {
-            "startup_frames": 26,
-            "active_frames": 22,
-            "recovery_frames": 26,
+            "startup_frames": 39,
+            "active_frames": 33,
+            "recovery_frames": 39,
             "hit": {
               "damage": 16.0,
               "knockback": {
@@ -7015,17 +7015,6 @@
                     ]
                   },
                   {
-                    "frame": 1,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 2,
                     "size": [
                       26.0,
@@ -7059,29 +7048,7 @@
                     ]
                   },
                   {
-                    "frame": 5,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 6,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 7,
                     "size": [
                       26.0,
                       26.0
@@ -7125,29 +7092,7 @@
                     ]
                   },
                   {
-                    "frame": 11,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 12,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 13,
                     "size": [
                       26.0,
                       26.0
@@ -7191,29 +7136,7 @@
                     ]
                   },
                   {
-                    "frame": 17,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 18,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 19,
                     "size": [
                       26.0,
                       26.0
@@ -7257,29 +7180,7 @@
                     ]
                   },
                   {
-                    "frame": 23,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 24,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 25,
                     "size": [
                       26.0,
                       26.0
@@ -7323,29 +7224,7 @@
                     ]
                   },
                   {
-                    "frame": 29,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 30,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 31,
                     "size": [
                       26.0,
                       26.0
@@ -7389,29 +7268,7 @@
                     ]
                   },
                   {
-                    "frame": 35,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 36,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 37,
                     "size": [
                       26.0,
                       26.0
@@ -7455,29 +7312,7 @@
                     ]
                   },
                   {
-                    "frame": 41,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
                     "frame": 42,
-                    "size": [
-                      26.0,
-                      26.0
-                    ],
-                    "offset": [
-                      10.0,
-                      12.0
-                    ]
-                  },
-                  {
-                    "frame": 43,
                     "size": [
                       26.0,
                       26.0
@@ -7521,7 +7356,7 @@
                     ]
                   },
                   {
-                    "frame": 47,
+                    "frame": 48,
                     "size": [
                       26.0,
                       26.0
@@ -7532,7 +7367,172 @@
                     ]
                   },
                   {
-                    "frame": 48,
+                    "frame": 50,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 51,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 52,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 54,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 56,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 57,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 58,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 60,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 62,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 63,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 64,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 66,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 68,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 69,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 70,
+                    "size": [
+                      26.0,
+                      26.0
+                    ],
+                    "offset": [
+                      10.0,
+                      12.0
+                    ]
+                  },
+                  {
+                    "frame": 72,
                     "size": [
                       26.0,
                       26.0

@@ -515,8 +515,8 @@ def test_the_cheap_rect_union_misses_what_the_sampled_narrowphase_hits() -> None
     pivot_y = start.position[1] - half * math.sin(math.radians(start.angle))
     target = pygame.FRect(0, 0, 2.0, 2.0)
     target.center = (
-        pivot_x + start.size[0] * 0.97 * math.cos(middle),
-        pivot_y + start.size[0] * 0.97 * math.sin(middle),
+        pivot_x + start.size[0] * math.cos(middle),
+        pivot_y + start.size[0] * math.sin(middle),
     )
 
     union = swept_box(broadphase_aabb(start), broadphase_aabb(end))

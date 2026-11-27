@@ -59,4 +59,4 @@ def test_the_blade_chain_terminals_cancel_on_contact() -> None:
 def test_the_blade_chain_terminals_are_less_committed() -> None:
     attacks = shipped_gameplay_data().attack_sets["player"]
     for name in ("slash_high_4", "slash_low_4"):
-        assert attacks[name].phases[0].recovery_frames == 11, name
+        assert attacks[name].phases[0].recovery_frames == 16, name
