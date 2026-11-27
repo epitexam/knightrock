@@ -583,9 +583,17 @@ class UIManager:
         self,
         *,
         player: Player | None = None,
+        fps: float = 0.0,
+        sprite_count: int = 0,
+        combat_count: int = 0,
+        entity_count: int = 0,
+        collision_count: int = 0,
+        hit_stop: float = 0.0,
+        spawn_cooldown: float = 0.0,
+        frame_time: float = 0.0,
+        cache_size: int | None = None,
         scene_host: SceneHost | None = None,
         debug_stats: dict[str, float] | None = None,
-        **counters: object,
     ) -> None:
         """Draw the screen-side debug panels from the renderer's counters.
 
@@ -604,14 +612,15 @@ class UIManager:
             scale=self.renderer.screen_scale,
         )
         self.draw_performance_panel(
-            fps=cast("float", counters.get("fps", 0.0)),
-            sprite_count=cast("int", counters.get("sprite_count", 0)),
-            combat_count=cast("int", counters.get("combat_count", 0)),
-            entity_count=cast("int", counters.get("entity_count", 0)),
-            collision_count=cast("int", counters.get("collision_count", 0)),
-            hit_stop=cast("float", counters.get("hit_stop", 0.0)),
-            spawn_cooldown=cast("float", counters.get("spawn_cooldown", 0.0)),
-            frame_time=cast("float", counters.get("frame_time", 0.0)),
+            fps=fps,
+            sprite_count=sprite_count,
+            combat_count=combat_count,
+            entity_count=entity_count,
+            collision_count=collision_count,
+            hit_stop=hit_stop,
+            spawn_cooldown=spawn_cooldown,
+            frame_time=frame_time,
+            cache_size=cache_size,
             layout=layout,
             debug_stats=debug_stats or {},
         )

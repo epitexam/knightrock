@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from src.simulation.combat.frame_data import PhaseState
 from src.simulation.physics import apply_velocity_friction
@@ -10,7 +10,7 @@ from src.simulation.states.reaction_states import (
     StaggerState,
     apply_reaction_drag,
 )
-from src.simulation.states.state_machine import State, StateMachine
+from src.simulation.states.state_machine import State, StateMachine, int_arg, number_arg
 from src.simulation.states.turn_state import TurnState
 
 if TYPE_CHECKING:
@@ -417,8 +417,8 @@ class PlayerHurtState(HurtState["Player"]):
         """Clear the dash request and apply the light knockback impulse."""
         self.entity.dash.cancel_request()
 
-        knockback_dir = cast("int", kwargs.get("knockback_direction", 0))
-        knockback_force = cast("float", kwargs.get("knockback_force", 0))
+        knockback_dir = int_arg(kwargs, "knockback_direction", 0)
+        knockback_force = number_arg(kwargs, "knockback_force", 0.0)
         if knockback_dir != 0 and knockback_force > 0:
             self.entity.velocity.x = knockback_dir * knockback_force
 
@@ -566,7 +566,7 @@ class PlayerDizzyState(State["Player"]):
         super().__init__(entity, tags=["dizzy", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: object) -> None:
-        duration = cast("float", kwargs.get("duration", 0.0))
+        duration = number_arg(kwargs, "duration", 0.0)
         if duration > 0:
             self.entity.stagger_timer = duration
 

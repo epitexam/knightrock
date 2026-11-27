@@ -27,6 +27,7 @@ from src.presentation.fx.particles import (
     DizzyVortexParticle,
     DustParticle,
     FootstepDustParticle,
+    FxParticle,
     GrainParticle,
     ImpactDecalParticle,
     OrbitParticle,
@@ -169,7 +170,9 @@ def facing_side(entity: FxBody) -> float:
     return 1.0 if entity.facing_right else -1.0
 
 
-def _has_room(fx_group: pygame.sprite.Group, family: str | None = None, count: int = 1) -> bool:
+def _has_room(
+    fx_group: pygame.sprite.Group[FxParticle], family: str | None = None, count: int = 1
+) -> bool:
     """Whether ``count`` particles fit, under the global cap and the family one.
 
     ``count`` rather than one, because a spawner that adds a fan asks once.
@@ -196,7 +199,7 @@ def _landing_strength(impact: float) -> float:
 
 
 def spawn_landing_dust(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> list[DustParticle]:
@@ -256,7 +259,7 @@ def _grain_size_range() -> tuple[int, int, float]:
 
 
 def spawn_landing_grains(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> list[GrainParticle]:
@@ -331,7 +334,7 @@ def _profile(index: int) -> float:
 
 
 def spawn_impact_decal(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> ImpactDecalParticle | None:
@@ -367,7 +370,7 @@ def _dash_side(entity: FxSubject) -> float:
 
 
 def spawn_dash_dust(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     burst: bool = False,
 ) -> list[DashDustParticle]:
@@ -428,7 +431,7 @@ def spawn_dash_dust(
 
 
 def spawn_dash_grains(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     burst: bool = False,
 ) -> list[GrainParticle]:
@@ -492,7 +495,7 @@ def _step_anchor(entity: FxSubject, side: float, foot: bool) -> float:
 
 
 def spawn_footstep_dust(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     foot: bool,
     tier: FootstepTier,
@@ -567,7 +570,7 @@ def spawn_footstep_dust(
 
 
 def spawn_footstep_grains(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     foot: bool = False,
 ) -> list[GrainParticle]:
@@ -639,7 +642,7 @@ def _guard_stance(
 
 
 def spawn_guard_arc(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxBody,
     parried: bool = False,
     contact: tuple[float, float] | None = None,
@@ -658,7 +661,7 @@ def spawn_guard_arc(
 
 
 def spawn_shatter_arc(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxBody,
     contact: tuple[float, float] | None = None,
 ) -> ShatterArcParticle | None:
@@ -676,7 +679,7 @@ def spawn_shatter_arc(
 
 
 def spawn_dizzy_stars(
-    fx_group: pygame.sprite.Group,
+    fx_group: pygame.sprite.Group[FxParticle],
     entity: FxSubject,
     count: int = FxDizzy.STAR_COUNT,
     ttl: float = FxDizzy.STAR_TTL,
@@ -716,7 +719,7 @@ def spawn_dizzy_stars(
 
 
 def spawn_dizzy_vortex(
-    fx_group: pygame.sprite.Group, entity: FxSubject
+    fx_group: pygame.sprite.Group[FxParticle], entity: FxSubject
 ) -> DizzyVortexParticle | None:
     """A purple swirl at the feet of a dizzy entity.
 
@@ -734,7 +737,9 @@ def spawn_dizzy_vortex(
     return vortex
 
 
-def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: FxSubject) -> list[SweatParticle]:
+def spawn_sweat_drops(
+    fx_group: pygame.sprite.Group[FxParticle], entity: FxSubject
+) -> list[SweatParticle]:
     """Pop ``Sweat.COUNT`` comic teardrops off the side of the head.
 
     Emitted while the entity sits out its dash penalty: each fat teardrop
@@ -768,7 +773,9 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: FxSubject) -> list[
     return drops
 
 
-def spawn_corpse(fx_group: pygame.sprite.Group, entity: FxSubject) -> CorpseParticle | None:
+def spawn_corpse(
+    fx_group: pygame.sprite.Group[FxParticle], entity: FxSubject
+) -> CorpseParticle | None:
     """Throw the body of a fighter that just died, the way its last hit pushed it.
 
     Called while the fighter still exists, on the tick it is reaped: its

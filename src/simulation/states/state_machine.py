@@ -1,11 +1,35 @@
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from src.simulation.settings import StateMachineConfig
 
-__all__ = ["MachineState", "State", "StateMachine", "StateMachineSnapshot"]
+__all__ = [
+    "MachineState",
+    "State",
+    "StateMachine",
+    "StateMachineSnapshot",
+    "int_arg",
+    "number_arg",
+]
+
+
+def number_arg(kwargs: Mapping[str, object], name: str, default: float) -> float:
+    """A numeric state argument, validated instead of asserted."""
+    value = kwargs.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return float(default)
+    return float(value)
+
+
+def int_arg(kwargs: Mapping[str, object], name: str, default: int) -> int:
+    """An integer state argument, validated instead of asserted."""
+    value = kwargs.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return int(value)
+
 
 if TYPE_CHECKING:
     from src.simulation.entities.entity import Entity

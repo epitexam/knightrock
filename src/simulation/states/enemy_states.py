@@ -1,7 +1,7 @@
 """State machine states for enemies (AI)."""
 
 from enum import Enum
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from src.simulation.combat.frame_data import move_id
 from src.simulation.settings import AI, EnemyJump
@@ -12,7 +12,7 @@ from src.simulation.states.reaction_states import (
     StaggerState,
     apply_reaction_drag,
 )
-from src.simulation.states.state_machine import State
+from src.simulation.states.state_machine import State, number_arg
 from src.simulation.states.turn_state import TurnState, request_turn
 
 if TYPE_CHECKING:
@@ -486,7 +486,7 @@ class EnemyDoomedState(State["Enemy"]):
 
     def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.move_axis = 0.0
-        self.entity.stagger_timer = cast("float", kwargs.get("duration", 0.0))
+        self.entity.stagger_timer = number_arg(kwargs, "duration", 0.0)
 
     def update(self, delta_time: float) -> str | None:
         apply_reaction_drag(self.entity, delta_time)
@@ -503,7 +503,7 @@ class EnemyDizzyState(State["Enemy"]):
 
     def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.move_axis = 0.0
-        duration = cast("float", kwargs.get("duration", 0.0))
+        duration = number_arg(kwargs, "duration", 0.0)
         if duration > 0:
             self.entity.stagger_timer = duration
 

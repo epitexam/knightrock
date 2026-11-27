@@ -26,12 +26,12 @@ both name the state through it.
 """
 
 from collections.abc import Callable
-from typing import Any, Final, cast
+from typing import Any, Final
 
 from src.simulation.physics import apply_slide_friction, apply_velocity_friction
 from src.simulation.settings import Combat, Physics
 from src.simulation.states import state_names
-from src.simulation.states.state_machine import EntityT, State
+from src.simulation.states.state_machine import EntityT, State, int_arg, number_arg
 
 #: Shared reaction-state vocabulary: ``ReactionComponent`` drives the state
 #: machine with these names, and both state-name enums carry the same values
@@ -127,9 +127,9 @@ class KnockbackState(State[EntityT]):
         if self.on_enter is not None:
             self.on_enter(**kwargs)
 
-        knockback_dir = cast("int", kwargs.get("knockback_direction", 0))
-        knockback_force = cast("float", kwargs.get("knockback_force", 0))
-        knockback_up = cast("float", kwargs.get("knockback_up_force", 0))
+        knockback_dir = int_arg(kwargs, "knockback_direction", 0)
+        knockback_force = number_arg(kwargs, "knockback_force", 0.0)
+        knockback_up = number_arg(kwargs, "knockback_up_force", 0.0)
 
         if knockback_dir != 0 and knockback_force > 0:
             self.entity.velocity.x = knockback_dir * knockback_force

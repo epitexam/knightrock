@@ -775,9 +775,17 @@ class Renderer:
         self,
         *,
         player: Player | None = None,
+        fps: float = 0.0,
+        sprite_count: int = 0,
+        combat_count: int = 0,
+        entity_count: int = 0,
+        collision_count: int = 0,
+        hit_stop: float = 0.0,
+        spawn_cooldown: float = 0.0,
+        frame_time: float = 0.0,
+        cache_size: int | None = None,
         scene_host: SceneHost | None = None,
         debug_stats: dict[str, float] | None = None,
-        **counters: object,
     ) -> None:
         """Ask the overlay to draw the screen-side debug panels.
 
@@ -789,8 +797,16 @@ class Renderer:
         started = perf_counter()
         self.overlay.draw_debug_panels(
             player=player,
+            fps=fps,
+            sprite_count=sprite_count,
+            combat_count=combat_count,
+            entity_count=entity_count,
+            collision_count=collision_count,
+            hit_stop=hit_stop,
+            spawn_cooldown=spawn_cooldown,
+            frame_time=frame_time,
+            cache_size=cache_size,
             scene_host=scene_host,
             debug_stats=debug_stats if debug_stats is not None else self.debug_metrics_snapshot(),
-            **counters,
         )
         self._record_debug_sample("panels_ms", (perf_counter() - started) * 1000.0)

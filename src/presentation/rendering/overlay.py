@@ -75,9 +75,17 @@ class WorldOverlay(Protocol):
         self,
         *,
         player: Player | None = None,
+        fps: float = 0.0,
+        sprite_count: int = 0,
+        combat_count: int = 0,
+        entity_count: int = 0,
+        collision_count: int = 0,
+        hit_stop: float = 0.0,
+        spawn_cooldown: float = 0.0,
+        frame_time: float = 0.0,
+        cache_size: int | None = None,
         scene_host: SceneHost | None = None,
         debug_stats: dict[str, float] | None = None,
-        **counters: object,
     ) -> None:
         """Draw the screen-side debug panels from a bag of counters.
 
