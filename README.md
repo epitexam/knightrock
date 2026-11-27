@@ -4,7 +4,7 @@ A 2D hack 'n' slash platformer in Python with [pygame-ce](https://github.com/pyg
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3870%20passing-brightgreen)](#quality)
+[![tests](https://img.shields.io/badge/tests-3870%20collected-brightgreen)](#quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#quality)
 

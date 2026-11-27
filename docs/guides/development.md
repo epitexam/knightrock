@@ -43,15 +43,12 @@ The conventions that shape these modules are collected in [Conventions](../refer
 ## Further notes
 
 The README and the guides under `docs/` are in English. The audit notes in
-`docs/audit/`, the design proposals and the playtest write-ups are historical
-records kept in their original form and language; see the
-[history index](../audit/README.md).
+`docs/audit/` and the design proposals are historical records kept in their
+original form and language; see the [history index](../audit/README.md).
 
 | File | Contents |
 |---|---|
 | `docs/design/matrice-niveaux.md` | Proposal, not implemented: a world of rooms laid out as a matrix. |
-| `docs/playtest-2026-11-18.md` | Combat-feel observations from November 2026. |
-| `docs/pr-fix-hitbox-fluidity.md` | Reasoning behind the hitbox fluidity fix. |
 
 ## See also
 

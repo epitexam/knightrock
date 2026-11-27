@@ -8,9 +8,9 @@ combat, rendering or settings.
 uv run pytest
 ```
 
-> **Current baseline:** 3864 tests · 94 % instruction coverage · 84 % branch
-> coverage · Ruff clean · mypy clean (218 files across `src main.py tools`;
-> `mypy src` alone is 212).[^coverage]
+> **Current baseline:** 3870 tests collected (3867 passed, 3 skipped) · 94 % instruction
+> coverage · 84 % branch coverage · Ruff clean · mypy clean (228 files across
+> `src main.py tools`; `mypy src` alone is 212).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
 display. Coverage, from:

@@ -9,7 +9,7 @@ flowchart LR
     J[data/gameplay/*.json] --> L{Strict loader}
     L -->|valid| F[Frozen dataclasses]
     L -->|unknown key / bad reference| E[GameplayDataError]
-    L -->|file missing| D[In-code fallback + warning]
+    L -->|levels.json missing| D[Built-in level paths + warning]
     F --> G[Gameplay systems]
     D --> G
 ```
@@ -22,9 +22,11 @@ flowchart LR
 | `levels.json` | Level id to TMX path mapping. |
 
 Loading is **strict**: unknown keys, missing fields, bad versions and unknown
-attack references raise `GameplayDataError`. A *missing* file falls back to the
-historical in-code values with a warning, so the game never refuses to boot over a
-data problem.
+attack references raise `GameplayDataError`. `attacks.json`, `enemies.json` and
+`player.json` are required — a missing or malformed one is an error, because the
+old in-code copies were a second source of truth and booting on unreviewed balance
+would be worse than not booting. Only a missing `levels.json` falls back to the
+built-in level paths with a warning.
 
 **Environment variables**
 

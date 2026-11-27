@@ -24,6 +24,17 @@ Combat is frame-data driven: startup / active / recovery phases feed
 `HitboxManager` and `HitResolver` through the two-pass deterministic
 `CombatSystem` (`src/simulation/level/systems/combat_system.py`).
 
+**The shipped timing policy.** Startup and active keep their original lengths
+for every fighter: startup is the button-to-response budget, and a long active
+window only leaves the hitbox lying around. Recovery is 1.5× longer for
+everyone, so a miss still costs something and leaves the opponent a punish
+window. Weight comes from hit-stop and feedback, not from stretching the swing.
+These are separate knobs in the fighting-game sense — see [Capcom's attack
+primer](https://game.capcom.com/cfn/sfv/column/131432?lang=en), the 1–5 frame
+responsive-action guidance in [this animation spec](https://gamedesignerx.com/blog/startup-active-recovery-an-animation-spec-your-team-can-build-against),
+and the impact-layering recommendations in [Game Developer](https://www.gamedeveloper.com/audio/improving-the-combat-impact-of-action-games)
+and [Skullgirls' GDC talk](https://media.gdcvault.com/GDC2014/Presentations/Cartwright_Muriel_Animation_Bootcamp_Fluid.pdf).
+
 | Constant | Effect |
 |---|---|
 | `Combat.WALL_BOUNCE_FACTOR` | Mid-launch entities rebound off walls (red arrow in debug) instead of stopping dead. |
@@ -34,7 +45,7 @@ Combat is frame-data driven: startup / active / recovery phases feed
 | `Combat.KNOCKBACK_DI_ACCEL` / `_DI_CAP` | Directional influence: an airborne entity can steer its trajectory. |
 | `Combat.JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` | Diminishing returns on consecutive juggle hits. |
 | `Combat.HITSTOP_KNOCKBACK_FACTOR` | Hit-stop scaled to impact magnitude. |
-| `Combat.KILL_HITSTOP` / `EXECUTION_HITSTOP` | The least a killing blow, and an execution (a stab, a throw, a death blow), freeze the world. A hit's own `hit_stop` in `attacks.json` replaces the formula: the slash links freeze for two ticks, the finisher for seven. |
+| `Combat.KILL_HITSTOP` / `EXECUTION_HITSTOP` | The least a killing blow, and an execution, freeze the world. A hit's own `hit_stop` in `attacks.json` replaces the formula: the player's slash links freeze for 2–3 ticks, the heavy links for 5–7, a stab or throw for 12–13, a death blow for 15. Enemy blows are tiered by weight — 0.06 s (goblin, slime), 0.08 s (tooth), 0.10 s (shell) — instead of one flat value. |
 | `Combat.OTG_INVULN_DURATION` / `ENEMY_OTG_INVULN_DURATION` | How long a fighter landing from a launch is safe from ground hits: the player is, an enemy is not, so the blow after a launch lands. |
 | `Combat.HEAVY_KNOCKBACK_THRESHOLD` | `400` — above it, `CameraShake` is given trauma of `impact / HEAVY_DIV`. |
 | `CameraShake.HIT_TRAUMA` / `HIT_DIV` / `KILL_TRAUMA` / `EXECUTION_TRAUMA` | Every landed hit shakes a little, a kill a little more, an execution the most; the strongest of the tick wins. |
@@ -78,6 +89,10 @@ nothing and no snapshot or golden sees it.
 - Fury, the dark side and blitz do the reverse for the player: the attack clock
   runs fast, and the extra frames go to startup and recovery only. An active
   frame is never skipped — a fast swing hits what a slow one would.
+- Stasis is the reward for fighting inside that slowed world: the player's
+  attack clock runs at `Slot.STASIS_ATTACK_SPEED = 1.2` while everything else
+  stays at `STASIS_TIME_SCALE = 0.3`. Dark step keeps its larger 1.6× boost
+  (`Rush.ATTACK_SPEED`).
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
 > `src/simulation/states/reaction_states.py` fires for any entity whose `move_axis` is
