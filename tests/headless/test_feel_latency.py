@@ -89,6 +89,18 @@ def _scene(action: InputAction, pressed_on: set[int]) -> tuple[Level, _ClockedPa
         return refusal
 
     level.player.combat.start_attack = record  # type: ignore[method-assign]
+    # Start on the floor. From mid-air the first press is an air slash; with a
+    # slower catalogue that swing is still winding up when the fighter lands,
+    # so the buffered chain dies on a stance refusal instead of measuring the
+    # recovery window these scenarios are about.
+    pressed = pad.pressed_on
+    pad.pressed_on = set()
+    for tick in range(60):
+        pad.tick = tick
+        level.update(DT)
+    pad.pressed_on = pressed
+    pad.tick = 0
+    starts.clear()
     return level, pad, starts
 
 
@@ -111,7 +123,7 @@ def test_press_during_recovery_waits_for_the_cancel_window() -> None:
     # The second press is buffered and replayed as soon as recovery allows it.
     assert len(starts) == 2
     assert starts[0] == 0
-    assert starts[1] - 5 == 4  # characterisation: 4 ticks of buffered waiting
+    assert starts[1] - 5 == 2  # characterisation: 2 ticks of buffered waiting
 
 
 def test_press_before_contact_waits_for_the_hit_and_the_freeze() -> None:
@@ -121,7 +133,7 @@ def test_press_before_contact_waits_for_the_hit_and_the_freeze() -> None:
     _run(level, pad)
     assert len(starts) >= 2
     assert starts[0] == 0
-    assert starts[1] - 3 == 7  # after the enemy's shorter hit-stop: two ticks won back
+    assert starts[1] - 3 == 2  # the chain opens two ticks after the recorded hit
 
 
 def test_a_hit_freezes_at_least_one_tick_of_world_time() -> None:

@@ -7,7 +7,7 @@
           {
             "startup_frames": 3,
             "active_frames": 4,
-            "recovery_frames": 5,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -181,7 +181,7 @@
           {
             "startup_frames": 3,
             "active_frames": 4,
-            "recovery_frames": 5,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -356,7 +356,7 @@
           {
             "startup_frames": 5,
             "active_frames": 3,
-            "recovery_frames": 7,
+            "recovery_frames": 10,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -543,7 +543,7 @@
           {
             "startup_frames": 7,
             "active_frames": 4,
-            "recovery_frames": 11,
+            "recovery_frames": 16,
             "hit": {
               "damage": 13.0,
               "knockback": {
@@ -761,7 +761,7 @@
           {
             "startup_frames": 3,
             "active_frames": 4,
-            "recovery_frames": 5,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -936,7 +936,7 @@
           {
             "startup_frames": 3,
             "active_frames": 4,
-            "recovery_frames": 5,
+            "recovery_frames": 8,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -1111,7 +1111,7 @@
           {
             "startup_frames": 5,
             "active_frames": 3,
-            "recovery_frames": 7,
+            "recovery_frames": 10,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -1298,7 +1298,7 @@
           {
             "startup_frames": 6,
             "active_frames": 5,
-            "recovery_frames": 11,
+            "recovery_frames": 16,
             "hit": {
               "damage": 11.0,
               "knockback": {
@@ -1516,7 +1516,7 @@
           {
             "startup_frames": 4,
             "active_frames": 2,
-            "recovery_frames": 8,
+            "recovery_frames": 12,
             "hit": {
               "damage": 5.0,
               "knockback": {
@@ -1667,7 +1667,7 @@
           {
             "startup_frames": 5,
             "active_frames": 3,
-            "recovery_frames": 10,
+            "recovery_frames": 15,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -1850,7 +1850,7 @@
           {
             "startup_frames": 6,
             "active_frames": 4,
-            "recovery_frames": 16,
+            "recovery_frames": 24,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -2047,7 +2047,7 @@
           {
             "startup_frames": 5,
             "active_frames": 4,
-            "recovery_frames": 10,
+            "recovery_frames": 15,
             "hit": {
               "damage": 6.0,
               "knockback": {
@@ -2242,7 +2242,7 @@
           {
             "startup_frames": 7,
             "active_frames": 4,
-            "recovery_frames": 16,
+            "recovery_frames": 24,
             "hit": {
               "damage": 9.0,
               "knockback": {
@@ -2451,7 +2451,7 @@
           {
             "startup_frames": 5,
             "active_frames": 5,
-            "recovery_frames": 14,
+            "recovery_frames": 21,
             "hit": {
               "damage": 12.0,
               "knockback": {
@@ -2647,7 +2647,7 @@
           {
             "startup_frames": 4,
             "active_frames": 4,
-            "recovery_frames": 2,
+            "recovery_frames": 3,
             "hit": {
               "damage": 12.0,
               "knockback": {
@@ -2820,7 +2820,7 @@
           {
             "startup_frames": 6,
             "active_frames": 4,
-            "recovery_frames": 16,
+            "recovery_frames": 24,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -3017,7 +3017,7 @@
           {
             "startup_frames": 2,
             "active_frames": 5,
-            "recovery_frames": 12,
+            "recovery_frames": 18,
             "hit": {
               "damage": 9.0,
               "knockback": {
@@ -3188,7 +3188,7 @@
           {
             "startup_frames": 5,
             "active_frames": 3,
-            "recovery_frames": 12,
+            "recovery_frames": 18,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -3360,7 +3360,7 @@
           {
             "startup_frames": 2,
             "active_frames": 6,
-            "recovery_frames": 20,
+            "recovery_frames": 30,
             "hit": {
               "damage": 50.0,
               "knockback": {
@@ -3655,7 +3655,7 @@
           {
             "startup_frames": 6,
             "active_frames": 8,
-            "recovery_frames": 0,
+            "recovery_frames": 1,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -3872,7 +3872,7 @@
           {
             "startup_frames": 0,
             "active_frames": 8,
-            "recovery_frames": 20,
+            "recovery_frames": 30,
             "hit": {
               "damage": 60.0,
               "knockback": {
@@ -4035,7 +4035,7 @@
           {
             "startup_frames": 4,
             "active_frames": 5,
-            "recovery_frames": 7,
+            "recovery_frames": 10,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -4230,7 +4230,7 @@
           {
             "startup_frames": 4,
             "active_frames": 12,
-            "recovery_frames": 8,
+            "recovery_frames": 12,
             "hit": {
               "damage": 8.0,
               "knockback": {
@@ -4498,7 +4498,7 @@
           {
             "startup_frames": 3,
             "active_frames": 1,
-            "recovery_frames": 9,
+            "recovery_frames": 14,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4559,7 +4559,7 @@
           {
             "startup_frames": 3,
             "active_frames": 1,
-            "recovery_frames": 10,
+            "recovery_frames": 15,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4620,7 +4620,7 @@
           {
             "startup_frames": 5,
             "active_frames": 1,
-            "recovery_frames": 16,
+            "recovery_frames": 24,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4681,7 +4681,7 @@
           {
             "startup_frames": 0,
             "active_frames": 1,
-            "recovery_frames": 16,
+            "recovery_frames": 24,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -4744,7 +4744,7 @@
           {
             "startup_frames": 16,
             "active_frames": 5,
-            "recovery_frames": 6,
+            "recovery_frames": 9,
             "hit": {
               "damage": 12.0,
               "knockback": {
@@ -4765,7 +4765,7 @@
               "clash": "clash",
               "height": "mid",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.06
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5053,7 +5053,7 @@
           {
             "startup_frames": 4,
             "active_frames": 5,
-            "recovery_frames": 16,
+            "recovery_frames": 24,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -5074,7 +5074,7 @@
               "clash": "trade",
               "height": "mid",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.06
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5236,7 +5236,7 @@
           {
             "startup_frames": 22,
             "active_frames": 5,
-            "recovery_frames": 24,
+            "recovery_frames": 36,
             "hit": {
               "damage": 14.0,
               "knockback": {
@@ -5257,7 +5257,7 @@
               "clash": "trade",
               "height": "mid",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.06
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5637,7 +5637,7 @@
           {
             "startup_frames": 20,
             "active_frames": 5,
-            "recovery_frames": 18,
+            "recovery_frames": 27,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -5658,7 +5658,7 @@
               "clash": "trade",
               "height": "mid",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.06
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5985,7 +5985,7 @@
           {
             "startup_frames": 24,
             "active_frames": 1,
-            "recovery_frames": 22,
+            "recovery_frames": 33,
             "hit": {
               "damage": 0.0,
               "knockback": {
@@ -6048,7 +6048,7 @@
           {
             "startup_frames": 12,
             "active_frames": 3,
-            "recovery_frames": 18,
+            "recovery_frames": 27,
             "hit": {
               "damage": 16.0,
               "knockback": {
@@ -6069,7 +6069,7 @@
               "clash": "trade",
               "height": "high",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.08
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6303,7 +6303,7 @@
           {
             "startup_frames": 16,
             "active_frames": 3,
-            "recovery_frames": 20,
+            "recovery_frames": 30,
             "hit": {
               "damage": 13.0,
               "knockback": {
@@ -6324,7 +6324,7 @@
               "clash": "trade",
               "height": "low",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.08
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6608,7 +6608,7 @@
           {
             "startup_frames": 22,
             "active_frames": 4,
-            "recovery_frames": 22,
+            "recovery_frames": 33,
             "hit": {
               "damage": 14.0,
               "knockback": {
@@ -6629,7 +6629,7 @@
               "clash": "trade",
               "height": "mid",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.1
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6967,7 +6967,7 @@
           {
             "startup_frames": 26,
             "active_frames": 22,
-            "recovery_frames": 26,
+            "recovery_frames": 39,
             "hit": {
               "damage": 16.0,
               "knockback": {
@@ -6988,7 +6988,7 @@
               "clash": "trade",
               "height": "low",
               "tags": [],
-              "hit_stop": 0.04
+              "hit_stop": 0.1
             },
             "reset_targets": true,
             "cancel_into": [],

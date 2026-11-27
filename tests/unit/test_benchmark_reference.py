@@ -76,5 +76,6 @@ def test_frame_advantage_and_dodge_window_are_in_band(report: dict[str, object])
     assert isinstance(duel, dict)
     advantage = duel["frame_advantage"]
     assert isinstance(advantage, dict)
-    assert advantage["hit"] == pytest.approx(18, abs=3)
-    assert 0 <= report["perfect_dodge_ticks"] <= 3
+    assert advantage["hit"] == pytest.approx(14, abs=3)
+    # The slower catalogue gives the dodge a longer lead before a blow lands.
+    assert 0 <= report["perfect_dodge_ticks"] <= 12

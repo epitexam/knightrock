@@ -252,6 +252,13 @@ def test_beats_stun_and_the_beat_button_then_throws() -> None:
     run_out_hit_stop(level)
     goblin.hitbox.centerx = player.hitbox.centerx + 52.0
     goblin.sync_rects()
+    # The slower catalogue leaves the beat that stunned the foe still in its
+    # follow-through, and the blow may have lifted it off its feet. A grab
+    # needs the fighter ready and the foe on the floor.
+    for _ in range(60):
+        if _state(player) == PlayerState.IDLE.value and goblin.on_surface.get("floor"):
+            break
+        level.update(DT)
 
     tap(level, pad, BEAT)
 
@@ -568,6 +575,7 @@ def test_stasis_slows_the_world_and_blitz_the_player_speeds_up() -> None:
     _level, _pad, player = arena()
     player.slot.power, player.slot.power_timer = Power.STASIS, 1.0
     assert player.world_time_scale == Slot.STASIS_TIME_SCALE
+    assert player.attack_speed == Slot.STASIS_ATTACK_SPEED
 
     player.slot.power = Power.BLITZ
     player._sync_speeds()

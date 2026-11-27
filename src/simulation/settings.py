@@ -320,6 +320,9 @@ class Slot:
     POWER_DURATION = 8.0
     #: Stasis: the world's clock while it lasts; every blow kills outright.
     STASIS_TIME_SCALE = 0.3
+    #: The fighter keeps their own clock under stasis, and slashes a little
+    #: faster than the catalogue: the reward for slowing the world down.
+    STASIS_ATTACK_SPEED = 1.2
     #: Blitz: the fighter runs and slashes this much faster, and kills outright.
     BLITZ_MOVE_MULT = 1.6
     BLITZ_ATTACK_SPEED = 2.0

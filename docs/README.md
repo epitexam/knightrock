@@ -45,4 +45,4 @@ This directory is a self-contained documentation set for Knightrock. The [root R
 
 ## History and decisions
 
-- [Audits and historical decisions](audit/README.md) - performance and refactor audits, ADRs, the Phase E plan, playtest notes and design proposals. These records are preserved as written.
+- [Audits and historical decisions](audit/README.md) - performance and refactor audits, ADRs and design proposals. These records preserve the context in which decisions were made.

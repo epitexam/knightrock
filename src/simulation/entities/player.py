@@ -259,6 +259,8 @@ class Player(Entity):
             speed = max(speed, Rush.ATTACK_SPEED)
         if self.fury.in_dark:
             speed = max(speed, FurySettings.DARK_ATTACK_SPEED)
+        if self.slot.active(Power.STASIS):
+            speed = max(speed, SlotSettings.STASIS_ATTACK_SPEED)
         if self.slot.active(Power.BLITZ):
             speed = max(speed, SlotSettings.BLITZ_ATTACK_SPEED)
         return speed
