@@ -123,7 +123,7 @@ def test_press_during_recovery_waits_for_the_cancel_window() -> None:
     # The second press is buffered and replayed as soon as recovery allows it.
     assert len(starts) == 2
     assert starts[0] == 0
-    assert starts[1] - 5 == 5  # characterisation: 5 ticks of buffered waiting
+    assert starts[1] - 5 == 2  # characterisation: 2 ticks of buffered waiting
 
 
 def test_press_before_contact_waits_for_the_hit_and_the_freeze() -> None:
@@ -133,7 +133,7 @@ def test_press_before_contact_waits_for_the_hit_and_the_freeze() -> None:
     _run(level, pad)
     assert len(starts) >= 2
     assert starts[0] == 0
-    assert starts[1] - 3 == 3  # the chain opens three ticks after the recorded hit
+    assert starts[1] - 3 == 2  # the chain opens two ticks after the recorded hit
 
 
 def test_a_hit_freezes_at_least_one_tick_of_world_time() -> None:

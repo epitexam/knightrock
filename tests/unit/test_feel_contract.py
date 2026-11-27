@@ -21,26 +21,29 @@ def test_every_player_strike_carries_an_explicit_hitstop() -> None:
             assert phase.hit.hit_stop is not None, f"{name}[{index}] uses the global formula"
 
 
-def test_enemy_strikes_carry_a_short_explicit_hitstop() -> None:
-    """Enemy freeze is no longer the ~0.088 s the global formula produced."""
+def test_enemy_strikes_carry_a_tiered_explicit_hitstop() -> None:
+    """Enemy freeze is explicit and grows with the weight of the blow."""
     sets = shipped_gameplay_data().attack_sets
+    expected = {"goblin": 0.06, "slime": 0.06, "tooth": 0.08, "shell": 0.10}
     for owner, attacks in sets.items():
-        if owner == "player":
+        if owner not in expected:
             continue
         for name, definition in attacks.items():
             for phase in definition.phases:
                 if phase.hit.damage <= 0:
                     continue  # a marker box throws a shot, it does not strike
-                assert phase.hit.hit_stop == 0.04, f"{owner}.{name} uses the old formula"
+                assert phase.hit.hit_stop == expected[owner], f"{owner}.{name} lost its tier"
 
 
-def test_enemy_hitstop_is_close_to_a_player_light() -> None:
+def test_enemy_hitstop_stays_between_a_light_and_a_heavy_player_blow() -> None:
     attacks = shipped_gameplay_data().attack_sets
-    player_light = attacks["player"]["slash_high_1"].phases[0].hit.hit_stop
-    enemy = attacks["goblin"]["claw_swipe"].phases[1].hit.hit_stop
-    assert player_light is not None
-    assert enemy is not None
-    assert enemy <= player_light * 1.5
+    light = attacks["player"]["slash_high_1"].phases[0].hit.hit_stop
+    heavy = attacks["player"]["slash_high_4"].phases[0].hit.hit_stop
+    goblin = attacks["goblin"]["claw_swipe"].phases[1].hit.hit_stop
+    shell = attacks["shell"]["shell_roll"].phases[0].hit.hit_stop
+    assert light is not None and heavy is not None
+    assert goblin is not None and shell is not None
+    assert light < goblin < heavy < shell
 
 
 def test_the_first_three_chain_links_cancel_on_contact() -> None:
