@@ -244,12 +244,12 @@ def build_respawn_level() -> Level:
 # bit for bit. PHYSICS and RESPAWN do not observe enemy hit-stop and did not move.
 # RIDE re-captured for the slower move catalogue (2026-11-27): startup, active
 # and recovery were scaled by 1.5 for every set, which moves the goblin's swing
-# along the carried ride. Re-captured again when the player's startup and
-# active returned to their original lengths and the enemy hit-stop became
-# tiered: both change the exchange during the ride. PHYSICS and RESPAWN do not
-# observe those timings and did not move.
+# along the carried ride. Re-captured again when startup and active returned to
+# their original lengths for every fighter -- only recovery stayed scaled --
+# and the enemy hit-stop became tiered. PHYSICS and RESPAWN do not observe
+# those timings and did not move.
 PHYSICS_DIGEST = "c84740a6cd47840a75bbc0eb206b1b8e5f75c82c216ed3b0aa00c6b1fba79d92"
-RIDE_DIGEST = "09ce47b9526a50c5a258c8a0f28ad876ae80750c5dabc25a00388cc7e9ba6d02"
+RIDE_DIGEST = "a86a37dd765de7599f2e6aea9cef02178d81a189a7f1d783fb06627afb32293a"
 RESPAWN_DIGEST = "3e37730c583750c0b95d7d1c785eaff271f81cd96a5c248c8125c9f6a867ec46"
 
 

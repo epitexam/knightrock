@@ -38,14 +38,14 @@ def report() -> dict[str, object]:
 def test_enemy_warnings_are_exact(report: dict[str, object]) -> None:
     """Pure data, no RNG: a startup change must fail loudly."""
     assert report["enemy_warning_ms"] == {
-        "goblin.claw_swipe": 400,
-        "goblin.claw_reach": 550,
-        "slime.body_slam": 500,
-        "slime.slime_spit": 600,
-        "tooth.bite": 300,
-        "tooth.snap": 400,
-        "shell.shell_bash": 550,
-        "shell.shell_roll": 650,
+        "goblin.claw_swipe": 267,
+        "goblin.claw_reach": 367,
+        "slime.body_slam": 333,
+        "slime.slime_spit": 400,
+        "tooth.bite": 200,
+        "tooth.snap": 267,
+        "shell.shell_bash": 367,
+        "shell.shell_roll": 433,
     }
 
 

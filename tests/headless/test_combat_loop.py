@@ -365,7 +365,7 @@ def test_two_blades_that_meet_lock_and_mashing_wins() -> None:
         if (
             phase is not None
             and state.sub_state is PhaseState.STARTUP
-            and phase.startup_frames - state.frame_counter == 1
+            and phase.startup_frames - state.frame_counter == 2
         ):
             break
         level.update(DT)
