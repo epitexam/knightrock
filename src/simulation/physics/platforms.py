@@ -1,20 +1,25 @@
 from collections.abc import Iterable
-from typing import Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pygame
 
 from src.simulation.physics.spatial_hash import collider_box, is_one_way
 
+if TYPE_CHECKING:
+    from src.simulation.sprites import MovingPlatform
+
 _BLOCK_DIVISORS = (1, 2, 4, 8, 16, 32)
 
 
-def _blocks(sprite: Any, candidate: pygame.Rect) -> bool:
+def _blocks(sprite: pygame.sprite.Sprite, candidate: pygame.Rect | pygame.FRect) -> bool:
     """Whether ``sprite``'s box overlaps ``candidate``."""
     box = collider_box(sprite)
     return box is not None and box.colliderect(candidate)
 
 
-def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | None:
+def _static_blockers(
+    platform: MovingPlatform, candidate: pygame.Rect | pygame.FRect
+) -> Iterable[pygame.sprite.Sprite] | None:
     """The static terrain that could block ``candidate``.
 
     Prefers the spatial hash: a full scan of the level's collision tiles was
@@ -38,7 +43,7 @@ def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | N
     spatial_hash = getattr(platform, "spatial_hash", None)
     if spatial_hash is not None:
         return cast(
-            "Iterable[Any]",
+            "Iterable[pygame.sprite.Sprite] | None",
             (
                 s
                 for s in spatial_hash.get_nearby(candidate)
@@ -48,7 +53,9 @@ def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | N
     return (s for s in static_sprites if not hasattr(s, "waypoints") and not is_one_way(s))
 
 
-def _limit_to_clear(platform: Any, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:
+def _limit_to_clear(
+    platform: MovingPlatform, step: pygame.math.Vector2
+) -> tuple[pygame.math.Vector2, bool]:
     """Shorten a platform's step so it never overlaps static terrain.
 
     Returns the allowed step (possibly a zero vector) and whether the
@@ -69,7 +76,7 @@ def _limit_to_clear(platform: Any, step: pygame.math.Vector2) -> tuple[pygame.ma
     return step * 0, True
 
 
-def update_moving_platform(platform: Any, delta_time: float) -> None:
+def update_moving_platform(platform: MovingPlatform, delta_time: float) -> None:
     """Update a moving platform's position along its waypoints."""
     platform.old_rect = platform.rect.copy()
     platform.old_hitbox = platform.hitbox.copy()

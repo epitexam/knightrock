@@ -28,7 +28,7 @@ is still set, because it costs nothing and because a subclass that starts
 writing the facing from outside would silently need it.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from src.simulation.settings import Locomotion, Turn
 from src.simulation.states.state_machine import EntityT, State
@@ -126,7 +126,7 @@ class TurnState(State[EntityT]):
         #: Whether leaving should apply ``target``.
         self.commit: bool = True
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Arm the hold from the requested direction and freeze the mirror."""
         self.resume = previous or ""
         self.target = bool(kwargs.get("target", self.entity.facing_right))

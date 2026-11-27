@@ -15,17 +15,19 @@ from __future__ import annotations
 
 from dataclasses import fields
 from pathlib import Path
-from typing import Any
 
 from src.shared.paths import confined_resource_path
 from src.simulation.combat.frame_data import AttackDefinition, MoveId
 from src.simulation.data.attacks import read_attack_definition
 from src.simulation.data.errors import (
     GameplayDataError,
+    JsonValue,
     pair_of_floats,
     read_bool,
     read_json_object,
     read_number,
+    read_optional_string,
+    read_string_mapping,
     reject_unknown,
     triple_of_ints,
 )
@@ -39,7 +41,7 @@ ENEMIES_FILENAME = "enemies.json"
 ENEMIES_VERSION = 1
 
 
-def _read_stun_max(raw: Any, where: str) -> float:
+def _read_stun_max(raw: JsonValue, where: str) -> float:
     """The size of the stun gauge: above zero, or a blow of any weight would fill it."""
     stun_max = read_number(raw, f"{where}.stun_max")
     if not stun_max > 0.0:
@@ -47,7 +49,7 @@ def _read_stun_max(raw: Any, where: str) -> float:
     return stun_max
 
 
-def _read_weight(raw: Any, where: str) -> float:
+def _read_weight(raw: JsonValue, where: str) -> float:
     """A knockback divisor: a number above zero (zero would launch to infinity)."""
     weight = read_number(raw, f"{where}.weight")
     if not weight > 0.0:
@@ -55,7 +57,7 @@ def _read_weight(raw: Any, where: str) -> float:
     return weight
 
 
-def _read_animations(raw: Any, where: str) -> dict[str, str]:
+def _read_animations(raw: JsonValue, where: str) -> dict[str, str]:
     if raw is None:
         return {}
     if not isinstance(raw, dict):
@@ -69,11 +71,11 @@ def _read_animations(raw: Any, where: str) -> dict[str, str]:
             raise GameplayDataError(
                 f"{where}.{state}: directory must be relative to the project root"
             ) from exc
-    return dict(raw)
+    return read_string_mapping(raw, where)
 
 
 def _read_moves(
-    raw: Any, where: str, attacks: dict[MoveId, AttackDefinition]
+    raw: JsonValue, where: str, attacks: dict[MoveId, AttackDefinition]
 ) -> tuple[EnemyMove, ...]:
     """The moves list: each names one of the type's attacks, a range and a weight."""
     if raw is None:
@@ -104,7 +106,7 @@ def _read_moves(
 
 
 def read_enemy_config(
-    raw: Any,
+    raw: JsonValue,
     where: str,
     attack_sets: dict[str, dict[MoveId, AttackDefinition]],
 ) -> EnemyConfig:
@@ -131,7 +133,7 @@ def read_enemy_config(
             color=triple_of_ints(_required(raw, "color", where), f"{where}.color"),
             health=read_number(_required(raw, "health", where), f"{where}.health"),
             attacks=attacks,
-            attack_name=raw.get("attack_name"),
+            attack_name=read_optional_string(raw.get("attack_name"), f"{where}.attack_name"),
             moves=_read_moves(raw.get("moves"), where, attacks),
             max_health=(
                 read_number(raw["max_health"], f"{where}.max_health")
@@ -188,7 +190,7 @@ def read_enemy_config(
             # ``settings.PROFILES``: an unknown name resolves to the shipped
             # defaults, and a level that names a group nobody defined should
             # get a fighter that moves rather than one that refuses to spawn.
-            turn_profile=raw.get("turn_profile"),
+            turn_profile=read_optional_string(raw.get("turn_profile"), f"{where}.turn_profile"),
             animations=_read_animations(raw.get("animations"), f"{where}.animations"),
         )
     except (TypeError, ValueError) as exc:
@@ -211,7 +213,7 @@ def read_enemies_file(
     }
 
 
-def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
+def enemy_config_to_dict(config: EnemyConfig) -> dict[str, object]:
     """Serialize an :class:`EnemyConfig` back to its JSON shape.
 
     Attacks are serialized inline (never as a set name) so the file is

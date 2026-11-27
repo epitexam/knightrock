@@ -3,7 +3,7 @@ from collections import deque
 from collections.abc import Callable, Iterable
 from itertools import chain
 from time import perf_counter
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 import pygame
 
@@ -20,6 +20,9 @@ from src.simulation.sprite_groups import SpriteGroups
 
 if TYPE_CHECKING:
     from src.simulation.entities.entity import Entity
+    from src.simulation.entities.player import Player
+    from src.simulation.entities.projectile import Projectile
+    from src.simulation.level.scene_host import SceneHost
 
 from src.presentation.rendering.afterimages import (
     _ghost_alpha as _ghost_alpha,
@@ -342,7 +345,13 @@ class Renderer:
         self._draw_flashes(self._collect_flashes(groups))
         # After the hit flashes: a struck fighter flashes white, and the mark
         # of the blow that struck it has to show on top of that.
-        self.strike_trails.update(groups.entity_sprites, dt, groups.projectile_sprites)
+        self.strike_trails.update(
+            tuple(self._entity_of(sprite) for sprite in groups.entity_sprites),
+            dt,
+            tuple(
+                cast("Projectile", self._entity_of(sprite)) for sprite in groups.projectile_sprites
+            ),
+        )
         self.strike_trails.draw(self.surface, self.camera)
         if debug_enabled:
             overlays = perf_counter()
@@ -350,10 +359,10 @@ class Renderer:
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     @staticmethod
-    def _entity_of(sprite: Any) -> Any:
+    def _entity_of(sprite: object) -> Entity:
         """The simulation object behind a draw proxy, or the sprite itself."""
         proxy = getattr(sprite, "entity", None)
-        return proxy if proxy is not None else sprite
+        return cast("Entity", proxy if proxy is not None else sprite)
 
     @staticmethod
     def _interpolation_lag(groups: SpriteGroups, alpha: float) -> dict[int, tuple[float, float]]:
@@ -384,7 +393,7 @@ class Renderer:
         return lag
 
     def _drawn_rect(
-        self, sprite: Any, rect: pygame.FRect | pygame.Rect
+        self, sprite: pygame.sprite.Sprite, rect: pygame.FRect | pygame.Rect
     ) -> pygame.FRect | pygame.Rect:
         """``rect`` moved to where this frame draws the sprite."""
         if not self._lag:
@@ -394,7 +403,7 @@ class Renderer:
             return rect
         return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
 
-    def _find_dashing_proxy(self, groups: SpriteGroups) -> Any:
+    def _find_dashing_proxy(self, groups: SpriteGroups) -> PresentationSprite | None:
         """The draw proxy of the dashing player, or None.
 
         Resolving it once per frame turns a three-attribute lookup on every
@@ -405,7 +414,7 @@ class Renderer:
                 return sprite
         return None
 
-    def _find_turning_proxy(self, groups: SpriteGroups) -> Any:
+    def _find_turning_proxy(self, groups: SpriteGroups) -> PresentationSprite | None:
         """The draw proxy of the fighter mid-pivot, or None."""
         for sprite in groups.entity_sprites:
             if self._entity_of(sprite).render_hints.turn_ratio > 0.0:
@@ -741,7 +750,7 @@ class Renderer:
         for surface, screen_rect in ghost_draws:
             self.surface.blit(surface, screen_rect)
 
-    def draw_health_bars(self, entities: Iterable[Any]) -> list[pygame.Rect]:
+    def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite]) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy.
 
         The bars are anchored to the rects this frame blitted, not to the
@@ -756,13 +765,28 @@ class Renderer:
         """
         fighters = tuple(entities)
         screen_rects = {
-            id(entity): self.camera.apply(self._drawn_rect(entity, entity.hitbox))
+            id(entity): self.camera.apply(self._drawn_rect(entity, self._entity_of(entity).hitbox))
             for entity in fighters
             if id(entity) in self._lag
         }
         return self.overlay.draw_health_bars(fighters, self.camera, screen_rects or None)
 
-    def draw_debug_panels(self, **counters: Any) -> None:
+    def draw_debug_panels(
+        self,
+        *,
+        player: Player | None = None,
+        fps: float = 0.0,
+        sprite_count: int = 0,
+        combat_count: int = 0,
+        entity_count: int = 0,
+        collision_count: int = 0,
+        hit_stop: float = 0.0,
+        spawn_cooldown: float = 0.0,
+        frame_time: float = 0.0,
+        cache_size: int | None = None,
+        scene_host: SceneHost | None = None,
+        debug_stats: dict[str, float] | None = None,
+    ) -> None:
         """Ask the overlay to draw the screen-side debug panels.
 
         Only the *when* lives here -- the renderer owns the frame, so it is the
@@ -771,5 +795,18 @@ class Renderer:
         ``PanelLayout`` is no longer imported by ``core``.
         """
         started = perf_counter()
-        self.overlay.draw_debug_panels(**counters, debug_stats=self.debug_metrics_snapshot())
+        self.overlay.draw_debug_panels(
+            player=player,
+            fps=fps,
+            sprite_count=sprite_count,
+            combat_count=combat_count,
+            entity_count=entity_count,
+            collision_count=collision_count,
+            hit_stop=hit_stop,
+            spawn_cooldown=spawn_cooldown,
+            frame_time=frame_time,
+            cache_size=cache_size,
+            scene_host=scene_host,
+            debug_stats=debug_stats if debug_stats is not None else self.debug_metrics_snapshot(),
+        )
         self._record_debug_sample("panels_ms", (perf_counter() - started) * 1000.0)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Final, Protocol
+from typing import Final, Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -127,7 +127,7 @@ class ReactionCombatPort(Protocol):
 class ReactionStatePort(Protocol):
     """State operation available to Reaction."""
 
-    def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None: ...
+    def change_state(self, name: str, force: bool = False, **kwargs: object) -> None: ...
 
 
 class ReactionOwner(Protocol):

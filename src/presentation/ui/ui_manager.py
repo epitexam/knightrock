@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any
+from typing import cast
 
 import pygame
 
@@ -11,6 +11,8 @@ from src.presentation.ui.player_ui import PlayerUI
 from src.presentation.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.presentation.ui.world_overlay.metrics import COMBAT_PANEL_TITLE
 from src.presentation.ui.world_ui import WorldUI
+from src.simulation.combat.frame_data import Stance
+from src.simulation.entities.player import Player
 from src.simulation.level.scene_host import SceneHost
 
 #: Stable ids of the interactive debug panels. They name the ``×``/drag state
@@ -140,7 +142,7 @@ class UIManager:
 
     def draw_compact_panel(
         self,
-        player: Any,
+        player: Player,
         layout: PanelLayout,
         scene_host: SceneHost | None = None,
     ) -> int:
@@ -196,7 +198,7 @@ class UIManager:
         self,
         x: int,
         y: int,
-        player: Any,
+        player: Player,
         layout: PanelLayout | None = None,
         compact: bool = False,
     ) -> int:
@@ -208,7 +210,7 @@ class UIManager:
         self,
         x: int,
         y: int,
-        player: Any,
+        player: Player,
         layout: PanelLayout | None = None,
         compact: bool = False,
     ) -> int:
@@ -278,7 +280,7 @@ class UIManager:
         )
 
     @staticmethod
-    def _attack_button_rows(player: Any) -> list[tuple[str, tuple[int, int, int]]]:
+    def _attack_button_rows(player: Player) -> list[tuple[str, tuple[int, int, int]]]:
         """What each attack button would throw from where the fighter is standing.
 
         This is the gate, rendered -- not a report of what the gate last decided:
@@ -291,7 +293,7 @@ class UIManager:
 
         # Duck-typed off a real player: a player with no stance draws an empty
         # table instead of taking the frame down.
-        stance: Any = getattr(player, "stance", None)
+        stance: Stance | None = getattr(player, "stance", None)
         cooldowns = getattr(getattr(player, "combat", None), "cooldowns", {}) or {}
         rows: list[tuple[str, tuple[int, int, int]]] = [
             (f"Stance  {getattr(stance, 'value', stance)}", TEXT_OK)
@@ -322,7 +324,7 @@ class UIManager:
         layout: PanelLayout | None = None,
         layers: dict[str, bool] | None = None,
         compact: bool = False,
-        player: Any = None,
+        player: Player | None = None,
     ) -> int:
         """The attack buttons from where the fighter stands, plus the bench keys.
 
@@ -544,7 +546,7 @@ class UIManager:
         """
         return self.world_ui.draw_health_bars(entities, camera, screen_rects)
 
-    def draw_hud(self, player: Any) -> None:
+    def draw_hud(self, player: Player) -> None:
         """Always-on player gauges: health and rally, blood, dash, combo (UI-7)."""
         self.hud.draw(player)
 
@@ -580,10 +582,18 @@ class UIManager:
     def draw_debug_panels(
         self,
         *,
-        player: Any = None,
+        player: Player | None = None,
+        fps: float = 0.0,
+        sprite_count: int = 0,
+        combat_count: int = 0,
+        entity_count: int = 0,
+        collision_count: int = 0,
+        hit_stop: float = 0.0,
+        spawn_cooldown: float = 0.0,
+        frame_time: float = 0.0,
+        cache_size: int | None = None,
         scene_host: SceneHost | None = None,
         debug_stats: dict[str, float] | None = None,
-        **counters: Any,
     ) -> None:
         """Draw the screen-side debug panels from the renderer's counters.
 
@@ -602,33 +612,41 @@ class UIManager:
             scale=self.renderer.screen_scale,
         )
         self.draw_performance_panel(
+            fps=fps,
+            sprite_count=sprite_count,
+            combat_count=combat_count,
+            entity_count=entity_count,
+            collision_count=collision_count,
+            hit_stop=hit_stop,
+            spawn_cooldown=spawn_cooldown,
+            frame_time=frame_time,
+            cache_size=cache_size,
             layout=layout,
             debug_stats=debug_stats or {},
-            **counters,
         )
         if compact_panels():
-            self.draw_compact_panel(player, layout, scene_host)
+            self.draw_compact_panel(cast("Player", player), layout, scene_host)
             return
         self.draw_combat_panel(layout)
-        self.draw_state_panel(10, 10, player, layout=layout)
-        self.draw_stats_panel(10, 10, player, layout=layout)
+        self.draw_state_panel(10, 10, cast("Player", player), layout=layout)
+        self.draw_stats_panel(10, 10, cast("Player", player), layout=layout)
         if scene_host is not None:
             self.draw_scene_panel(10, 10, scene_host, layout=layout)
         self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers, player=player)
         self.draw_legend_panel(10, 10, layout=layout)
 
-    def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
+    def draw_metrics_panel(self, player: Player, hit_stop: float) -> None:
         """The always-on combat metrics readout."""
         self.world_ui.panels.draw_metrics_panel(player=player, hit_stop=hit_stop)
 
-    def note_clash(self, clash: Any) -> None:
+    def note_clash(self, clash: object) -> None:
         """Record a clash so the overlay can mark it where it happened."""
-        self.world_ui.panels.note_clash(clash)
+        self.world_ui.panels.note_clash(cast("tuple[float, float] | None", clash))
 
     def stamp_clash_marker(self, camera: Camera) -> None:
         """Draw the clash marker again, over the debug panels."""
         self.world_ui.panels.stamp_clash_marker(camera)
 
-    def update_metrics(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: object) -> None:
         """Feed the contact pipeline's per-tick counters to the overlay."""
         self.world_ui.panels.update_metrics(metrics)

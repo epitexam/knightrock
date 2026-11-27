@@ -10,13 +10,14 @@ needing to know about the table.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pygame.math import Vector2
 
 from src.simulation.ecs.table import DenseTable, Handle
 
 if TYPE_CHECKING:
+    from src.simulation.entities.components.movement import MovementComponent
     from src.simulation.entities.entity import Entity
 
 _SURFACE_FLAGS = ("floor", "left", "right")
@@ -25,7 +26,7 @@ _SURFACE_FLAGS = ("floor", "left", "right")
 class Vector2View:
     """A stable ``Vector2``-like view over two float columns."""
 
-    def __init__(self, table: MovementTable, slot: int, mirror: Any) -> None:
+    def __init__(self, table: MovementTable, slot: int, mirror: MovementComponent) -> None:
         self._table = table
         self._slot = slot
         self._mirror = mirror
@@ -80,7 +81,7 @@ class Vector2View:
 class SurfaceFlagsView:
     """A stable mapping view over the three boolean contact columns."""
 
-    def __init__(self, table: MovementTable, slot: int, mirror: Any) -> None:
+    def __init__(self, table: MovementTable, slot: int, mirror: MovementComponent) -> None:
         self._table = table
         self._slot = slot
         self._mirror = mirror
@@ -96,7 +97,7 @@ class SurfaceFlagsView:
             raise KeyError(key)
         self._columns[key][self._slot] = bool(value)
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(self, key: str, default: object = None) -> object:
         if key not in _SURFACE_FLAGS:
             return default
         return self[key]

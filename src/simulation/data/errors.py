@@ -5,16 +5,38 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 logger = logging.getLogger(__name__)
+
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+"""A value as ``json.loads`` can produce, before any gameplay validation."""
+
+__all__ = [
+    "GameplayDataError",
+    "JsonValue",
+    "pair_of_floats",
+    "read_bool",
+    "read_number",
+    "read_numbers",
+    "read_optional_string",
+    "read_string",
+    "read_string_mapping",
+    "read_strings",
+    "read_int",
+    "read_json_object",
+    "read_number",
+    "reject_unknown",
+    "required_field",
+    "triple_of_ints",
+]
 
 
 class GameplayDataError(ValueError):
     """A gameplay JSON file is malformed (fail loudly, never guess)."""
 
 
-def read_json_object(path: str | Path, version: int | tuple[int, ...]) -> dict[str, Any]:
+def read_json_object(path: str | Path, version: int | tuple[int, ...]) -> dict[str, JsonValue]:
     """Load a JSON object file and check its ``version`` field.
 
     Raises
@@ -37,10 +59,12 @@ def read_json_object(path: str | Path, version: int | tuple[int, ...]) -> dict[s
         raise GameplayDataError(
             f"{path}: unsupported version {raw.get('version')!r} (expected {expected})"
         )
-    return raw
+    return cast("dict[str, JsonValue]", raw)
 
 
-def reject_unknown(raw: dict[str, Any], allowed: frozenset[str] | set[str], where: str) -> None:
+def reject_unknown(
+    raw: dict[str, JsonValue], allowed: frozenset[str] | set[str], where: str
+) -> None:
     """Refuse any key the reader below does not read.
 
     A typo in a hand-edited balance file must fail loudly. Silently defaulting
@@ -65,7 +89,7 @@ def reject_unknown(raw: dict[str, Any], allowed: frozenset[str] | set[str], wher
         )
 
 
-def required_field(mapping: dict[str, Any], key: str, where: str) -> Any:
+def required_field(mapping: dict[str, JsonValue], key: str, where: str) -> JsonValue:
     """Fetch a mandatory JSON field with a precise location in the error."""
     if key not in mapping:
         raise GameplayDataError(f"{where}: missing required field {key!r}")
@@ -79,21 +103,54 @@ def required_field(mapping: dict[str, Any], key: str, where: str) -> Any:
 # JSON type, naming the field in the error.
 
 
-def read_bool(value: Any, where: str) -> bool:
+def read_string(value: JsonValue, where: str) -> str:
+    """A JSON string at ``where``."""
+    if not isinstance(value, str):
+        raise GameplayDataError(f"{where}: expected a string, got {value!r}")
+    return value
+
+
+def read_optional_string(value: JsonValue, where: str) -> str | None:
+    """A JSON string or null at ``where``."""
+    return None if value is None else read_string(value, where)
+
+
+def read_strings(value: JsonValue, where: str) -> tuple[str, ...]:
+    """A JSON list (or in-code tuple) of strings at ``where``."""
+    if not isinstance(value, (list, tuple)):
+        raise GameplayDataError(f"{where}: expected a list of strings, got {value!r}")
+    return tuple(read_string(item, where) for item in value)
+
+
+def read_numbers(value: JsonValue, where: str) -> tuple[float, ...]:
+    """A JSON list (or in-code tuple) of numbers at ``where``."""
+    if not isinstance(value, (list, tuple)):
+        raise GameplayDataError(f"{where}: expected a list of numbers, got {value!r}")
+    return tuple(read_number(item, where) for item in value)
+
+
+def read_string_mapping(value: JsonValue, where: str) -> dict[str, str]:
+    """A JSON object whose keys and values are strings."""
+    if not isinstance(value, dict):
+        raise GameplayDataError(f"{where}: expected an object, got {value!r}")
+    return {read_string(key, where): read_string(item, where) for key, item in value.items()}
+
+
+def read_bool(value: JsonValue, where: str) -> bool:
     """A JSON boolean at ``where``; strings such as ``"false"`` are refused."""
     if not isinstance(value, bool):
         raise GameplayDataError(f"{where}: expected a boolean, got {value!r}")
     return value
 
 
-def read_number(value: Any, where: str) -> float:
+def read_number(value: JsonValue, where: str) -> float:
     """A JSON number at ``where``; numeric strings and booleans are refused."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise GameplayDataError(f"{where}: expected a number, got {value!r}")
     return float(value)
 
 
-def read_int(value: Any, where: str) -> int:
+def read_int(value: JsonValue, where: str) -> int:
     """A JSON integer at ``where``; integral floats are accepted, strings are not."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise GameplayDataError(f"{where}: expected an integer, got {value!r}")
@@ -111,21 +168,25 @@ def read_int(value: Any, where: str) -> int:
 # in an error message and a second thing to keep in step with the schema.
 
 
-def pair_of_floats(value: Any, where: str) -> tuple[float, float]:
+def pair_of_floats(value: JsonValue, where: str) -> tuple[float, float]:
     """An ``[x, y]`` pair, or a ``GameplayDataError`` naming the field."""
-    if not isinstance(value, list) or len(value) != 2:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise GameplayDataError(f"{where}: expected a [x, y] pair, got {value!r}")
     try:
-        return (float(value[0]), float(value[1]))
+        return (read_number(value[0], where), read_number(value[1], where))
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: non-numeric pair entry: {value!r}") from exc
 
 
-def triple_of_ints(value: Any, where: str) -> tuple[int, int, int]:
+def triple_of_ints(value: JsonValue, where: str) -> tuple[int, int, int]:
     """An ``[r, g, b]`` color triple, or a ``GameplayDataError`` naming the field."""
-    if not isinstance(value, list) or len(value) != 3:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
         raise GameplayDataError(f"{where}: expected a [r, g, b] triple, got {value!r}")
     try:
-        return (int(value[0]), int(value[1]), int(value[2]))
+        return (
+            read_int(value[0], where),
+            read_int(value[1], where),
+            read_int(value[2], where),
+        )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: non-integer color entry: {value!r}") from exc

@@ -7,7 +7,7 @@ values. Standalone fighters keep the plain component, so tests that build a
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from src.simulation.ecs.table import DenseTable, Handle
 
@@ -55,7 +55,7 @@ class VitalsTable(DenseTable):
         self.column("owner")[slot] = vitals
 
     def assert_mirror(self, slot: int) -> None:
-        vitals: Any = self.column("owner")[slot]
+        vitals = cast("Vitals", self.column("owner")[slot])
         assert self.column("health")[slot] == vitals._health
         assert self.column("max_health")[slot] == vitals._max_health
         assert self.column("is_dead")[slot] == vitals.is_dead

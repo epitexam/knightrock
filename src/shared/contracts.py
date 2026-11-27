@@ -290,33 +290,29 @@ class SnapshotPort(Protocol):
 class FxPort(Protocol):
     """Render-only effects the fixed tick may ask for, never rules it obeys."""
 
-    def spawn_corpse(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object
-    ) -> None: ...
+    def spawn_corpse(self, group: pygame.sprite.Group, entity: object) -> None: ...
 
     def spawn_dash_dust(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, *, burst: bool
+        self, group: pygame.sprite.Group, entity: object, *, burst: bool
     ) -> None: ...
 
     def spawn_dash_grains(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, *, burst: bool
+        self, group: pygame.sprite.Group, entity: object, *, burst: bool
     ) -> None: ...
 
     def spawn_dizzy_stars(
         self,
-        group: pygame.sprite.Group[pygame.sprite.Sprite],
+        group: pygame.sprite.Group,
         entity: object,
         count: int,
         ttl: float,
     ) -> None: ...
 
-    def spawn_dizzy_vortex(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object
-    ) -> None: ...
+    def spawn_dizzy_vortex(self, group: pygame.sprite.Group, entity: object) -> None: ...
 
     def spawn_footstep_dust(
         self,
-        group: pygame.sprite.Group[pygame.sprite.Sprite],
+        group: pygame.sprite.Group,
         entity: object,
         *,
         foot: bool,
@@ -324,65 +320,55 @@ class FxPort(Protocol):
     ) -> None: ...
 
     def spawn_footstep_grains(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, *, foot: bool
+        self, group: pygame.sprite.Group, entity: object, *, foot: bool
     ) -> None: ...
 
     def spawn_guard_arc(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], target: object, *, contact: object
+        self, group: pygame.sprite.Group, target: object, *, contact: object
     ) -> None: ...
 
     def spawn_impact_decal(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, impact: object
+        self, group: pygame.sprite.Group, entity: object, impact: object
     ) -> None: ...
 
     def spawn_landing_dust(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, impact: object
+        self, group: pygame.sprite.Group, entity: object, impact: object
     ) -> None: ...
 
     def spawn_landing_grains(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, impact: object
+        self, group: pygame.sprite.Group, entity: object, impact: object
     ) -> None: ...
 
-    def spawn_sweat_drops(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object
-    ) -> None: ...
+    def spawn_sweat_drops(self, group: pygame.sprite.Group, entity: object) -> None: ...
 
 
 class NullFx:
     """Effects for a headless tick: nothing is spawned."""
 
-    def spawn_corpse(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object
-    ) -> None:
+    def spawn_corpse(self, group: pygame.sprite.Group, entity: object) -> None:
         return None
 
-    def spawn_dash_dust(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, *, burst: bool
-    ) -> None:
+    def spawn_dash_dust(self, group: pygame.sprite.Group, entity: object, *, burst: bool) -> None:
         return None
 
-    def spawn_dash_grains(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, *, burst: bool
-    ) -> None:
+    def spawn_dash_grains(self, group: pygame.sprite.Group, entity: object, *, burst: bool) -> None:
         return None
 
     def spawn_dizzy_stars(
         self,
-        group: pygame.sprite.Group[pygame.sprite.Sprite],
+        group: pygame.sprite.Group,
         entity: object,
         count: int,
         ttl: float,
     ) -> None:
         return None
 
-    def spawn_dizzy_vortex(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object
-    ) -> None:
+    def spawn_dizzy_vortex(self, group: pygame.sprite.Group, entity: object) -> None:
         return None
 
     def spawn_footstep_dust(
         self,
-        group: pygame.sprite.Group[pygame.sprite.Sprite],
+        group: pygame.sprite.Group,
         entity: object,
         *,
         foot: bool,
@@ -391,31 +377,29 @@ class NullFx:
         return None
 
     def spawn_footstep_grains(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, *, foot: bool
+        self, group: pygame.sprite.Group, entity: object, *, foot: bool
     ) -> None:
         return None
 
     def spawn_guard_arc(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], target: object, *, contact: object
+        self, group: pygame.sprite.Group, target: object, *, contact: object
     ) -> None:
         return None
 
     def spawn_impact_decal(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, impact: object
+        self, group: pygame.sprite.Group, entity: object, impact: object
     ) -> None:
         return None
 
     def spawn_landing_dust(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, impact: object
+        self, group: pygame.sprite.Group, entity: object, impact: object
     ) -> None:
         return None
 
     def spawn_landing_grains(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object, impact: object
+        self, group: pygame.sprite.Group, entity: object, impact: object
     ) -> None:
         return None
 
-    def spawn_sweat_drops(
-        self, group: pygame.sprite.Group[pygame.sprite.Sprite], entity: object
-    ) -> None:
+    def spawn_sweat_drops(self, group: pygame.sprite.Group, entity: object) -> None:
         return None

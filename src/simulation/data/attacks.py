@@ -24,10 +24,11 @@ re-exported here so existing callers keep their import path.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import MISSING, fields
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from src.shared.damage_types import DamageType
 from src.simulation.combat.frame_data import (
@@ -61,10 +62,13 @@ from src.simulation.data.attack_writer import (
 )
 from src.simulation.data.errors import (
     GameplayDataError,
+    JsonValue,
     read_bool,
     read_int,
     read_json_object,
     read_number,
+    read_string,
+    read_strings,
     reject_unknown,
 )
 from src.simulation.data.errors import (
@@ -82,7 +86,7 @@ _ANCHOR_KINDS = {member.value: member for member in AnchorKind}
 _STANCES: dict[str, Stance] = {member.value: member for member in Stance}
 
 
-def _defaults(cls: type) -> dict[str, Any]:
+def _defaults(cls: type) -> dict[str, JsonValue]:
     """The dataclass's own defaults, keyed by field name.
 
     Read from ``dataclasses.fields`` rather than restated as literals beside
@@ -143,17 +147,17 @@ _PHASE_JSON_FIELDS = (
 )
 
 
-def _pair_of_floats(value: Any, where: str) -> tuple[float, float]:
+def _pair_of_floats(value: JsonValue, where: str) -> tuple[float, float]:
     """Parse a JSON ``[x, y]`` pair into a float tuple."""
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise GameplayDataError(f"{where}: expected a [x, y] pair, got {value!r}")
     try:
-        return (float(value[0]), float(value[1]))
+        return (read_number(value[0], where), read_number(value[1], where))
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: non-numeric pair entry: {value!r}") from exc
 
 
-def _read_knockback(raw: Any, where: str) -> KnockbackConfig:
+def _read_knockback(raw: JsonValue, where: str) -> KnockbackConfig:
     """Parse a knockback block (power pair + mode)."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: knockback must be an object, got {raw!r}")
@@ -165,25 +169,27 @@ def _read_knockback(raw: Any, where: str) -> KnockbackConfig:
     return KnockbackConfig(power=power, mode=mode)  # type: ignore[arg-type]
 
 
-def _read_tags(raw: Any, where: str) -> tuple[str, ...]:
+def _read_tags(raw: JsonValue, where: str) -> tuple[str, ...]:
     if raw is None:
         return ()
     if not isinstance(raw, list) or any(not isinstance(tag, str) or not tag for tag in raw):
         raise GameplayDataError(f"{where}: 'tags' must be a list of non-empty strings")
-    return tuple(raw)
+    return read_strings(raw, where)
 
 
-def _named[NamedT: StrEnum](kind: type[NamedT], raw: dict, key: str, where: str) -> NamedT:
+def _named[NamedT: StrEnum](
+    kind: type[NamedT], raw: dict[str, JsonValue], key: str, where: str
+) -> NamedT:
     """The member of ``kind`` a hit block names under ``key``, or its default."""
     value = raw.get(key, _HIT_DEFAULTS[key])
     try:
-        return kind(value)
+        return kind(read_string(value, where))
     except ValueError:
         names = ", ".join(repr(member.value) for member in kind)
         raise GameplayDataError(f"{where}.{key}: {value!r} is not one of {names}") from None
 
 
-def _read_hit(raw: Any, where: str) -> HitProperties:
+def _read_hit(raw: JsonValue, where: str) -> HitProperties:
     """Parse a hit block into :class:`HitProperties`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: hit must be an object, got {raw!r}")
@@ -231,15 +237,18 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
 
 
-def _enum_value(values: dict[str, Any], raw: Any, where: str, default: Any) -> Any:
+def _enum_value(
+    values: Mapping[str, object], raw: JsonValue, where: str, default: object
+) -> object:
     if raw is None:
         return default
-    if raw not in values:
+    name = read_string(raw, where)
+    if name not in values:
         raise GameplayDataError(f"{where}: unknown value {raw!r}")
-    return values[raw]
+    return values[name]
 
 
-def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
+def _read_hitbox_spec(raw: JsonValue, where: str) -> HitboxSpec:
     """Parse one hitbox specification, including advanced shape fields."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: hitbox must be an object, got {raw!r}")
@@ -249,24 +258,33 @@ def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
             size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
             offset=_pair_of_floats(_required(raw, "offset", where), f"{where}.offset"),
             keyframes=_read_hitbox_keyframes(raw.get("keyframes"), f"{where}.keyframes"),
-            shape=_enum_value(
-                _SHAPE_KINDS,
-                raw.get("shape"),
-                f"{where}.shape",
-                _HITBOX_DEFAULTS["shape"],
+            shape=cast(
+                "ShapeKind",
+                _enum_value(
+                    _SHAPE_KINDS,
+                    raw.get("shape"),
+                    f"{where}.shape",
+                    _HITBOX_DEFAULTS["shape"],
+                ),
             ),
             angle=read_number(raw.get("angle", _HITBOX_DEFAULTS["angle"]), f"{where}.angle"),
-            easing=_enum_value(
-                _EASING_KINDS,
-                raw.get("easing"),
-                f"{where}.easing",
-                _HITBOX_DEFAULTS["easing"],
+            easing=cast(
+                "EasingKind",
+                _enum_value(
+                    _EASING_KINDS,
+                    raw.get("easing"),
+                    f"{where}.easing",
+                    _HITBOX_DEFAULTS["easing"],
+                ),
             ),
-            anchor=_enum_value(
-                _ANCHOR_KINDS,
-                raw.get("anchor", raw.get(_LEGACY_ANCHOR_KEY)),
-                f"{where}.anchor",
-                _HITBOX_DEFAULTS["anchor"],
+            anchor=cast(
+                "AnchorKind",
+                _enum_value(
+                    _ANCHOR_KINDS,
+                    raw.get("anchor", raw.get(_LEGACY_ANCHOR_KEY)),
+                    f"{where}.anchor",
+                    _HITBOX_DEFAULTS["anchor"],
+                ),
             ),
             anchor_offset=_pair_of_floats(
                 raw.get("anchor_offset", _HITBOX_DEFAULTS["anchor_offset"]),
@@ -277,7 +295,7 @@ def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
         raise GameplayDataError(f"{where}: invalid hitbox: {exc}") from exc
 
 
-def _read_extra_hitboxes(raw: Any, where: str) -> tuple[HitboxSpec, ...]:
+def _read_extra_hitboxes(raw: JsonValue, where: str) -> tuple[HitboxSpec, ...]:
     """Parse the optional ``extra_hitboxes`` list (empty when absent)."""
     if raw is None:
         return ()
@@ -286,7 +304,7 @@ def _read_extra_hitboxes(raw: Any, where: str) -> tuple[HitboxSpec, ...]:
     return tuple(_read_hitbox_spec(entry, f"{where}[{index}]") for index, entry in enumerate(raw))
 
 
-def _read_hitbox_keyframe(raw: Any, where: str) -> HitboxKeyframe:
+def _read_hitbox_keyframe(raw: JsonValue, where: str) -> HitboxKeyframe:
     """Parse one ``{"frame": N, "size": [...], "offset": [...]}`` sample."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: hitbox keyframe must be an object, got {raw!r}")
@@ -302,7 +320,7 @@ def _read_hitbox_keyframe(raw: Any, where: str) -> HitboxKeyframe:
         raise GameplayDataError(f"{where}: invalid hitbox keyframe: {exc}") from exc
 
 
-def _read_hitbox_keyframes(raw: Any, where: str) -> tuple[HitboxKeyframe, ...]:
+def _read_hitbox_keyframes(raw: JsonValue, where: str) -> tuple[HitboxKeyframe, ...]:
     """Parse the optional ``hitbox_keyframes`` list (empty when absent)."""
     if raw is None:
         return ()
@@ -313,13 +331,13 @@ def _read_hitbox_keyframes(raw: Any, where: str) -> tuple[HitboxKeyframe, ...]:
     )
 
 
-def _read_hitboxes(raw: Any, where: str) -> tuple[HitboxSpec, ...]:
+def _read_hitboxes(raw: JsonValue, where: str) -> tuple[HitboxSpec, ...]:
     if not isinstance(raw, list) or not raw:
         raise GameplayDataError(f"{where}: 'hitboxes' must be a non-empty list")
     return tuple(_read_hitbox_spec(entry, f"{where}[{index}]") for index, entry in enumerate(raw))
 
 
-def _read_phase(raw: Any, where: str) -> PhaseDefinition:
+def _read_phase(raw: JsonValue, where: str) -> PhaseDefinition:
     """Parse one phase block into :class:`PhaseDefinition`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: phase must be an object, got {raw!r}")
@@ -346,27 +364,36 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                 keyframes=_read_hitbox_keyframes(
                     raw.get("hitbox_keyframes"), f"{where}.hitbox_keyframes"
                 ),
-                shape=_enum_value(
-                    _SHAPE_KINDS,
-                    raw.get("hitbox_shape"),
-                    f"{where}.hitbox_shape",
-                    _HITBOX_DEFAULTS["shape"],
+                shape=cast(
+                    "ShapeKind",
+                    _enum_value(
+                        _SHAPE_KINDS,
+                        raw.get("hitbox_shape"),
+                        f"{where}.hitbox_shape",
+                        _HITBOX_DEFAULTS["shape"],
+                    ),
                 ),
                 angle=read_number(
                     raw.get("hitbox_angle", _HITBOX_DEFAULTS["angle"]),
                     f"{where}.hitbox_angle",
                 ),
-                easing=_enum_value(
-                    _EASING_KINDS,
-                    raw.get("hitbox_easing"),
-                    f"{where}.hitbox_easing",
-                    _HITBOX_DEFAULTS["easing"],
+                easing=cast(
+                    "EasingKind",
+                    _enum_value(
+                        _EASING_KINDS,
+                        raw.get("hitbox_easing"),
+                        f"{where}.hitbox_easing",
+                        _HITBOX_DEFAULTS["easing"],
+                    ),
                 ),
-                anchor=_enum_value(
-                    _ANCHOR_KINDS,
-                    raw.get("hitbox_anchor"),
-                    f"{where}.hitbox_anchor",
-                    _HITBOX_DEFAULTS["anchor"],
+                anchor=cast(
+                    "AnchorKind",
+                    _enum_value(
+                        _ANCHOR_KINDS,
+                        raw.get("hitbox_anchor"),
+                        f"{where}.hitbox_anchor",
+                        _HITBOX_DEFAULTS["anchor"],
+                    ),
                 ),
                 anchor_offset=_pair_of_floats(
                     raw.get("hitbox_anchor_offset", _HITBOX_DEFAULTS["anchor_offset"]),
@@ -393,7 +420,11 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                 raw.get("reset_targets", _PHASE_DEFAULTS["reset_targets"]), f"{where}.reset_targets"
             ),
             cancel_into=tuple(
-                MoveId(name) for name in raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"])
+                MoveId(name)
+                for name in read_strings(
+                    raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"]),
+                    f"{where}.cancel_into",
+                )
             ),
             cancel_on_hit=read_bool(
                 raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"]), f"{where}.cancel_on_hit"
@@ -405,7 +436,7 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
 
 
-def _read_auto_into(raw: Any, where: str) -> MoveId | None:
+def _read_auto_into(raw: JsonValue, where: str) -> MoveId | None:
     """An automatic continuation is a move name, or ``None``."""
     if raw is None:
         return None
@@ -414,7 +445,7 @@ def _read_auto_into(raw: Any, where: str) -> MoveId | None:
     return MoveId(raw)
 
 
-def _read_launch(raw: Any, where: str) -> str | None:
+def _read_launch(raw: JsonValue, where: str) -> str | None:
     """A shot name from ``src/simulation/entities/shots.py``, or ``None``."""
     if raw is None:
         return None
@@ -425,7 +456,7 @@ def _read_launch(raw: Any, where: str) -> str | None:
     return str(raw)
 
 
-def _read_stances(raw: Any, where: str) -> tuple[Stance, ...]:
+def _read_stances(raw: JsonValue, where: str) -> tuple[Stance, ...]:
     """Parse the ``stances`` whitelist, defaulting to ground only.
 
     A single string is accepted for the common one-stance case, since
@@ -450,7 +481,7 @@ def _read_stances(raw: Any, where: str) -> tuple[Stance, ...]:
     return tuple(stances)
 
 
-def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
+def read_attack_definition(raw: JsonValue, where: str) -> AttackDefinition:
     """Parse one attack block into :class:`AttackDefinition`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: attack must be an object, got {raw!r}")
@@ -510,7 +541,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
         raise GameplayDataError(f"{where}: invalid attack value: {exc}") from exc
 
 
-def _read_follow_ups(raw: Any, where: str) -> tuple[tuple[AttackButton, MoveId], ...]:
+def _read_follow_ups(raw: JsonValue, where: str) -> tuple[tuple[AttackButton, MoveId], ...]:
     """Parse ``{"slash_high": "high_2", "beat_low": "kick_1"}`` into press/move pairs."""
     if raw is None:
         return ()

@@ -27,7 +27,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from src.platform.input.bindings_codec import (
     bindings_from_dict,
@@ -36,6 +36,7 @@ from src.platform.input.bindings_codec import (
 from src.platform.input.input_bindings import InputBindings
 from src.presentation.display.letterbox import FitPolicy
 from src.simulation.atomic_json import write_json_atomic
+from src.simulation.data.errors import JsonValue
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ MIN_FRAME_LIMIT = 20
 MAX_FRAME_LIMIT = 500
 
 
-def _sections(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _sections(data: dict[str, JsonValue]) -> tuple[dict[str, JsonValue], dict[str, JsonValue]]:
     """The ``video`` and ``ui`` blocks, every schema version has them."""
     video = data.get("video", {})
     ui = data.get("ui", {})
@@ -97,7 +98,7 @@ def _sections(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     return video, ui
 
 
-def _scales(ui: dict[str, Any]) -> tuple[float, float]:
+def _scales(ui: dict[str, JsonValue]) -> tuple[float, float]:
     """The two scale preferences, validated once for all four migrations."""
     scale = ui.get("scale", 1.0)
     if scale not in UI_SCALES:
@@ -108,7 +109,7 @@ def _scales(ui: dict[str, Any]) -> tuple[float, float]:
     return scale, panel_scale
 
 
-def _frame_limit(video: dict[str, Any]) -> int | None:
+def _frame_limit(video: dict[str, JsonValue]) -> int | None:
     """The bounded frame limit; ``None`` means uncapped and needs no bounds."""
     value = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
     if value is None:
@@ -116,7 +117,7 @@ def _frame_limit(video: dict[str, Any]) -> int | None:
     return _bounded_int(value, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT)
 
 
-def _render_scale(video: dict[str, Any]) -> float:
+def _render_scale(video: dict[str, JsonValue]) -> float:
     """The internal render resolution, falling back to native if it is nonsense.
 
     Unlike the interface ladders, this value is allowed to be wrong without
@@ -232,7 +233,7 @@ class UserSettings:
         return cls._from_v5(data)
 
     @classmethod
-    def _bindings(cls, data: dict[str, Any]) -> InputBindings:
+    def _bindings(cls, data: dict[str, JsonValue]) -> InputBindings:
         bindings_data = data.get("bindings")
         if bindings_data is None and "gameplay" in data and "menu" in data:
             bindings_data = data
@@ -241,7 +242,7 @@ class UserSettings:
         return bindings_from_dict(bindings_data)
 
     @classmethod
-    def _from_v3(cls, data: dict[str, Any]) -> UserSettings:
+    def _from_v3(cls, data: dict[str, JsonValue]) -> UserSettings:
         """Read a v3 file: choices, and nothing about the screen."""
         bindings = cls._bindings(data)
         video, ui = _sections(data)
@@ -257,7 +258,7 @@ class UserSettings:
         )
 
     @classmethod
-    def _from_v4(cls, data: dict[str, Any]) -> UserSettings:
+    def _from_v4(cls, data: dict[str, JsonValue]) -> UserSettings:
         """Read a v4 file: a chosen window size, plus v3's choices.
 
         The window key is read as a *request*. Nothing here decides whether it
@@ -293,14 +294,14 @@ class UserSettings:
         )
 
     @classmethod
-    def _from_v5(cls, data: dict[str, Any]) -> UserSettings:
+    def _from_v5(cls, data: dict[str, JsonValue]) -> UserSettings:
         """Read a v5 file: v4 with an internal render scale."""
         base = cls._from_v4(data)
         video, _ui = _sections(data)
         return replace(base, render_scale=_render_scale(video))
 
     @classmethod
-    def _from_v2(cls, data: dict[str, Any]) -> UserSettings:
+    def _from_v2(cls, data: dict[str, JsonValue]) -> UserSettings:
         """Read a v2 file.
 
         Everything but the bindings and the choices is dropped on the floor:
@@ -328,7 +329,7 @@ class UserSettings:
         )
 
     @classmethod
-    def _from_v1(cls, data: dict[str, Any]) -> UserSettings:
+    def _from_v1(cls, data: dict[str, JsonValue]) -> UserSettings:
         """Read a v1 file.
 
         Only the bindings and the two scales survive. v1 stored a boolean
@@ -401,7 +402,7 @@ def _bounded_bool(value: object, field_name: str) -> bool:
 MAX_SCREEN_NAME = 120
 
 
-def _screen_name(window: dict[str, Any]) -> str | None:
+def _screen_name(window: dict[str, JsonValue]) -> str | None:
     """The remembered screen's name, or ``None`` for none.
 
     Only ever compared with the names of the screens that are there, so a name
@@ -416,7 +417,7 @@ def _screen_name(window: dict[str, Any]) -> str | None:
     return value
 
 
-def _placement(window: dict[str, Any], key: str) -> tuple[int, int] | None:
+def _placement(window: dict[str, JsonValue], key: str) -> tuple[int, int] | None:
     """A remembered window coordinate pair, or ``None`` for no preference.
 
     Read strictly -- two numbers in range -- because the alternative is a
@@ -435,6 +436,7 @@ def _placement(window: dict[str, Any], key: str) -> tuple[int, int] | None:
     for number in (first, second):
         if not isinstance(number, int) or isinstance(number, bool):
             raise ValueError(f"window.{key} must be a pair of numbers or null")
+    first, second = cast("int", first), cast("int", second)
     # A negative coordinate is legitimate: a monitor to the left of the primary
     # sits at a negative origin, and that is where a window belongs. A wildly
     # large one is not a coordinate, it is a corrupted number, and it is capped
@@ -474,7 +476,7 @@ class SettingsStore:
     def load(self) -> UserSettings:
         """The stored settings, or the defaults with the reason on the record."""
         try:
-            data: Any = json.loads(self.path.read_text(encoding="utf-8"))
+            data = cast("dict[str, JsonValue]", json.loads(self.path.read_text(encoding="utf-8")))
             return UserSettings.from_dict(data)
         except FileNotFoundError:
             # A first launch. Not a problem, and not worth a line.

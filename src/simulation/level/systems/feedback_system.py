@@ -15,7 +15,7 @@ player sees moved: :meth:`after_movement` right after the entities moved,
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pygame
 
@@ -255,7 +255,7 @@ class FeedbackSystem:
 
     def _process_entity_fx(
         self,
-        entity: Any,
+        entity: Entity,
         delta_time: float,
         sweating_ids: set[int],
         dashing_ids: set[int],
@@ -293,7 +293,7 @@ class FeedbackSystem:
         entity.render_hints.landed_impact = 0.0
 
     @staticmethod
-    def _keep_timers(timers: dict[int, Any], live: set[int]) -> None:
+    def _keep_timers[V](timers: dict[int, V], live: set[int]) -> None:
         """Drop dead ids in place; an empty dict costs nothing."""
         if not timers:
             return

@@ -31,14 +31,16 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any
 
 import pygame
 
 from src.presentation.rendering.camera import Camera
 from src.shared.colors import Color
+from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
 from src.simulation.combat.frame_data import Height, PhaseState
 from src.simulation.combat.shapes import ShapeKind, ShapePose
+from src.simulation.entities.entity import Entity
+from src.simulation.entities.projectile import Projectile
 from src.simulation.states import state_names
 
 #: A sample is taken only if the tip moved at least this far (world px).
@@ -293,18 +295,20 @@ class StrikeTrails:
     # -- sampling ---------------------------------------------------------------
 
     @staticmethod
-    def _retain_keys(mapping: dict[int, Any], live: set[int]) -> None:
+    def _retain_keys[V](mapping: dict[int, V], live: set[int]) -> None:
         for key in tuple(mapping):
             if key not in live:
                 del mapping[key]
 
     @staticmethod
-    def _retain_values(mapping: dict[Any, Any], keep: Callable[[Any], bool]) -> None:
+    def _retain_values[K, V](mapping: dict[K, V], keep: Callable[[V], bool]) -> None:
         for key in tuple(mapping):
             if not keep(mapping[key]):
                 del mapping[key]
 
-    def update(self, fighters: Iterable[Any], dt: float, shots: Iterable[Any] = ()) -> None:
+    def update(
+        self, fighters: Iterable[Entity], dt: float, shots: Iterable[Projectile] = ()
+    ) -> None:
         """Age every sample, then sample the fighters and the shots in flight."""
         self._clock += dt
         for impact in self._impacts:
@@ -335,9 +339,9 @@ class StrikeTrails:
         )
         self._sample_shots(shots, dt)
 
-    def _sample(self, fighter: Any) -> None:
+    def _sample(self, fighter: Entity) -> None:
         combat = fighter.combat
-        if combat is None or fighter.is_dead:
+        if isinstance(combat, NullCombatComponent) or fighter.is_dead:
             return
         state = combat.state
         if not state.is_active:
@@ -380,7 +384,7 @@ class StrikeTrails:
             trail.samples.append(_Sample(inner, outer, radius))
             del trail.samples[: -trail.look.samples]
 
-    def _late_impacts(self, fighter: Any, combat: Any) -> None:
+    def _late_impacts(self, fighter: Entity, combat: CombatComponent) -> None:
         """A hit counted after the last live frame -- a two-frame jab -- still leaves its mark."""
         state = combat.state
         if not state.is_attacking:
@@ -407,8 +411,11 @@ class StrikeTrails:
         self._impacts.append(_Impact(point, shape.angle, look.impact, look.edge, size))
         del self._impacts[:-12]
 
-    def _sample_charge(self, fighter: Any, dt: float) -> bool:
+    def _sample_charge(self, fighter: Entity, dt: float) -> bool:
         combat = fighter.combat
+        combat = fighter.combat
+        if isinstance(combat, NullCombatComponent):
+            return False
         charging = combat.charging
         if charging is None or not charging.is_charging or fighter.is_dead:
             return False
@@ -423,7 +430,7 @@ class StrikeTrails:
         charge.full_for = charge.full_for + dt if ratio >= 1.0 else 0.0
         return True
 
-    def _sample_dash(self, fighter: Any, dt: float) -> None:
+    def _sample_dash(self, fighter: Entity, dt: float) -> None:
         if fighter.faction != "player":
             return
         machine = fighter.state_machine
@@ -445,7 +452,7 @@ class StrikeTrails:
             self._impacts.append(_Impact(back, angle, "whoosh", SPEED_LINE_COLOR, 1.0))
         self._dashes[id(fighter)] = _Dash(back, direction, abs(speed))
 
-    def _sample_rush(self, fighter: Any, rushing: dict[int, float]) -> None:
+    def _sample_rush(self, fighter: Entity, rushing: dict[int, float]) -> None:
         """A dark step: a ring the moment it starts, and the world tinted while it lasts."""
         left = float(fighter.rush_timer)
         if left <= 0.0:
@@ -455,11 +462,14 @@ class StrikeTrails:
             self._impacts.append(_Impact(center, 0.0, "rush", RUSH_COLOR, 1.0))
         rushing[id(fighter)] = left
 
-    def _sample_warning(self, fighter: Any) -> None:
+    def _sample_warning(self, fighter: Entity) -> None:
         if fighter.faction == "player" or fighter.is_dead:
             return
         combat = fighter.combat
         if combat is None:
+            return
+        combat = fighter.combat
+        if isinstance(combat, NullCombatComponent):
             return
         state = combat.state
         phase = state.current_phase_def
@@ -475,7 +485,7 @@ class StrikeTrails:
             _Warning((x, y), side, 1.0 - left / WARN_FRAMES, phase.hit.unblockable)
         )
 
-    def _sample_shots(self, shots: Iterable[Any], dt: float) -> None:
+    def _sample_shots(self, shots: Iterable[Projectile], dt: float) -> None:
         alive: set[int] = set()
         for shot in shots:
             if not shot.active:

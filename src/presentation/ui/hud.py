@@ -20,7 +20,10 @@ can be asserted on state and colours instead of on pixels. Wired from
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.simulation.entities.player import Player
 
 import pygame
 
@@ -107,7 +110,7 @@ def bar_width_for(target_width: int) -> int:
     return max(1, min(HUD_BAR_WIDTH, target_width - 2 * HUD_MARGIN))
 
 
-def tier_level(player: Any) -> int:
+def tier_level(player: Player) -> int:
     """How many fury tiers the player has reached."""
     return int(player.fury.tier)
 
@@ -196,7 +199,7 @@ class HUD:
         """A design size in target pixels, never below one."""
         return self._metrics.px(value)
 
-    def layout(self, player: Any) -> HudLayout | None:
+    def layout(self, player: Player) -> HudLayout | None:
         """Compute the frame's rects and colors without drawing anything."""
         if not player:
             return None
@@ -217,7 +220,7 @@ class HUD:
             prompt=self._prompt(player, screen),
         )
 
-    def _gauges(self, player: Any, screen: tuple[int, int]) -> tuple[Gauge, ...]:
+    def _gauges(self, player: Player, screen: tuple[int, int]) -> tuple[Gauge, ...]:
         screen_w, screen_h = screen
         bar_w = int(bar_width_for(screen_w) * self._scale)
         health = _ratio(player.health, player.max_health)
@@ -251,7 +254,7 @@ class HUD:
         return tuple(gauges)
 
     def _dash_pips(
-        self, player: Any, screen: tuple[int, int]
+        self, player: Player, screen: tuple[int, int]
     ) -> tuple[tuple[pygame.Rect, bool], ...]:
         """Right-anchored pip row, read left-to-right, filled from the left."""
         screen_w, screen_h = screen
@@ -267,7 +270,7 @@ class HUD:
 
     def _combo(
         self,
-        player: Any,
+        player: Player,
         screen: tuple[int, int],
         pips: tuple[tuple[pygame.Rect, bool], ...],
     ) -> tuple[str, tuple[int, int] | None, pygame.Rect | None, pygame.Rect | None]:
@@ -291,7 +294,7 @@ class HUD:
         return text, text_pos, bar, _fill(bar, ratio)
 
     def _reels(
-        self, player: Any, screen: tuple[int, int]
+        self, player: Player, screen: tuple[int, int]
     ) -> tuple[tuple[tuple[pygame.Rect, str], ...], str]:
         """The three reels while a spin turns or shows, and the power while it lasts.
 
@@ -316,7 +319,7 @@ class HUD:
             reels.append((rect, SYMBOLS[shown][0].upper()))
         return tuple(reels), power_text
 
-    def _prompt(self, player: Any, screen: tuple[int, int]) -> PromptLayout | None:
+    def _prompt(self, player: Player, screen: tuple[int, int]) -> PromptLayout | None:
         prompt = player.prompt
         if not prompt.active or prompt.kind is None:
             return None
@@ -340,7 +343,7 @@ class HUD:
             text=text,
         )
 
-    def draw(self, player: Any) -> None:
+    def draw(self, player: Player) -> None:
         """Paint the HUD for ``player``; a missing player draws nothing."""
         layout = self.layout(player)
         if layout is None:

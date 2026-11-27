@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from src.simulation.combat.frame_data import PhaseState
 from src.simulation.physics import apply_velocity_friction
@@ -10,7 +10,7 @@ from src.simulation.states.reaction_states import (
     StaggerState,
     apply_reaction_drag,
 )
-from src.simulation.states.state_machine import State, StateMachine
+from src.simulation.states.state_machine import State, StateMachine, int_arg, number_arg
 from src.simulation.states.turn_state import TurnState
 
 if TYPE_CHECKING:
@@ -89,7 +89,7 @@ class PlayerBaseState(State["Player"]):
 class PlayerIdleState(PlayerBaseState):
     """Represent the PlayerIdle state."""
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state."""
         self.entity.velocity.x = 0
 
@@ -262,7 +262,7 @@ class PlayerAttackState(PlayerBaseState):
         super().__init__(entity, tags=["attack", "busy"])
         self._started = 0
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Start the move's momentum, and remember which attack it was."""
         self._started = self.entity.combat.attacks_started
         self._lunge()
@@ -307,7 +307,7 @@ class PlayerAttackState(PlayerBaseState):
         if next_state != "attack":
             self.entity.combat.state.end()
 
-    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, object]] | None:
         """Move, give each new link of a chain its own lunge, and leave when done.
 
         A chain link starts while this state is running -- the input handler
@@ -372,7 +372,7 @@ class PlayerRechargeState(PlayerBaseState):
     def __init__(self, entity: Player):
         super().__init__(entity, tags=["recharge", "busy"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.velocity.x = 0.0
 
     def update(self, delta_time: float) -> str | None:
@@ -390,7 +390,7 @@ class PlayerPromptState(PlayerBaseState):
     def __init__(self, entity: Player):
         super().__init__(entity, tags=["prompt", "busy", "invincible"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         self.entity.velocity.x = 0.0
 
     def update(self, delta_time: float) -> str | None:
@@ -413,12 +413,12 @@ class PlayerHurtState(HurtState["Player"]):
             on_enter=self._hurt_enter,
         )
 
-    def _hurt_enter(self, **kwargs: Any) -> None:
+    def _hurt_enter(self, **kwargs: object) -> None:
         """Clear the dash request and apply the light knockback impulse."""
         self.entity.dash.cancel_request()
 
-        knockback_dir = kwargs.get("knockback_direction", 0)
-        knockback_force = kwargs.get("knockback_force", 0)
+        knockback_dir = int_arg(kwargs, "knockback_direction", 0)
+        knockback_force = number_arg(kwargs, "knockback_force", 0.0)
         if knockback_dir != 0 and knockback_force > 0:
             self.entity.velocity.x = knockback_dir * knockback_force
 
@@ -440,7 +440,7 @@ class PlayerKnockbackState(KnockbackState["Player"]):
             on_enter=self._knockback_enter,
         )
 
-    def _knockback_enter(self, **kwargs: Any) -> None:
+    def _knockback_enter(self, **kwargs: object) -> None:
         """Clear the dash request before the launch velocity is applied."""
         self.entity.dash.cancel_request()
 
@@ -476,7 +476,7 @@ class PlayerDashState(PlayerBaseState):
         self.direction = 1.0
         self.reversed = False
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
         """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.open_dodge_window()
         self.entity.dash.consume_charge()
@@ -565,8 +565,8 @@ class PlayerDizzyState(State["Player"]):
     def __init__(self, entity: Player):
         super().__init__(entity, tags=["dizzy", "busy"])
 
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        duration = kwargs.get("duration", 0.0)
+    def enter(self, previous: str | None = None, **kwargs: object) -> None:
+        duration = number_arg(kwargs, "duration", 0.0)
         if duration > 0:
             self.entity.stagger_timer = duration
 

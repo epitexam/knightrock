@@ -8,11 +8,12 @@ a fighter's combat by dense slot instead of by attribute walk on a sprite.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from src.simulation.ecs.table import DenseTable, Handle
 
 if TYPE_CHECKING:
+    from src.simulation.combat.combat_component import CombatComponent, NullCombatComponent
     from src.simulation.entities.entity import Entity
 
 
@@ -29,8 +30,8 @@ class CombatTable(DenseTable):
         self.column("combat")[slot] = entity._combat
         return slot
 
-    def combat_of(self, slot: int) -> Any:
-        return self.column("combat")[slot]
+    def combat_of(self, slot: int) -> CombatComponent | NullCombatComponent:
+        return cast("CombatComponent | NullCombatComponent", self.column("combat")[slot])
 
     def iter_entities(self) -> Iterator[Entity]:
         """The fighters in row order, for systems that read combat state."""

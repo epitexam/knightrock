@@ -35,6 +35,7 @@ from src.shared.contracts import (
     SpriteLike,
 )
 from src.simulation.ecs.presentation import PresentationSprite
+from src.simulation.entities.player import Player
 from src.simulation.level.level_data import LevelConfig
 from src.simulation.level.scene_host import SceneHost
 from src.simulation.level.systems.contact_system import GuardEvent
@@ -63,7 +64,7 @@ class _OverlayAdapter:
         self._overlay.note_clash(clash)
 
     def draw_metrics_panel(self, player: object, hit_stop: float) -> None:
-        self._overlay.draw_metrics_panel(player, hit_stop)
+        self._overlay.draw_metrics_panel(cast("Player", player), hit_stop)
 
     def stamp_clash_marker(self, camera: CameraPort) -> None:
         self._overlay.stamp_clash_marker(self._camera)
@@ -118,7 +119,7 @@ class PresentationRenderer:
             return
         self.overlay.stamp_clash_marker(self.camera)
         self._renderer.draw_debug_panels(
-            player=context.player,
+            player=cast("Player | None", context.player),
             fps=context.fps,
             sprite_count=len(real_groups.static_sprites)
             + len(real_groups.all_sprites)
@@ -191,12 +192,12 @@ class PresentationRenderer:
 def build_presentation_renderer(
     surface: pygame.Surface,
     config: LevelConfig | None,
-    overlay: WorldOverlay | None = None,
+    overlay: object | None = None,
     camera: Camera | None = None,
 ) -> PresentationRenderer:
     """Build the real adapter from a render target and level config."""
     selected = camera if camera is not None else Camera.for_target(surface)
-    renderer = Renderer(surface, selected, config, overlay)
+    renderer = Renderer(surface, selected, config, cast("WorldOverlay | None", overlay))
     return PresentationRenderer(renderer, selected)
 
 

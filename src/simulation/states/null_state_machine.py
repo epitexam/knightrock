@@ -1,7 +1,7 @@
 from collections.abc import Callable
-from typing import Any
 
 from src.shared.state_names import StateName
+from src.simulation.states.state_machine import MachineState, StateMachineSnapshot
 
 
 def _checked(name: str) -> str:
@@ -18,11 +18,11 @@ class NullStateMachine:
         """Update the state machine."""
         pass
 
-    def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None:
+    def change_state(self, name: str, force: bool = False, **kwargs: object) -> None:
         """Change the current state."""
         _checked(name)
 
-    def add_state(self, name: str, state: Any) -> None:
+    def add_state(self, name: str, state: MachineState) -> None:
         """Register a state (no-op: keeps the StateMachine interface)."""
         pass
 
@@ -53,15 +53,13 @@ class NullStateMachine:
         """Consume a buffered input."""
         return False
 
-    def save_state(self) -> Any:
+    def save_state(self) -> StateMachineSnapshot:
         """Return a neutral snapshot (rollback, Phase 3 #3)."""
-        from src.simulation.states.state_machine import StateMachineSnapshot
-
         return StateMachineSnapshot(
             current_state_name=None,
             previous_state_name=None,
             input_buffer={},
         )
 
-    def load_state(self, snapshot: Any) -> None:
+    def load_state(self, snapshot: StateMachineSnapshot) -> None:
         """No-op: a null machine has no simulation state to restore."""

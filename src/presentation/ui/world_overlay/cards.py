@@ -17,7 +17,6 @@ taken is exactly how a label ends up underneath a health bar."""
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Any
 
 import pygame
 import pygame.sprite
@@ -45,6 +44,8 @@ from src.presentation.ui.world_overlay.shared import (
 )
 from src.shared.colors import Color, Colors
 from src.simulation.entities.components.reaction import ReactionStatus
+from src.simulation.states.null_state_machine import NullStateMachine
+from src.simulation.states.state_machine import StateMachine
 
 #: One label row: ``(text, color)`` tokens laid out left to right.
 Segments = list[list[tuple[str, Color]]]
@@ -275,7 +276,9 @@ class CardLayer:
             if rect is not None:
                 placed.append(rect)
 
-    def entity_segments(self, sprite: pygame.sprite.Sprite, state_machine: Any) -> Segments:
+    def entity_segments(
+        self, sprite: pygame.sprite.Sprite, state_machine: StateMachine | NullStateMachine
+    ) -> Segments:
         """One row per datum, every token paired with its display color.
 
         - header: faction-colored name (the enemy registry type for foes,

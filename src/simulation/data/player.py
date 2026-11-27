@@ -16,11 +16,12 @@ from __future__ import annotations
 import math
 from dataclasses import MISSING, fields
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from src.simulation.combat.frame_data import AttackDefinition, MoveId
 from src.simulation.data.errors import (
     GameplayDataError,
+    JsonValue,
     pair_of_floats,
     read_int,
     read_json_object,
@@ -48,20 +49,20 @@ def _player_override_keys() -> frozenset[str]:
     return frozenset(field.name for field in fields(PlayerConfig)) - {"attacks"} | {"attack_set"}
 
 
-def _read_wall_jumps(value: Any, where: str) -> int | float:
+def _read_wall_jumps(value: JsonValue, where: str) -> int | float:
     """Parse ``max_wall_jumps``: an int, ``"inf"``, or a float."""
     if isinstance(value, str):
         if value == "inf":
             return math.inf
         raise GameplayDataError(f"{where}: unknown wall-jump value {value!r}")
     try:
-        number = float(value)
+        number = read_number(value, where)
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid wall-jump value: {value!r}") from exc
     return int(number) if number.is_integer() and number >= 0 else number
 
 
-def _value_defaults(cls: type) -> dict[str, Any]:
+def _value_defaults(cls: type) -> dict[str, JsonValue]:
     """The dataclass's literal defaults, without invoking any default_factory."""
     return {field.name: field.default for field in fields(cls) if field.default is not MISSING}
 
@@ -70,7 +71,7 @@ _PLAYER_DEFAULTS = _value_defaults(PlayerConfig)
 
 
 def read_player_config(
-    raw: Any,
+    raw: JsonValue,
     where: str,
     attack_sets: dict[str, dict[MoveId, AttackDefinition]],
 ) -> PlayerConfig:
@@ -94,20 +95,22 @@ def read_player_config(
         attacks = dict(attack_sets[MoveId(raw_attacks)])
     try:
         return PlayerConfig(
-            size=pair_of_floats(raw.get("size", list(_PLAYER_DEFAULTS["size"])), f"{where}.size"),
+            size=pair_of_floats(
+                raw.get("size", cast("JsonValue", _PLAYER_DEFAULTS["size"])), f"{where}.size"
+            ),
             color=triple_of_ints(
-                raw.get("color", list(_PLAYER_DEFAULTS["color"])), f"{where}.color"
+                raw.get("color", cast("JsonValue", _PLAYER_DEFAULTS["color"])), f"{where}.color"
             ),
             health=read_number(raw.get("health", _PLAYER_DEFAULTS["health"]), f"{where}.health"),
             max_health=read_number(
                 raw.get("max_health", _PLAYER_DEFAULTS["max_health"]), f"{where}.max_health"
             ),
             hitbox_inflate=pair_of_floats(
-                raw.get("hitbox_inflate", list(_PLAYER_DEFAULTS["hitbox_inflate"])),
+                raw.get("hitbox_inflate", cast("JsonValue", _PLAYER_DEFAULTS["hitbox_inflate"])),
                 f"{where}.hitbox_inflate",
             ),
             hurtbox_inflate=pair_of_floats(
-                raw.get("hurtbox_inflate", list(_PLAYER_DEFAULTS["hurtbox_inflate"])),
+                raw.get("hurtbox_inflate", cast("JsonValue", _PLAYER_DEFAULTS["hurtbox_inflate"])),
                 f"{where}.hurtbox_inflate",
             ),
             # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
@@ -154,7 +157,10 @@ def read_player_config(
             max_wall_jumps=(
                 _read_wall_jumps(raw["max_wall_jumps"], f"{where}.max_wall_jumps")
                 if "max_wall_jumps" in raw
-                else _PLAYER_DEFAULTS["max_wall_jumps"]
+                else _read_wall_jumps(
+                    cast("JsonValue", _PLAYER_DEFAULTS["max_wall_jumps"]),
+                    f"{where}.max_wall_jumps",
+                )
             ),
             coyote_duration=read_number(
                 raw.get("coyote_duration", _PLAYER_DEFAULTS["coyote_duration"]),

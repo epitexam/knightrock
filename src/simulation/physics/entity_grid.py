@@ -45,12 +45,15 @@ Two conditions, and the second is the one that matters:
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pygame
 
 from src.simulation.physics.spatial_hash import SpatialHash, SpatialHashMember
 from src.simulation.settings import World
+
+if TYPE_CHECKING:
+    from src.simulation.entities.entity import Entity
 
 __all__ = ["MIN_GRID_MEMBERS", "EntityGrid", "overlapping_pairs"]
 
@@ -84,12 +87,12 @@ class EntityGrid:
     def __init__(self, cell_size: int = World.HASH_CELL_SIZE) -> None:
         self.cell_size = cell_size
         self._hash = SpatialHash(cell_size=cell_size)
-        self._members: list[Any] = []
+        self._members: list[Entity] = []
         self.indexed = False
-        self._pair_entities: Sequence[Any] | None = None
+        self._pair_entities: Sequence[Entity] | None = None
         self._pair_position: dict[int, int] = {}
 
-    def rebuild(self, entities: Iterable[Any]) -> int:
+    def rebuild(self, entities: Iterable[Entity]) -> int:
         """Re-bucket every entity in one pass; return the member count.
 
         Bucketing is skipped outright when the count already rules the index
@@ -154,7 +157,9 @@ class EntityGrid:
         self.indexed = False
 
 
-def overlapping_pairs(entities: Sequence[Any], grid: EntityGrid) -> Iterator[tuple[Any, Any]]:
+def overlapping_pairs(
+    entities: Sequence[Entity], grid: EntityGrid
+) -> Iterator[tuple[Entity, Entity]]:
     """Yield every overlapping entity pair, in legacy exhaustive-loop order.
 
     Replacement for the ``for i / for j > i`` double loop of the pairing
@@ -183,11 +188,11 @@ def overlapping_pairs(entities: Sequence[Any], grid: EntityGrid) -> Iterator[tup
     use_grid = grid.indexed
     for index_a, ent_a in enumerate(entities):
         box_a = ent_a.hitbox
-        candidates: list[tuple[int, Any]] = []
+        candidates: list[tuple[int, Entity]] = []
         # Grid members outside `entities` (the grid may bucket a superset,
         # e.g. the whole entity group while the caller filtered it) sort to
         # index -1 and are dropped by the `index_b <= index_a` guard.
-        members = cast("list[Any]", grid.near(box_a)) if use_grid else list(entities)
+        members = cast("list[Entity]", grid.near(box_a)) if use_grid else list(entities)
         for ent_b in members:
             index_b = position.get(id(ent_b), -1)
             if index_b <= index_a:
