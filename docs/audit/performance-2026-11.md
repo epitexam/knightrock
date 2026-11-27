@@ -117,3 +117,69 @@ la charge des panneaux dépend du nombre de sprites et de texte affichés.
 Enfin, le typage lui-même n'a eu aucun effet mesurable : tick moyen avant
 0,1248 ms / après 0,1261 ms, rendu 1920×1080 dans le bruit, import plutôt en
 baisse. La refonte a acheté de la maintenabilité, pas de la vitesse.
+
+## Enquête ciblée sur les modules existants (27 novembre, suite)
+
+Même principe que l'audit : mesurer dans le code tel qu'il tourne, puis ne
+conserver que les pistes dont le gain est reproductible. Aucun changement de
+runtime ni d'architecture n'a été envisagé.
+
+### Postes mesurés
+
+| Poste | Mesure |
+|---|---:|
+| Tick, 1 joueur | 0,13 ms |
+| Tick, 8 ennemis | 1,08 ms |
+| Contact 8v8 (`contact_benchmark`) | 1,55 ms/tick |
+| Rendu 1920×1080 | 2,0 – 2,4 ms/frame |
+| Blit loop, 130 surfaces `convert_alpha` | 0,109 ms |
+| `Surface.blits` | 0,093 ms |
+| **`Surface.fblits`** | **0,056 ms** |
+| Menu UI (`ui_benchmark`) | 0,5 – 1,5 ms/frame |
+| Construction FX | 3 – 52 µs par effet |
+
+Un `cProfile` sur 300 ticks avec 8 ennemis donne 96 628 appels à
+`Entity.hitbox`, 53 222 à `Entity.velocity` et 153 051 à `DenseTable.column`.
+Le profileur majore le coût d'un appel Python, mais l'ordre de grandeur est
+confirmé sans profileur : `GeometryTable.hitbox_of()` met 5,67 µs pour 50
+accès contre 2,65 µs avec la colonne liée localement ; lire `entity.hitbox`
+coûte ~0,17 µs de plus qu'une variable locale.
+
+### Pistes retenues (non livrées ici)
+
+1. **`presentation/rendering/renderer.py`** : remplacer la boucle de blits par
+   `Surface.fblits`. La file de blits du renderer n'utilise pas de
+   `special_flags` (les seuls flags sont dans le passage flashes), donc
+   l'API s'applique directement. Gain mesuré sur le primitives : ~0,05 ms/frame.
+2. **`simulation/physics/{movement,collisions}.py` et
+   `simulation/level/systems/{separation,contact}_system.py`** : lier les
+   propriétés ECS et les colonnes en variables locales au début des boucles.
+   Gain attendu ~50 µs/tick à 8 ennemis, soit ~5 % du tick et ~0,3 % du budget
+   frame. À garder avec des checksums de monde en garde-fou.
+
+### Pistes écartées avec preuve
+
+- **`__slots__` sur les particles/événements** : 0,209 → 0,163 µs par instance,
+  mais quelques instances par frame seulement — moins de 1 µs gagné. Gain mémoire
+  uniquement ; source : [Python Morsels](https://www.pythonmorsels.com/__slots__/).
+- **`array.array` pour les colonnes ECS** : le SoA ne bat l'AoS qu'à des
+  milliers d'entités ([The Essence of ECS, 2026](https://arxiv.org/html/2606.14919v1)) ;
+  le roster livré est de 1 à 9.
+- **Cache d'écrans UI entiers** : 0,5–1,5 ms/menu, mais invalidation par
+  densité, thème et choix utilisateur ; le cache de texte est déjà à 1024
+  entrées. Risque supérieur au gain.
+- **Périmètre mypyc élargi** : prototype compilé (11 extensions) mais plantage
+  à l'exécution sur `SurfaceFlagsView` dans `collisions.py` et `movement.py`.
+  La conclusion E2 tient toujours.
+- **PyPy/GraalPy, NumPy/JAX, Cython/Rust, free-threaded, GPU** : voir la
+  [l'échelle d'optimisation 2026](https://cemrehancavdar.com/2026/03/10/optimization-ladder/)
+  et l'audit initial ; nos hot paths sont des objets, des vues ECS et des
+  appels pygame C, pas des boucles numériques pures, et la compatibilité des
+  extensions reste un risque.
+
+Sources directes pour les pistes retenues :
+[pygame-ce — Performance Comparisons](https://github.com/pygame-community/pygame-ce/wiki/Performance-Comparisons-Against-Upstream-Pygame)
+(`fblits`, vecteurs C) et la [FAQ Python sur les variables locales](https://docs.python.org/3/faq/programming.html).
+
+Aucun code n'a été modifié par cette enquête ; les gates restent ceux de la
+vérification ci-dessus.
